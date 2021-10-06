@@ -10,6 +10,10 @@
 		D30D3AD8270E2F2C00A39051 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30D3AD7270E2F2C00A39051 /* AppDelegate.swift */; };
 		D30D3ADA270E2F2D00A39051 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D30D3AD9270E2F2D00A39051 /* Assets.xcassets */; };
 		D30D3ADD270E2F2D00A39051 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = D30D3ADB270E2F2D00A39051 /* MainMenu.xib */; };
+		D3573252270E383F000CCCF9 /* PCH_Defs.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3573251270E383F000CCCF9 /* PCH_Defs.swift */; };
+		D3B7FF22270E320E002537D3 /* Section.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B7FF21270E320E002537D3 /* Section.swift */; };
+		D3B7FF26270E3704002537D3 /* PCH_ExcelDesignFileReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B7FF25270E3704002537D3 /* PCH_ExcelDesignFileReader.swift */; };
+		D3B7FF28270E3769002537D3 /* GlobalDefs.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B7FF27270E3769002537D3 /* GlobalDefs.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -18,6 +22,10 @@
 		D30D3AD9270E2F2D00A39051 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D30D3ADC270E2F2D00A39051 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
 		D30D3ADE270E2F2D00A39051 /* Rabin2021.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Rabin2021.entitlements; sourceTree = "<group>"; };
+		D3573251270E383F000CCCF9 /* PCH_Defs.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = PCH_Defs.swift; path = ../../../../Dropbox/MyProjects/PCH_Defs.swift; sourceTree = "<group>"; };
+		D3B7FF21270E320E002537D3 /* Section.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Section.swift; sourceTree = "<group>"; };
+		D3B7FF25270E3704002537D3 /* PCH_ExcelDesignFileReader.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = PCH_ExcelDesignFileReader.swift; path = "../../../../Dropbox/MyProjects/Base Classes/PCH_ExcelDesignFileReader.swift"; sourceTree = "<group>"; };
+		D3B7FF27270E3769002537D3 /* GlobalDefs.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = GlobalDefs.swift; path = ../../../../Dropbox/MyProjects/GlobalDefs.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -51,6 +59,10 @@
 			isa = PBXGroup;
 			children = (
 				D30D3AD7270E2F2C00A39051 /* AppDelegate.swift */,
+				D3B7FF27270E3769002537D3 /* GlobalDefs.swift */,
+				D3B7FF25270E3704002537D3 /* PCH_ExcelDesignFileReader.swift */,
+				D3573251270E383F000CCCF9 /* PCH_Defs.swift */,
+				D3B7FF21270E320E002537D3 /* Section.swift */,
 				D30D3AD9270E2F2D00A39051 /* Assets.xcassets */,
 				D30D3ADB270E2F2D00A39051 /* MainMenu.xib */,
 				D30D3ADE270E2F2D00A39051 /* Rabin2021.entitlements */,
@@ -129,6 +141,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				D30D3AD8270E2F2C00A39051 /* AppDelegate.swift in Sources */,
+				D3573252270E383F000CCCF9 /* PCH_Defs.swift in Sources */,
+				D3B7FF26270E3704002537D3 /* PCH_ExcelDesignFileReader.swift in Sources */,
+				D3B7FF28270E3769002537D3 /* GlobalDefs.swift in Sources */,
+				D3B7FF22270E320E002537D3 /* Section.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
