@@ -63,7 +63,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             
             let numMainGaps = Double(mainGaps.count)
             
-            let numMainAxialSections = 1.0 + numMainGaps
+            // let numMainAxialSections = 1.0 + numMainGaps
             
             // We treat disc coils and helical coils the same way (specifically, we treat helical coils as disc coils with 1 turn per disc). For now, all other coil types are treated as one huge lumped section that spans the entire radial build by the electrical height. Note that the series capacitance calculations for those types of coils should still be done properly.
             if wType == .disc || wType == .helix {
@@ -74,19 +74,61 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                 let numStandardGaps = numDiscs - 1.0 - numMainGaps
                 
                 let discHt = (nextWinding.electricalHeight - (numStandardGaps * nextWinding.stdAxialGap + totalMainGapDimn) * 0.98) / numDiscs
+                let discPitch = discHt + nextWinding.stdAxialGap * 0.98
                 
+                var perSectionDiscs:[Int] = []
                 if mainGaps.count == 0 {
                     
+                    perSectionDiscs = [Int(numDiscs)]
                 }
                 else if mainGaps.count == 1 {
                     
+                    let lowerSectionDiscs = Int(round(numDiscs / 2.0))
+                    let upperSectionDiscs = Int(numDiscs) - lowerSectionDiscs
+                    perSectionDiscs = [lowerSectionDiscs, upperSectionDiscs]
                 }
                 else if mainGaps.count == 2 {
                     
+                    let middleSectionDiscs = Int(round(numDiscs / 2.0))
+                    let lowerSectionDiscs = Int(round((numDiscs - Double(middleSectionDiscs)) / 2.0))
+                    let upperSectionDiscs = Int(numDiscs) - middleSectionDiscs - lowerSectionDiscs
+                    perSectionDiscs = [lowerSectionDiscs, middleSectionDiscs, upperSectionDiscs]
                 }
                 else {
-                    
+                    let middleSectionDiscs = round(numDiscs / 2.0)
+                    let mid1 = Int(round(middleSectionDiscs / 2.0))
+                    let mid2 = Int(middleSectionDiscs) - mid1
+                    let outerSectionDiscs = numDiscs - middleSectionDiscs
+                    let low = Int(round(outerSectionDiscs / 2.0))
+                    let high = Int(outerSectionDiscs) - low
+                    perSectionDiscs = [low, mid1, mid2, high]
                 }
+                
+                var gapIndex = 0
+                var currentZ = nextWinding.bottomEdgePack
+                
+                for nextMainSection in perSectionDiscs {
+                    
+                    for sectionIndex in 0..<nextMainSection {
+                        
+                        let nextAxialPos = axialPos + sectionIndex
+                        
+                        let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: nextAxialPos), N: turnsPerDisc, I: nextWinding.I, rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: currentZ, width: nextWinding.electricalRadialBuild, height: discHt))
+                        
+                        result.append(newBasicSection)
+                        
+                        currentZ += discPitch
+                    }
+                    
+                    if gapIndex < mainGaps.count {
+                        
+                        currentZ += (mainGaps[gapIndex] - discPitch)
+                        gapIndex += 1
+                    }
+                    
+                    axialPos += nextMainSection
+                }
+                
             }
             else {
                 
@@ -123,6 +165,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             UserDefaults.standard.set(fileURL, forKey: LAST_OPENED_INPUT_FILE_KEY)
     
             NSDocumentController.shared.noteNewRecentDocumentURL(fileURL)
+            
+            self.updateModel(xlFile: xlFile)
             
             self.mainWindow.title = fileURL.lastPathComponent
                         
