@@ -9,7 +9,11 @@ import Cocoa
 
 class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
+    /// The main window of the program
     @IBOutlet weak var mainWindow: NSWindow!
+    
+    /// The current basic sections that are loaded in memory (used for drawing, among other things)
+    var currentSections:[BasicSection] = []
     
     // MARK: File routines
     func doOpen(fileURL:URL) -> Bool

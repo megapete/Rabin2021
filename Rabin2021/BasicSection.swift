@@ -7,13 +7,13 @@
 
 import Cocoa
 
+struct LocStruct:Codable {
+    let radial:Int // 0 is closest to core
+    let axial:Int // 0 is closest to bottom yoke
+}
+
 /// This struct defines  the most basic definitiion of a coil section. There are no "electrical" functions defined for the struct. It is basically just used to describe the physical and electrical characteristics of a coil section (either a single disc or a single layer).
 struct BasicSection:Codable {
-    
-    struct LocStruct:Codable {
-        let radial:Int // 0 is closest to core
-        let axial:Int // 0 is closest to bottom yoke
-    }
     
     /// The location of the section
     let location:LocStruct

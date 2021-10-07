@@ -15,6 +15,7 @@
 		D3B7FF22270E320E002537D3 /* BasicSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B7FF21270E320E002537D3 /* BasicSection.swift */; };
 		D3B7FF26270E3704002537D3 /* PCH_ExcelDesignFileReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B7FF25270E3704002537D3 /* PCH_ExcelDesignFileReader.swift */; };
 		D3B7FF28270E3769002537D3 /* GlobalDefs.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B7FF27270E3769002537D3 /* GlobalDefs.swift */; };
+		F5ED29ED270F1F9C003E84CB /* CoilSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED29EC270F1F9C003E84CB /* CoilSection.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 		D3B7FF21270E320E002537D3 /* BasicSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BasicSection.swift; sourceTree = "<group>"; };
 		D3B7FF25270E3704002537D3 /* PCH_ExcelDesignFileReader.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = PCH_ExcelDesignFileReader.swift; path = "../../../../Dropbox/MyProjects/Base Classes/PCH_ExcelDesignFileReader.swift"; sourceTree = "<group>"; };
 		D3B7FF27270E3769002537D3 /* GlobalDefs.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = GlobalDefs.swift; path = ../../../../Dropbox/MyProjects/GlobalDefs.swift; sourceTree = "<group>"; };
+		F5ED29EC270F1F9C003E84CB /* CoilSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoilSection.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -65,6 +67,7 @@
 				D3573251270E383F000CCCF9 /* PCH_Defs.swift */,
 				D3573253270E5DAE000CCCF9 /* AppController.swift */,
 				D3B7FF25270E3704002537D3 /* PCH_ExcelDesignFileReader.swift */,
+				F5ED29EC270F1F9C003E84CB /* CoilSection.swift */,
 				D3B7FF21270E320E002537D3 /* BasicSection.swift */,
 				D30D3AD9270E2F2D00A39051 /* Assets.xcassets */,
 				D30D3ADB270E2F2D00A39051 /* MainMenu.xib */,
@@ -149,6 +152,7 @@
 				D3B7FF28270E3769002537D3 /* GlobalDefs.swift in Sources */,
 				D3B7FF22270E320E002537D3 /* BasicSection.swift in Sources */,
 				D3573254270E5DAE000CCCF9 /* AppController.swift in Sources */,
+				F5ED29ED270F1F9C003E84CB /* CoilSection.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
