@@ -5,6 +5,10 @@
 //  Created by Peter Huber on 2021-10-06.
 //
 
+// Keys into User Defaults
+// Key (String) so that the user doesn't have to go searching for the last folder he opened
+let LAST_OPENED_INPUT_FILE_KEY = "PCH_RABIN2021_LastInputFile"
+
 import Cocoa
 
 class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
@@ -15,9 +19,29 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     /// The current basic sections that are loaded in memory (used for drawing, among other things)
     var currentSections:[BasicSection] = []
     
-    // MARK: File routines
-    func doOpen(fileURL:URL) -> Bool
+    /// The current core in memory
+    var currentCore:Core? = nil
+    
+    // MARK: Transformer update routines
+    func updateModel(xlFile:PCH_ExcelDesignFile) {
+        
+        // The idea here is to create the current model as a Core and an array of BasicSections and save it into the class' currentSections property
+        self.currentCore = Core(diameter: xlFile.core.diameter, realWindowHeight: xlFile.core.windowHeight)
+        
+        // replace any currently saved sections with the new model
+        self.currentSections = createBasicSections(xlFile: xlFile)
+        
+    }
+    
+    func createBasicSections(xlFile:PCH_ExcelDesignFile) -> [BasicSection]
     {
+        var result:[BasicSection] = []
+        
+        return result
+    }
+    
+    // MARK: File routines
+    func doOpen(fileURL:URL) -> Bool {
         if !FileManager.default.fileExists(atPath: fileURL.path)
         {
             let alert = NSAlert()
@@ -30,8 +54,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         do {
             
             // create the current Transformer from the Excel design file
-            let newTxfo = try PCH_ExcelDesignFile(designFile: fileURL)
+            let xlFile = try PCH_ExcelDesignFile(designFile: fileURL)
             
+            // if we make it here, we have successfully opened the file, so save it as the "last successfully opened file"
+            UserDefaults.standard.set(fileURL, forKey: LAST_OPENED_INPUT_FILE_KEY)
     
             NSDocumentController.shared.noteNewRecentDocumentURL(fileURL)
             

@@ -10,8 +10,8 @@ import Cocoa
 @main
 class AppDelegate: NSObject, NSApplicationDelegate {
 
+    @IBOutlet weak var appController: AppController!
     @IBOutlet var window: NSWindow!
-
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         // Insert code here to initialize your application
@@ -23,6 +23,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
         return true
+    }
+    
+    func application(_ sender:NSApplication, openFile filename:String) -> Bool
+    {
+        let fixedFileName = (filename as NSString).expandingTildeInPath
+        
+        let url = URL(fileURLWithPath: fixedFileName, isDirectory: false)
+        
+        return appController.doOpen(fileURL: url)
     }
 
 
