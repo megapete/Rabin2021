@@ -23,7 +23,16 @@ struct BasicSection:Codable {
     /// The series current in the section
     let I:Double
     
+    /// The rectangle that holds the section, assuming that the origin is at (x=coreCenter, y=topOfBottomYoke)
     private var rect:NSRect
+    
+    init(location:LocStruct, N:Double, I:Double, rect:NSRect)
+    {
+        self.location = location
+        self.N = N
+        self.I = I
+        self.rect = rect
+    }
     
     /// The area of the section
     var area:Double {
@@ -80,6 +89,5 @@ struct BasicSection:Codable {
         }
     }
     
-    let aboveInsulation:Double
-    let belowInsulation:Double
+    
 }

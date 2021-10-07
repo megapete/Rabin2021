@@ -44,10 +44,56 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             var axialPos = 0
             let wType = nextWinding.windingType
             
-            let numMainRadialSections = 1 + (wType == .layer ? nextWinding.numRadialDucts : 0)
+            // let numMainRadialSections = 1 + (wType == .layer ? nextWinding.numRadialDucts : 0)
             
-            let numMainGaps = (nextWinding.centerGap > 0.0 ? 1 : 0) + (nextWinding.bottomDvGap > 0.0 ? 1 : 0) + (nextWinding.topDvGap > 0.0 ? 1 : 0)
-            let numMainAxialSections = 1 + numMainGaps
+            var mainGaps:[Double] = []
+            var totalMainGapDimn = 0.0
+            if nextWinding.bottomDvGap > 0.0 {
+                mainGaps.append(nextWinding.bottomDvGap)
+                totalMainGapDimn += nextWinding.bottomDvGap
+            }
+            if nextWinding.centerGap > 0.0 {
+                mainGaps.append(nextWinding.centerGap)
+                totalMainGapDimn += nextWinding.centerGap
+            }
+            if nextWinding.topDvGap > 0.0 {
+                mainGaps.append(nextWinding.topDvGap)
+                totalMainGapDimn += nextWinding.topDvGap
+            }
+            
+            let numMainGaps = Double(mainGaps.count)
+            
+            let numMainAxialSections = 1.0 + numMainGaps
+            
+            // We treat disc coils and helical coils the same way (specifically, we treat helical coils as disc coils with 1 turn per disc). For now, all other coil types are treated as one huge lumped section that spans the entire radial build by the electrical height. Note that the series capacitance calculations for those types of coils should still be done properly.
+            if wType == .disc || wType == .helix {
+                
+                let numDiscs:Double = (wType == .disc ? Double(nextWinding.numAxialSections) : nextWinding.numTurns.max)
+                let turnsPerDisc:Double = (wType == .disc ? Double(nextWinding.numTurns.max) / numDiscs : 1.0)
+                
+                let numStandardGaps = numDiscs - 1.0 - numMainGaps
+                
+                let discHt = (nextWinding.electricalHeight - (numStandardGaps * nextWinding.stdAxialGap + totalMainGapDimn) * 0.98) / numDiscs
+                
+                if mainGaps.count == 0 {
+                    
+                }
+                else if mainGaps.count == 1 {
+                    
+                }
+                else if mainGaps.count == 2 {
+                    
+                }
+                else {
+                    
+                }
+            }
+            else {
+                
+                let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: axialPos), N: nextWinding.numTurns.max, I: nextWinding.I, rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: nextWinding.bottomEdgePack, width: nextWinding.electricalRadialBuild, height: nextWinding.electricalHeight))
+                
+                result.append(newBasicSection)
+            }
             
             // set up for next time through the loop
             radialPos += 1

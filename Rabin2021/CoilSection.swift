@@ -13,4 +13,6 @@ class CoilSection:Codable {
     private var basicSectionStore:[BasicSection] = []
     
     let location:LocStruct
+    
+    var interleaved:Bool
 }
