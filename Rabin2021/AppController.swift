@@ -33,15 +33,32 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
     }
     
-    func createBasicSections(xlFile:PCH_ExcelDesignFile) -> [BasicSection]
-    {
+    func createBasicSections(xlFile:PCH_ExcelDesignFile) -> [BasicSection] {
+        
         var result:[BasicSection] = []
+        
+        var radialPos = 0
+        
+        for nextWinding in xlFile.windings {
+            
+            var axialPos = 0
+            let wType = nextWinding.windingType
+            
+            let numMainRadialSections = 1 + (wType == .layer ? nextWinding.numRadialDucts : 0)
+            
+            let numMainGaps = (nextWinding.centerGap > 0.0 ? 1 : 0) + (nextWinding.bottomDvGap > 0.0 ? 1 : 0) + (nextWinding.topDvGap > 0.0 ? 1 : 0)
+            let numMainAxialSections = 1 + numMainGaps
+            
+            // set up for next time through the loop
+            radialPos += 1
+        }
         
         return result
     }
     
     // MARK: File routines
     func doOpen(fileURL:URL) -> Bool {
+        
         if !FileManager.default.fileExists(atPath: fileURL.path)
         {
             let alert = NSAlert()
