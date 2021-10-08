@@ -16,14 +16,24 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     /// The main window of the program
     @IBOutlet weak var mainWindow: NSWindow!
     
-    /// The current basic sections that are loaded in memory (used for drawing, among other things)
+    /// The current basic sections that are loaded in memory
     var currentSections:[BasicSection] = []
     
     /// The current core in memory
     var currentCore:Core? = nil
     
+    // MARK: Initialization
+    func InitializeController()
+    {
+        
+    }
+    
     // MARK: Transformer update routines
-    func updateModel(xlFile:PCH_ExcelDesignFile) {
+    
+    /// Function to update the model
+    /// - Parameter xFile: The ExcelDesignFile that was inputted
+    /// - Parameter reinitialize: Boolean value set to true if the entire memory should be reinitialized
+    func updateModel(xlFile:PCH_ExcelDesignFile, reinitialize:Bool) {
         
         // The idea here is to create the current model as a Core and an array of BasicSections and save it into the class' currentSections property
         self.currentCore = Core(diameter: xlFile.core.diameter, realWindowHeight: xlFile.core.windowHeight)
@@ -168,7 +178,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
             NSDocumentController.shared.noteNewRecentDocumentURL(fileURL)
             
-            self.updateModel(xlFile: xlFile)
+            self.updateModel(xlFile: xlFile, reinitialize: true)
             
             self.mainWindow.title = fileURL.lastPathComponent
                         
