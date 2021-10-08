@@ -31,6 +31,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         // replace any currently saved sections with the new model
         self.currentSections = createBasicSections(xlFile: xlFile)
         
+        print("There are \(self.currentSections.count) sections in the model")
+        
     }
     
     func createBasicSections(xlFile:PCH_ExcelDesignFile) -> [BasicSection] {
@@ -180,6 +182,40 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
     }
     
+    // MARK: Menu routines
+    
+    @IBAction func handleOpenFile(_ sender: Any) {
+        
+        let openPanel = NSOpenPanel()
+        
+        openPanel.canChooseFiles = true
+        openPanel.canChooseDirectories = false
+        openPanel.title = "Design file"
+        openPanel.message = "Open a valid Excel-design-sheet-generated file"
+        openPanel.allowsMultipleSelection = false
+        
+        // If there was a previously successfully opened design file, set that file's directory as the default, otherwise go to the user's Documents folder
+        if let lastFile = UserDefaults.standard.url(forKey: LAST_OPENED_INPUT_FILE_KEY)
+        {
+            openPanel.directoryURL = lastFile.deletingLastPathComponent()
+        }
+        else
+        {
+            openPanel.directoryURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        }
+        
+        if openPanel.runModal() == .OK
+        {
+            if let fileURL = openPanel.url
+            {
+                let _ = self.doOpen(fileURL: fileURL)
+            }
+            else
+            {
+                DLog("This shouldn't ever happen...")
+            }
+        }
+    }
     
     // MARK: Menu Validation
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
