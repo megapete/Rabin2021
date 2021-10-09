@@ -192,6 +192,172 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
     }
     
+    // MARK: Zoom functions
+    @IBAction func handleZoomIn(_ sender: Any) {
+        
+        self.txfoView.handleZoomIn()
+    }
+    
+    @IBAction func handleZoomOut(_ sender: Any) {
+        
+        self.txfoView.handleZoomOut()
+    }
+    
+    @IBAction func handleZoomAll(_ sender: Any) {
+        
+        guard let txfo = self.currentTxfo else
+        {
+            return
+        }
+        
+        self.txfoView.handleZoomAll(coreRadius: CGFloat(txfo.core.diameter / 2.0), windowHt: CGFloat(txfo.core.windHt), tankWallR: CGFloat(txfo.DistanceFromCoreCenterToTankWall()))
+    }
+    
+    @IBAction func handleZoomRect(_ sender: Any) {
+        
+        guard self.currentTxfo != nil else
+        {
+            return
+        }
+        
+        self.txfoView.mode = .zoomRect
+        
+    }
+    
+    // MARK: View functions
+    // This function does the following things:
+    // 1) Shows the main window (if its hidden)
+    // 2) Sets the bounds of the transformer view to the window of the transformer (does a "zoom all" using the current transformer core)
+    // 3) Calls updateViews() to draw the coil segments
+    func initializeViews()
+    {
+        self.mainWindow.makeKeyAndOrderFront(self)
+        
+        self.handleZoomAll(self)
+        
+        self.updateViews()
+    }
+    
+    func updateViews()
+    {
+        guard let txfo = self.currentTxfo else
+        {
+            return
+        }
+        
+        self.txfoView.segments = []
+        
+        self.txfoView.removeAllToolTips()
+        
+        for nextWdg in txfo.windings
+        {
+            for nextLayer in nextWdg.layers
+            {
+                if nextLayer.parentTerminal.andersenNumber < 1
+                {
+                    continue
+                }
+                
+                let pathColor = TerminalsView.termColors[nextLayer.parentTerminal.andersenNumber - 1]
+                
+                for nextSegment in nextLayer.segments
+                {
+                    var newSegPath = SegmentPath(segment: nextSegment, segmentColor: pathColor)
+                    
+                    newSegPath.toolTipTag = self.txfoView.addToolTip(newSegPath.rect, owner: self.txfoView as Any, userData: nil)
+                    
+                    // update the currently-selected segment in the TransformerView
+                    if let currentSegment = self.txfoView.currentSegment
+                    {
+                        if currentSegment.segment.serialNumber == nextSegment.serialNumber
+                        {
+                            self.txfoView.currentSegment = newSegPath
+                        }
+                    }
+                    
+                    self.txfoView.segments.append(newSegPath)
+                }
+            }
+        }
+        
+        if !self.fluxLinesAreHidden
+        {
+            self.doShowHideFluxLines(hide: false)
+        }
+        else
+        {
+            self.txfoView.needsDisplay = true
+        }
+        
+        let termSet = txfo.AvailableTerminals()
+        
+        for nextTerm in termSet
+        {
+            do
+            {
+                let terminals = try txfo.TerminalsFromAndersenNumber(termNum: nextTerm)
+                var isRef = false
+                if let refTerm = txfo.vpnRefTerm
+                {
+                    if refTerm == nextTerm
+                    {
+                        isRef = true
+                    }
+                }
+                
+                let termLineVolts = try txfo.TerminalLineVoltage(terminal: nextTerm)
+                let termVA = try round(txfo.TotalVA(terminal: nextTerm) / 1.0E3) * 1.0E3
+                
+                self.termsView.SetTermData(termNum: nextTerm, name: terminals[0].name, displayVolts: termLineVolts, VA: termVA, connection: terminals[0].connection, isReference: isRef)
+            }
+            catch
+            {
+                // An error occurred
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
+                return
+            }
+        }
+        
+        self.termsView.UpdateScData()
+        
+        do
+        {
+            let vpn = try txfo.VoltsPerTurn()
+            self.dataView.SetVpN(newVpN: vpn, refTerm: txfo.vpnRefTerm)
+            
+            // amp-turns are guaranteed to be 0 if forceAmpTurnsBalance is true
+            let newNI = self.preferences.generalPrefs.forceAmpTurnBalance ? 0.0 : try txfo.AmpTurns(forceBalance: self.preferences.generalPrefs.forceAmpTurnBalance, showDistributionDialog: false)
+            self.dataView.SetAmpereTurns(newNI: newNI, refTerm: txfo.niRefTerm)
+            
+            if self.preferences.generalPrefs.keepImpedanceUpdated && txfo.scResults != nil
+            {
+                self.dataView.SetImpedance(newImpPU: txfo.scResults!.puImpedance, baseMVA: txfo.scResults!.baseMVA)
+            }
+            else
+            {
+                self.dataView.SetImpedance(newImpPU: nil, baseMVA: nil)
+            }
+        }
+        catch
+        {
+            let alert = NSAlert(error: error)
+            let _ = alert.runModal()
+            return
+        }
+       
+        self.dataView.ResetWarnings()
+        
+        let warnings = txfo.CheckForWarnings()
+        
+        for nextWarning in warnings
+        {
+            self.dataView.AddWarning(warning: nextWarning)
+        }
+        
+        self.dataView.UpdateWarningField()
+    }
+    
     // MARK: Menu routines
     
     @IBAction func handleOpenFile(_ sender: Any) {
