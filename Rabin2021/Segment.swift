@@ -9,12 +9,41 @@ import Foundation
 
 /// A segment is a collection of BasicSections. The collection MUST be from the same Winding and it must represent a contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed).
 /// 
-struct Segment {
+struct Segment: Equatable {
+    
+    static func == (lhs: Segment, rhs: Segment) -> Bool {
+        
+        return lhs.serialNumber == rhs.serialNumber
+    }
+    
+    private static var nextSerialNumberStore:Int = 0
+    
+    static var nextSerialNumber:Int {
+        get {
+            
+            let nextNum = Segment.nextSerialNumberStore
+            Segment.nextSerialNumberStore += 1
+            return nextNum
+        }
+    }
+    
+    /// Segment serial number (needed for the mirrorSegment property and to make the "==" operator code simpler
+    let serialNumber:Int
     
     /// The first (index = 0) entry  has the lowest Z and the last enrty has the highest.
     private var basicSectionStore:[BasicSection] = []
         
     var interleaved:Bool
+    
+    var radialPos:Int {
+        get {
+            guard self.basicSectionStore.count > 0 else {
+                return -1
+            }
+            
+            return self.basicSectionStore[0].location.radial
+        }
+    }
     
     var rect:NSRect
     
@@ -74,5 +103,6 @@ struct Segment {
         self.interleaved = interleaved
         
         self.rect = NSRect(x: first.r1, y: first.z1, width: first.width, height: last.z2 - first.z1)
+        self.serialNumber = Segment.nextSerialNumber
     }
 }

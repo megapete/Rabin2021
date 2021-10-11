@@ -21,6 +21,12 @@ class Core:Codable
         }
     }
     
+    var radius:Double {
+        get {
+            return self.diameter / 2.0
+        }
+    }
+    
     init(diameter:Double, realWindowHeight:Double, windHtMultiplier:Double = 3.0) {
         self.diameter = diameter
         self.realWindowHeight = realWindowHeight

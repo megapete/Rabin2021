@@ -16,13 +16,30 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     /// The main window of the program
     @IBOutlet weak var mainWindow: NSWindow!
     
+    /// The transformer view
+    @IBOutlet weak var txfoView: TransformerView!
+    
     /// The current basic sections that are loaded in memory
     var currentSections:[BasicSection] = []
+    
+    /// The current model that is stored in memory. This is what is actually displayed in the TransformerView and what all calculations are performed upon.
+    var currentModel:[Segment] = []
     
     /// The current core in memory
     var currentCore:Core? = nil
     
+    /// The theoretical depth of the tank (used for display and ground capacitance calculations)
+    var tankDepth:Double = 0.0
+    
+    /// The colors of the different layers (for display purposes only)
+    static let segmentColors:[NSColor] = [.red, .blue, .green, .orange, .purple]
+    
     // MARK: Initialization
+    override func awakeFromNib() {
+        
+        txfoView.appController = self
+    }
+    
     func InitializeController()
     {
         
@@ -178,6 +195,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
             NSDocumentController.shared.noteNewRecentDocumentURL(fileURL)
             
+            self.tankDepth = xlFile.tankDepth
+            
             self.updateModel(xlFile: xlFile, reinitialize: true)
             
             self.mainWindow.title = fileURL.lastPathComponent
@@ -205,17 +224,17 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     @IBAction func handleZoomAll(_ sender: Any) {
         
-        guard let txfo = self.currentTxfo else
+        guard self.currentModel.count > 0, let core = self.currentCore else
         {
             return
         }
         
-        self.txfoView.handleZoomAll(coreRadius: CGFloat(txfo.core.diameter / 2.0), windowHt: CGFloat(txfo.core.windHt), tankWallR: CGFloat(txfo.DistanceFromCoreCenterToTankWall()))
+        self.txfoView.handleZoomAll(coreRadius: CGFloat(core.radius), windowHt: CGFloat(core.realWindowHeight), tankWallR: CGFloat(self.tankDepth / 2.0))
     }
     
     @IBAction func handleZoomRect(_ sender: Any) {
         
-        guard self.currentTxfo != nil else
+        guard self.currentModel.count > 0 else
         {
             return
         }
@@ -240,7 +259,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     func updateViews()
     {
-        guard let txfo = self.currentTxfo else
+        guard self.currentModel.count > 0 else
         {
             return
         }
@@ -249,113 +268,28 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         self.txfoView.removeAllToolTips()
         
-        for nextWdg in txfo.windings
+        for nextSegment in self.currentModel
         {
-            for nextLayer in nextWdg.layers
-            {
-                if nextLayer.parentTerminal.andersenNumber < 1
-                {
-                    continue
-                }
-                
-                let pathColor = TerminalsView.termColors[nextLayer.parentTerminal.andersenNumber - 1]
-                
-                for nextSegment in nextLayer.segments
-                {
-                    var newSegPath = SegmentPath(segment: nextSegment, segmentColor: pathColor)
-                    
-                    newSegPath.toolTipTag = self.txfoView.addToolTip(newSegPath.rect, owner: self.txfoView as Any, userData: nil)
-                    
-                    // update the currently-selected segment in the TransformerView
-                    if let currentSegment = self.txfoView.currentSegment
-                    {
-                        if currentSegment.segment.serialNumber == nextSegment.serialNumber
-                        {
-                            self.txfoView.currentSegment = newSegPath
-                        }
-                    }
-                    
-                    self.txfoView.segments.append(newSegPath)
-                }
-            }
-        }
-        
-        if !self.fluxLinesAreHidden
-        {
-            self.doShowHideFluxLines(hide: false)
-        }
-        else
-        {
-            self.txfoView.needsDisplay = true
-        }
-        
-        let termSet = txfo.AvailableTerminals()
-        
-        for nextTerm in termSet
-        {
-            do
-            {
-                let terminals = try txfo.TerminalsFromAndersenNumber(termNum: nextTerm)
-                var isRef = false
-                if let refTerm = txfo.vpnRefTerm
-                {
-                    if refTerm == nextTerm
-                    {
-                        isRef = true
-                    }
-                }
-                
-                let termLineVolts = try txfo.TerminalLineVoltage(terminal: nextTerm)
-                let termVA = try round(txfo.TotalVA(terminal: nextTerm) / 1.0E3) * 1.0E3
-                
-                self.termsView.SetTermData(termNum: nextTerm, name: terminals[0].name, displayVolts: termLineVolts, VA: termVA, connection: terminals[0].connection, isReference: isRef)
-            }
-            catch
-            {
-                // An error occurred
-                let alert = NSAlert(error: error)
-                let _ = alert.runModal()
-                return
-            }
-        }
-        
-        self.termsView.UpdateScData()
-        
-        do
-        {
-            let vpn = try txfo.VoltsPerTurn()
-            self.dataView.SetVpN(newVpN: vpn, refTerm: txfo.vpnRefTerm)
+            let pathColor = AppController.segmentColors[nextSegment.radialPos % AppController.segmentColors.count]
             
-            // amp-turns are guaranteed to be 0 if forceAmpTurnsBalance is true
-            let newNI = self.preferences.generalPrefs.forceAmpTurnBalance ? 0.0 : try txfo.AmpTurns(forceBalance: self.preferences.generalPrefs.forceAmpTurnBalance, showDistributionDialog: false)
-            self.dataView.SetAmpereTurns(newNI: newNI, refTerm: txfo.niRefTerm)
+            var newSegPath = SegmentPath(segment: nextSegment, segmentColor: pathColor)
             
-            if self.preferences.generalPrefs.keepImpedanceUpdated && txfo.scResults != nil
+            newSegPath.toolTipTag = self.txfoView.addToolTip(newSegPath.rect, owner: self.txfoView as Any, userData: nil)
+            
+            // update the currently-selected segment in the TransformerView
+            if let currentSegment = self.txfoView.currentSegment
             {
-                self.dataView.SetImpedance(newImpPU: txfo.scResults!.puImpedance, baseMVA: txfo.scResults!.baseMVA)
+                if currentSegment.segment.serialNumber == nextSegment.serialNumber
+                {
+                    self.txfoView.currentSegment = newSegPath
+                }
             }
-            else
-            {
-                self.dataView.SetImpedance(newImpPU: nil, baseMVA: nil)
-            }
-        }
-        catch
-        {
-            let alert = NSAlert(error: error)
-            let _ = alert.runModal()
-            return
-        }
-       
-        self.dataView.ResetWarnings()
-        
-        let warnings = txfo.CheckForWarnings()
-        
-        for nextWarning in warnings
-        {
-            self.dataView.AddWarning(warning: nextWarning)
+            
+            self.txfoView.segments.append(newSegPath)
         }
         
-        self.dataView.UpdateWarningField()
+        
+        
     }
     
     // MARK: Menu routines
