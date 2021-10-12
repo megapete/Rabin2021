@@ -52,17 +52,55 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     /// - Parameter reinitialize: Boolean value set to true if the entire memory should be reinitialized
     func updateModel(xlFile:PCH_ExcelDesignFile, reinitialize:Bool) {
         
+        self.tankDepth = xlFile.tankDepth
+        
         // The idea here is to create the current model as a Core and an array of BasicSections and save it into the class' currentSections property
         self.currentCore = Core(diameter: xlFile.core.diameter, realWindowHeight: xlFile.core.windowHeight)
         
-        // replace any currently saved sections with the new model
-        self.currentSections = createBasicSections(xlFile: xlFile)
+        // replace any currently saved basic sections with the new ones
+        self.currentSections = self.createBasicSections(xlFile: xlFile)
+        
+        // initialize the model so that all the BasicSections are modeled
+        self.currentModel = self.initializeModel(basicSections: self.currentSections)
+        
+        self.initializeViews()
         
         print("There are \(self.currentSections.count) sections in the model")
         
     }
     
+    func initializeModel(basicSections:[BasicSection]) -> [Segment]
+    {
+        var result:[Segment] = []
+        
+        for nextSection in basicSections {
+            
+            guard let newSegment = Segment(basicSections: [nextSection]) else {
+                
+                ALog("Could not create Segment!")
+                return result
+            }
+            
+            result.append(newSegment)
+        }
+        
+        return result
+    }
+    
     func createBasicSections(xlFile:PCH_ExcelDesignFile) -> [BasicSection] {
+        
+        // First off, we need to find the axial centers of the coils. We do this by finding the highest coil (max electrical height) and adding half that height to its bottom-edge-pack dimension. Other coils are then inserted into the model using that same center for all coils.
+        var maxHeight = 0.0
+        var maxHtEdgePack = 0.0
+        for nextWinding in xlFile.windings {
+            
+            if nextWinding.electricalHeight > maxHeight {
+                maxHeight = nextWinding.electricalHeight
+                maxHtEdgePack = nextWinding.bottomEdgePack
+            }
+        }
+        
+        let axialCenter = maxHtEdgePack + maxHeight / 2.0
         
         var result:[BasicSection] = []
         
@@ -134,7 +172,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                 }
                 
                 var gapIndex = 0
-                var currentZ = nextWinding.bottomEdgePack
+                var currentZ = axialCenter - nextWinding.electricalHeight / 2.0
                 
                 for nextMainSection in perSectionDiscs {
                     
@@ -195,7 +233,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
             NSDocumentController.shared.noteNewRecentDocumentURL(fileURL)
             
-            self.tankDepth = xlFile.tankDepth
+            
             
             self.updateModel(xlFile: xlFile, reinitialize: true)
             
@@ -217,10 +255,16 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.txfoView.handleZoomIn()
     }
     
+    
+    
+    
     @IBAction func handleZoomOut(_ sender: Any) {
         
         self.txfoView.handleZoomOut()
     }
+    
+    
+    
     
     @IBAction func handleZoomAll(_ sender: Any) {
         
@@ -232,6 +276,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.txfoView.handleZoomAll(coreRadius: CGFloat(core.radius), windowHt: CGFloat(core.realWindowHeight), tankWallR: CGFloat(self.tankDepth / 2.0))
     }
     
+    
+    
+    
     @IBAction func handleZoomRect(_ sender: Any) {
         
         guard self.currentModel.count > 0 else
@@ -240,8 +287,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
         
         self.txfoView.mode = .zoomRect
-        
     }
+    
+    
+   
     
     // MARK: View functions
     // This function does the following things:
@@ -288,7 +337,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             self.txfoView.segments.append(newSegPath)
         }
         
-        
+        self.txfoView.needsDisplay = true
         
     }
     

@@ -633,6 +633,31 @@
                                 </connections>
                             </menuItem>
                             <menuItem isSeparatorItem="YES" id="hB3-LF-h0Y"/>
+                            <menuItem title="Zoom In" id="YMj-qt-ByP">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleZoomIn:" target="XWq-sU-B2V" id="5fr-9g-6jh"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Zoom Out" id="n4t-Ht-rce">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleZoomOut:" target="XWq-sU-B2V" id="Daz-6x-xhf"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Zoom Rect..." id="fV3-Ah-Fra">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleZoomRect:" target="XWq-sU-B2V" id="xh7-T9-zTI"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Zoom All" id="RgU-kW-NLh">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleZoomAll:" target="XWq-sU-B2V" id="7kM-Ec-3n8"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem isSeparatorItem="YES" id="9fi-bN-y6c"/>
                             <menuItem title="Show Sidebar" keyEquivalent="s" id="kIP-vf-haE">
                                 <modifierMask key="keyEquivalentModifierMask" control="YES" command="YES"/>
                                 <connections>
@@ -699,7 +724,7 @@
                 <subviews>
                     <scrollView fixedFrame="YES" horizontalLineScroll="10" horizontalPageScroll="10" verticalLineScroll="10" verticalPageScroll="10" usesPredominantAxisScrolling="NO" translatesAutoresizingMaskIntoConstraints="NO" id="Yo4-0m-Iub">
                         <rect key="frame" x="-1" y="-1" width="603" height="684"/>
-                        <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <clipView key="contentView" id="SDg-ft-U91">
                             <rect key="frame" x="1" y="1" width="601" height="682"/>
                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
@@ -723,5 +748,11 @@
             </view>
             <point key="canvasLocation" x="267.5" y="578"/>
         </window>
+        <menuItem title="Customize Toolbar…" id="hw9-gI-CaT">
+            <modifierMask key="keyEquivalentModifierMask"/>
+            <connections>
+                <action selector="runToolbarCustomizationPalette:" target="-1" id="9KE-2s-P4C"/>
+            </connections>
+        </menuItem>
     </objects>
 </document>

@@ -584,6 +584,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         // get the parent  view's aspect ratio
         guard let parentView = self.superview else
         {
+            DLog("There is no parent view!")
             return
         }
                 
