@@ -75,7 +75,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         for nextSection in basicSections {
             
-            guard let newSegment = Segment(basicSections: [nextSection]) else {
+            guard let newSegment = Segment(basicSections: [nextSection],  realWindowHeight: self.currentCore!.realWindowHeight) else {
                 
                 ALog("Could not create Segment!")
                 return result
