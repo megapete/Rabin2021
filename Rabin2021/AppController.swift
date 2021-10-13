@@ -23,7 +23,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     var currentSections:[BasicSection] = []
     
     /// The current model that is stored in memory. This is what is actually displayed in the TransformerView and what all calculations are performed upon.
-    var currentModel:[Segment] = []
+    var currentModel:PhaseModel? = nil
     
     /// The current core in memory
     var currentCore:Core? = nil
@@ -69,7 +69,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
     }
     
-    func initializeModel(basicSections:[BasicSection]) -> [Segment]
+    func initializeModel(basicSections:[BasicSection]) -> PhaseModel?
     {
         var result:[Segment] = []
         
@@ -78,13 +78,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             guard let newSegment = Segment(basicSections: [nextSection],  realWindowHeight: self.currentCore!.realWindowHeight) else {
                 
                 ALog("Could not create Segment!")
-                return result
+                return nil
             }
             
             result.append(newSegment)
         }
         
-        return result
+        return PhaseModel(segments: result)
     }
     
     func createBasicSections(xlFile:PCH_ExcelDesignFile) -> [BasicSection] {
@@ -268,7 +268,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     @IBAction func handleZoomAll(_ sender: Any) {
         
-        guard self.currentModel.count > 0, let core = self.currentCore else
+        guard let model = self.currentModel, model.segments.count > 0, let core = self.currentCore else
         {
             return
         }
@@ -281,7 +281,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     @IBAction func handleZoomRect(_ sender: Any) {
         
-        guard self.currentModel.count > 0 else
+        guard let model = self.currentModel, model.segments.count > 0 else
         {
             return
         }
@@ -308,7 +308,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     func updateViews()
     {
-        guard self.currentModel.count > 0 else
+        guard let model = self.currentModel, model.segments.count > 0 else
         {
             return
         }
@@ -317,7 +317,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         self.txfoView.removeAllToolTips()
         
-        for nextSegment in self.currentModel
+        for nextSegment in model.segments
         {
             let pathColor = AppController.segmentColors[nextSegment.radialPos % AppController.segmentColors.count]
             

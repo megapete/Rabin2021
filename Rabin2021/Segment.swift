@@ -9,7 +9,7 @@ import Foundation
 
 /// A segment is a collection of BasicSections. The collection MUST be from the same Winding and it must represent a contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed).
 /// 
-struct Segment: Equatable {
+struct Segment: Codable, Equatable {
     
     static func == (lhs: Segment, rhs: Segment) -> Bool {
         
@@ -52,6 +52,9 @@ struct Segment: Equatable {
     
     /// The _actual_ window height for the core
     let realWindowHeight:Double
+    
+    /// The window height that is used for the model
+    let useWindowHeight:Double
     
     /// The rectangle that the segment occupies in the core window
     var rect:NSRect
@@ -99,7 +102,7 @@ struct Segment: Equatable {
         }
     }
     
-    var J:Double {
+    var ActualJ:Double {
         get {
             return self.N * self.I / self.area
         }
@@ -108,7 +111,7 @@ struct Segment: Equatable {
     /// Constructor for a Segment. The array of BasicSections that is passed in is checked to make sure that all sections are part of the same coil, and that they are adjacent and in order from lowest Z to highest Z.
     /// - Parameter basicSections: An array of BasicSections. The sections must be part of the same Winding, be adjacent, and in order from lowest Z to highest Z.
     /// - Parameter interleaved: Boolean for indication of whether the Segment is interleaved or not (default: false)
-    init?(basicSections:[BasicSection], interleaved:Bool = false, realWindowHeight:Double)
+    init?(basicSections:[BasicSection], interleaved:Bool = false, realWindowHeight:Double, useWindowHeight:Double)
     {
         guard let first = basicSections.first, let last = basicSections.last else {
             
@@ -121,6 +124,7 @@ struct Segment: Equatable {
         var zCurrent = first.z1
         self.I = first.I
         self.realWindowHeight = realWindowHeight
+        self.useWindowHeight = useWindowHeight
         
         for i in 1..<basicSections.count {
             
@@ -142,13 +146,18 @@ struct Segment: Equatable {
         self.serialNumber = Segment.nextSerialNumber
     }
     
+    func resetSerialNumber()
+    {
+        Segment.nextSerialNumberStore = 0
+    }
+    
     func J(n:Int, windowHt:Double) -> Double
     {
         let L = max(self.realWindowHeight, windowHt)
         
         if n == 0 {
             
-            let result = self.J * (self.z2 - self.z1) / L
+            let result = self.ActualJ * (self.z2 - self.z1) / L
             return result
         }
         
@@ -157,7 +166,7 @@ struct Segment: Equatable {
         let z2 = self.z2 + zAdder
         
         let nn = Double(n)
-        let result:Double = 2.0 * self.J / (nn * π) * (sin(nn * π * z2 / L) - sin(nn * π * z1 / L))
+        let result:Double = 2.0 * self.ActualJ / (nn * π) * (sin(nn * π * z2 / L) - sin(nn * π * z1 / L))
         
         return result
     }

@@ -18,6 +18,7 @@
 		D3B7FF26270E3704002537D3 /* PCH_ExcelDesignFileReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B7FF25270E3704002537D3 /* PCH_ExcelDesignFileReader.swift */; };
 		D3B7FF28270E3769002537D3 /* GlobalDefs.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B7FF27270E3769002537D3 /* GlobalDefs.swift */; };
 		F5ED29ED270F1F9C003E84CB /* Segment.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED29EC270F1F9C003E84CB /* Segment.swift */; };
+		F5ED29EF271709B0003E84CB /* PhaseModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED29EE271709B0003E84CB /* PhaseModel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -34,6 +35,7 @@
 		D3B7FF25270E3704002537D3 /* PCH_ExcelDesignFileReader.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = PCH_ExcelDesignFileReader.swift; path = "../../../../Dropbox/MyProjects/Base Classes/PCH_ExcelDesignFileReader.swift"; sourceTree = "<group>"; };
 		D3B7FF27270E3769002537D3 /* GlobalDefs.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = GlobalDefs.swift; path = ../../../../Dropbox/MyProjects/GlobalDefs.swift; sourceTree = "<group>"; };
 		F5ED29EC270F1F9C003E84CB /* Segment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Segment.swift; sourceTree = "<group>"; };
+		F5ED29EE271709B0003E84CB /* PhaseModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -71,6 +73,7 @@
 				D3573251270E383F000CCCF9 /* PCH_Defs.swift */,
 				D3573253270E5DAE000CCCF9 /* AppController.swift */,
 				D3B7FF25270E3704002537D3 /* PCH_ExcelDesignFileReader.swift */,
+				F5ED29EE271709B0003E84CB /* PhaseModel.swift */,
 				D3926C07270F3D3C00D2D17C /* Core.swift */,
 				F5ED29EC270F1F9C003E84CB /* Segment.swift */,
 				D3B7FF21270E320E002537D3 /* BasicSection.swift */,
@@ -153,6 +156,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D30D3AD8270E2F2C00A39051 /* AppDelegate.swift in Sources */,
+				F5ED29EF271709B0003E84CB /* PhaseModel.swift in Sources */,
 				D3573252270E383F000CCCF9 /* PCH_Defs.swift in Sources */,
 				D3B7FF26270E3704002537D3 /* PCH_ExcelDesignFileReader.swift in Sources */,
 				D3B7FF28270E3769002537D3 /* GlobalDefs.swift in Sources */,
