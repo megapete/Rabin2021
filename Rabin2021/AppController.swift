@@ -197,6 +197,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                     if gapIndex < mainGaps.count {
                         
                         currentZ += (mainGaps[gapIndex] - discPitch)
+                        print("Gap center: \(currentZ - mainGaps[gapIndex] / 2.0)")
                         gapIndex += 1
                     }
                     
@@ -225,7 +226,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         if dlog.runModal() == .OK {
             
-            print("Got Z = \(dlog.numberValue)")
+            print("Z = \(dlog.numberValue)")
+            print("J = \(self.currentModel!.J(radialPos: 0, realZ: dlog.numberValue))")
         }
     }
     
