@@ -146,12 +146,24 @@ struct Segment: Codable, Equatable {
         self.serialNumber = Segment.nextSerialNumber
     }
     
-    func resetSerialNumber()
+    static func resetSerialNumber()
     {
         Segment.nextSerialNumberStore = 0
     }
     
-    func J(n:Int, windowHt:Double) -> Double
+    func CreateFourierJ() -> [Double]
+    {
+        var result:[Double] = []
+        
+        for i in 0...PCH_RABIN2021_IterationCount {
+            
+            result.append(self.J(n: i, windowHt: self.useWindowHeight))
+        }
+        
+        return result
+    }
+    
+    private func J(n:Int, windowHt:Double) -> Double
     {
         let L = max(self.realWindowHeight, windowHt)
         

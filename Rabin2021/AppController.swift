@@ -7,7 +7,9 @@
 
 // Keys into User Defaults
 // Key (String) so that the user doesn't have to go searching for the last folder he opened
-let LAST_OPENED_INPUT_FILE_KEY = "PCH_RABIN2021_LastInputFile"
+private let LAST_OPENED_INPUT_FILE_KEY = "PCH_RABIN2021_LastInputFile"
+
+let PCH_RABIN2021_IterationCount = 200
 
 import Cocoa
 
@@ -30,6 +32,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     /// The theoretical depth of the tank (used for display and ground capacitance calculations)
     var tankDepth:Double = 0.0
+    
+    /// The current multiplier for window height (used for inductance calculations)
+    var currentWindowMultiplier = 3.0
     
     /// The colors of the different layers (for display purposes only)
     static let segmentColors:[NSColor] = [.red, .blue, .green, .orange, .purple]
@@ -73,9 +78,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     {
         var result:[Segment] = []
         
+        Segment.resetSerialNumber()
+        
         for nextSection in basicSections {
             
-            guard let newSegment = Segment(basicSections: [nextSection],  realWindowHeight: self.currentCore!.realWindowHeight) else {
+            guard let newSegment = Segment(basicSections: [nextSection],  realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentWindowMultiplier * self.currentCore!.realWindowHeight) else {
                 
                 ALog("Could not create Segment!")
                 return nil
