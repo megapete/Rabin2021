@@ -218,6 +218,18 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         return result
     }
     
+    // MARK: Testing routines
+    @IBAction func handleGetCoil1J(_ sender: Any) {
+        
+        let dlog = GetNumberDialog(descriptiveText: "Z-Value", unitsText: "metres", noteText: "", windowTitle: "Get Coil1 J")
+        
+        if dlog.runModal() == .OK {
+            
+            print("Got Z = \(dlog.numberValue)")
+        }
+    }
+    
+    
     // MARK: File routines
     func doOpen(fileURL:URL) -> Bool {
         

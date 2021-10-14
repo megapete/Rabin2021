@@ -673,6 +673,19 @@
                         </items>
                     </menu>
                 </menuItem>
+                <menuItem title="Test" id="CVY-Kw-ekf">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                    <menu key="submenu" title="Test" id="385-Dl-vRU">
+                        <items>
+                            <menuItem title="Get Coil1 J..." id="9SA-9O-QjW">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleGetCoil1J:" target="XWq-sU-B2V" id="h9e-9y-C4C"/>
+                                </connections>
+                            </menuItem>
+                        </items>
+                    </menu>
+                </menuItem>
                 <menuItem title="Window" id="aUF-d1-5bR">
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <menu key="submenu" title="Window" systemMenu="window" id="Td7-aD-5lo">

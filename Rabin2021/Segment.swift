@@ -87,6 +87,22 @@ struct Segment: Codable, Equatable {
         }
     }
     
+    /// The window height that is used in the Fourier series (corresponds to the 'L' variable in  the formulas in DelVecchio
+    var L:Double {
+        get {
+            return max(self.realWindowHeight, self.useWindowHeight)
+        }
+    }
+    
+    /// The number to add to z1 and z2 to get the axial dimensions in the "Fourrier series" window height ('L')
+    var zWindHtAdder:Double {
+        get {
+            let result = (self.L - self.realWindowHeight) / 2.0
+            
+            return result
+        }
+    }
+    
     var area:Double {
         get {
             return Double(self.rect.width * self.rect.height)
@@ -162,16 +178,16 @@ struct Segment: Codable, Equatable {
         
         for i in 0...PCH_RABIN2021_IterationCount {
             
-            result.append(self.J(n: i, windowHt: self.useWindowHeight))
+            result.append(self.J(n: i))
         }
         
         return result
     }
     
-    /// Private function to create the n-th entry into the Fourier series representation of the current deinsity, using the given window height as the 'L' variable.
-    private func J(n:Int, windowHt:Double) -> Double
+    /// Private function to create the n-th entry into the Fourier series representation of the current deinsity, using the max of the real and 'use'  window height as the 'L' variable.
+    private func J(n:Int) -> Double
     {
-        let L = max(self.realWindowHeight, windowHt)
+        let L = self.L
         
         if n == 0 {
             
@@ -179,9 +195,8 @@ struct Segment: Codable, Equatable {
             return result
         }
         
-        let zAdder = (L - self.realWindowHeight) / 2.0
-        let z1 = self.z1 + zAdder
-        let z2 = self.z2 + zAdder
+        let z1 = self.z1 + self.zWindHtAdder
+        let z2 = self.z2 + self.zWindHtAdder
         
         let nn = Double(n)
         let result:Double = 2.0 * self.ActualJ / (nn * π) * (sin(nn * π * z2 / L) - sin(nn * π * z1 / L))

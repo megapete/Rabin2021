@@ -25,6 +25,27 @@ class PhaseModel:Codable {
         }
     }
     
+    
+    /// Get the current density of the given coil at the given height, using equation 9.10 of DelVecchio
+    func J(radialPos:Int, realZ:Double) -> Double {
+        
+        let coilJ = self.CoilJ(radialPos: radialPos)
+        let z = realZ + segments[0].zWindHtAdder
+        let L = segments[0].L
+        
+        var result = coilJ[0]
+        
+        for n in 1...PCH_RABIN2021_IterationCount {
+            
+            let nn = Double(n)
+            let nextHarmonic = coilJ[n] * cos(nn * π * z / L)
+            
+            result += nextHarmonic
+        }
+        
+        return result
+    }
+    
     /// Get the Fourier series representation of the current density for the coil
     func CoilJ(radialPos:Int) -> [Double]
     {
