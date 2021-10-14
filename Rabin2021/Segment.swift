@@ -59,24 +59,28 @@ struct Segment: Codable, Equatable {
     /// The rectangle that the segment occupies in the core window
     var rect:NSRect
     
+    /// The inner radius of the segment (from the core center)
     var r1:Double {
         get {
             return self.rect.origin.x
         }
     }
     
+    /// The outer radius of the segment (from the core center)
     var r2:Double {
         get {
             return Double(self.rect.origin.x + self.rect.size.width)
         }
     }
     
+    /// The bottom-most axial dimension of the segment (using the REAL window height)
     var z1:Double {
         get {
             return Double(self.rect.origin.y)
         }
     }
     
+    /// The top-most axial dimension of the segment (using the REAL window height)
     var z2:Double {
         get {
             return Double(self.rect.origin.y + self.rect.size.height)
@@ -151,6 +155,7 @@ struct Segment: Codable, Equatable {
         Segment.nextSerialNumberStore = 0
     }
     
+    /// Create the Fourier series representation of the current density for the segment. Note that the "useWindowHeight" property of the segment is used to create the series.
     func CreateFourierJ() -> [Double]
     {
         var result:[Double] = []
@@ -163,6 +168,7 @@ struct Segment: Codable, Equatable {
         return result
     }
     
+    /// Private function to create the n-th entry into the Fourier series representation of the current deinsity, using the given window height as the 'L' variable.
     private func J(n:Int, windowHt:Double) -> Double
     {
         let L = max(self.realWindowHeight, windowHt)

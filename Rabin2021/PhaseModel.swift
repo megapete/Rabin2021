@@ -25,6 +25,7 @@ class PhaseModel:Codable {
         }
     }
     
+    /// Get the Fourier series representation of the current density for the coil
     func CoilJ(radialPos:Int) -> [Double]
     {
         var result:[Double] = Array(repeating: 0.0, count: PCH_RABIN2021_IterationCount + 1)
