@@ -21,6 +21,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     /// The transformer view
     @IBOutlet weak var txfoView: TransformerView!
     
+    /// Window controller to display graphs
+    var graphWindowCtrl:PCH_GraphingWindow? = nil
+    
     /// The current basic sections that are loaded in memory
     var currentSections:[BasicSection] = []
     
@@ -363,6 +366,15 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     }
     
     // MARK: Menu routines
+    
+    @IBAction func handleShowGraph(_ sender: Any) {
+        
+        DLog("Creating window controller")
+        self.graphWindowCtrl = PCH_GraphingWindow()
+        self.graphWindowCtrl!.showWindow(self)
+        
+    }
+    
     
     @IBAction func handleOpenFile(_ sender: Any) {
         
