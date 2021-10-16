@@ -14,6 +14,13 @@ class PCH_GraphingWindow: NSWindowController, NSWindowDelegate {
     @IBOutlet weak var xLocField: NSTextField!
     @IBOutlet weak var yLocField: NSTextField!
     
+    /*
+    override var windowNibName: NSNib.Name? {
+        get {
+            return "PCH_GraphingWindow"
+        }
+    } */
+    
     override func windowDidLoad() {
         super.windowDidLoad()
 

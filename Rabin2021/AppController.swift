@@ -370,7 +370,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     @IBAction func handleShowGraph(_ sender: Any) {
         
         DLog("Creating window controller")
-        self.graphWindowCtrl = PCH_GraphingWindow()
+        self.graphWindowCtrl = PCH_GraphingWindow(window: nil)
         self.graphWindowCtrl!.showWindow(self)
         
     }
