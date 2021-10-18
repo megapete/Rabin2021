@@ -371,7 +371,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         DLog("Creating window controller")
         
-        self.graphWindowCtrl = PCH_GraphingWindow(graphBounds: NSRect(x: 0.0, y: 0.0, width: 1000.0, height: 400.0))
+        self.graphWindowCtrl = PCH_GraphingWindow(graphBounds: NSRect(x: -10.0, y: -10.0, width: 1000.0, height: 400.0))
         
         
     }

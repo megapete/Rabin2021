@@ -14,7 +14,7 @@ class PCH_GraphingWindow: NSWindowController, NSWindowDelegate {
     @IBOutlet weak var xLocField: NSTextField!
     @IBOutlet weak var yLocField: NSTextField!
     
-    var bounds:NSRect = NSRect()
+    var locationFormatter = NumberFormatter()
     
     init(graphBounds:NSRect) {
         
@@ -29,8 +29,17 @@ class PCH_GraphingWindow: NSWindowController, NSWindowDelegate {
         }
         
         self.showWindow(self)
+        
+        if let gWindow = self.window {
+            gWindow.acceptsMouseMovedEvents = true
+        }
+        else {
+            DLog("Window not set")
+        }
+        
         self.graphView.wantsLayer = true
         self.graphView.layer?.backgroundColor = .white
+        self.graphView.owner = self
         graphView.bounds = graphBounds
     }
     
@@ -38,19 +47,19 @@ class PCH_GraphingWindow: NSWindowController, NSWindowDelegate {
         fatalError("init(coder:) has not been implemented")
     }
     
-    
+    override func awakeFromNib() {
+        
+        self.locationFormatter.minimumIntegerDigits = 2
+        self.locationFormatter.maximumFractionDigits = 3
+        
+        self.xLocField.formatter = self.locationFormatter
+        self.yLocField.formatter = self.locationFormatter
+    }
     
     override func windowDidLoad() {
         super.windowDidLoad()
 
         // Implement this method to handle any initialization after your window controller's window has been loaded from its nib file.
-        
-        DLog("Setting view attributes")
-        
-        // graphView.owner = self
-        graphView.wantsLayer = true
-        graphView.layer?.backgroundColor = .white
-        graphView.bounds = self.bounds
     }
     
     func windowDidResize(_ notification: Notification) {
