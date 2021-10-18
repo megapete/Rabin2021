@@ -234,6 +234,34 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
     }
     
+    @IBAction func handleShowCoil1J(_ sender: Any) {
+        
+        guard let model = self.currentModel else {
+            
+            return
+        }
+        
+        let L = model.realWindowHeight
+        
+        var minY = Double.greatestFiniteMagnitude
+        var maxY = -Double.greatestFiniteMagnitude
+        var points:[NSPoint] = []
+        
+        for i in 0...1000 {
+            
+            let ii = Double(i)
+            let nextX = ii / 1000.0 * L
+            
+            let nextY = model.J(radialPos: 0, realZ: nextX)
+            
+            minY = min(minY, nextY)
+            maxY = max(maxY, nextY)
+            
+            points.append(NSPoint(x: nextX, y: nextY))
+        }
+    }
+    
+    
     
     // MARK: File routines
     func doOpen(fileURL:URL) -> Bool {

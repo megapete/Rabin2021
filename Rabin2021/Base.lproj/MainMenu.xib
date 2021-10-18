@@ -683,10 +683,16 @@
                                     <action selector="handleGetCoil1J:" target="XWq-sU-B2V" id="h9e-9y-C4C"/>
                                 </connections>
                             </menuItem>
-                            <menuItem title="Show Graph" id="Yud-UB-Qcs">
+                            <menuItem title="Show Coil1 J" id="Yud-UB-Qcs">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
-                                    <action selector="handleShowGraph:" target="XWq-sU-B2V" id="Kcj-6K-y1G"/>
+                                    <action selector="handleShowCoil1J:" target="XWq-sU-B2V" id="DLN-T1-kx1"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Show Graph" id="5MJ-Oc-RZo">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleShowGraph:" target="XWq-sU-B2V" id="D0r-32-ADf"/>
                                 </connections>
                             </menuItem>
                         </items>
@@ -736,7 +742,7 @@
             <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" resizable="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
             <rect key="contentRect" x="335" y="390" width="601" height="682"/>
-            <rect key="screenRect" x="0.0" y="0.0" width="2560" height="1415"/>
+            <rect key="screenRect" x="0.0" y="0.0" width="1680" height="1025"/>
             <view key="contentView" id="EiT-Mj-1SZ">
                 <rect key="frame" x="0.0" y="0.0" width="601" height="682"/>
                 <autoresizingMask key="autoresizingMask"/>
@@ -745,21 +751,21 @@
                         <rect key="frame" x="-1" y="-1" width="603" height="684"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <clipView key="contentView" id="SDg-ft-U91">
-                            <rect key="frame" x="1" y="1" width="586" height="667"/>
-                            <autoresizingMask key="autoresizingMask"/>
+                            <rect key="frame" x="1" y="1" width="601" height="682"/>
+                            <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                             <subviews>
                                 <view id="ebn-Op-mWN" customClass="TransformerView" customModule="Rabin2021" customModuleProvider="target">
-                                    <rect key="frame" x="0.0" y="0.0" width="587" height="668"/>
+                                    <rect key="frame" x="0.0" y="0.0" width="602" height="683"/>
                                     <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                 </view>
                             </subviews>
                         </clipView>
                         <scroller key="horizontalScroller" wantsLayer="YES" verticalHuggingPriority="750" horizontal="YES" id="ZNq-Kw-tyS">
-                            <rect key="frame" x="1" y="668" width="586" height="15"/>
+                            <rect key="frame" x="1" y="667" width="601" height="16"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </scroller>
                         <scroller key="verticalScroller" wantsLayer="YES" verticalHuggingPriority="750" doubleValue="1" horizontal="NO" id="aVc-m1-gzr">
-                            <rect key="frame" x="587" y="1" width="15" height="667"/>
+                            <rect key="frame" x="586" y="1" width="16" height="682"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </scroller>
                     </scrollView>

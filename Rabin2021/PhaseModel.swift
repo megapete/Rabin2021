@@ -15,6 +15,28 @@ class PhaseModel:Codable {
     /// An array of arrays where the first index is the segment number and the second index (i) is J[i] for the segment
     var J:[[Double]] = []
     
+    var useWindowHeight:Double {
+        get {
+            if self.segments.count == 0 {
+            
+                return 0.0
+            }
+            
+            return self.segments[0].useWindowHeight
+        }
+    }
+    
+    var realWindowHeight:Double {
+        get {
+            if self.segments.count == 0 {
+            
+                return 0.0
+            }
+            
+            return self.segments[0].realWindowHeight
+        }
+    }
+    
     init(segments:[Segment]) {
         
         self.segments = segments
