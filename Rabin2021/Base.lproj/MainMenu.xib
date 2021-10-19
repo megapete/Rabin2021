@@ -695,6 +695,12 @@
                                     <action selector="handleShowGraph:" target="XWq-sU-B2V" id="D0r-32-ADf"/>
                                 </connections>
                             </menuItem>
+                            <menuItem title="Change Coil1 to 2 segments" id="B32-Hw-Y31">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleChangeCoil1:" target="XWq-sU-B2V" id="kAn-i3-Igk"/>
+                                </connections>
+                            </menuItem>
                         </items>
                     </menu>
                 </menuItem>

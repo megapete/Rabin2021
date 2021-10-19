@@ -247,32 +247,79 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         var maxY = -Double.greatestFiniteMagnitude
         var points:[NSPoint] = []
         
-        for i in 0...1000 {
+        let numPoints = 1000
+        for i in 0...numPoints {
             
             print("Point \(i)")
             let ii = Double(i)
-            let nextX = ii / 1000.0 * L
+            let nextX = ii / Double(numPoints) * L
             
             let nextY = model.J(radialPos: 0, realZ: nextX) / 1000.0
             
             minY = min(minY, nextY)
             maxY = max(maxY, nextY)
             
-            points.append(NSPoint(x: nextX, y: nextY))
+            points.append(NSPoint(x: nextX * 1000, y: nextY))
         }
         
-        let grafWidth = L * 1.1
+        let grafWidth = L * 1.1 * 1000
         let grafHeight = (maxY - minY) * 1.1
         
-        let origin = NSPoint(x: -L * 0.05, y: -(abs(minY) + grafHeight * 0.05))
+        let origin = NSPoint(x: -grafWidth * 0.05, y: -(abs(minY) + grafHeight * 0.05))
         let size = NSSize(width: grafWidth, height: grafHeight)
         
         self.graphWindowCtrl = PCH_GraphingWindow(graphBounds: NSRect(origin: origin, size: size))
         
         self.graphWindowCtrl!.graphView.showAxes(show: true)
-        // self.graphWindowCtrl!.graphView.dataPaths = [PCH_GraphingView.DataPath(color: .red, points: points)]
-        // self.graphWindowCtrl!.graphView.needsDisplay = true
+        self.graphWindowCtrl!.graphView.dataPaths = [PCH_GraphingView.DataPath(color: .red, points: points)]
+        self.graphWindowCtrl!.graphView.needsDisplay = true
     }
+    
+    @IBAction func handleChangeCoil1(_ sender: Any) {
+        
+        let sections1 = Array(self.currentSections[0...35])
+        let sections2 = Array(self.currentSections[36...71])
+        Segment.resetSerialNumber()
+        let segment1 = Segment(basicSections: sections1, interleaved: false, realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentCore!.adjustedWindHt)
+        let segment2 = Segment(basicSections: sections2, interleaved: false, realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentCore!.adjustedWindHt)
+        
+        let model = PhaseModel(segments: [segment1!, segment2!])
+        
+        let L = model.realWindowHeight
+        
+        var minY = Double.greatestFiniteMagnitude
+        var maxY = -Double.greatestFiniteMagnitude
+        var points:[NSPoint] = []
+        
+        print("Checking two-section coil")
+        let numPoints = 1000
+        for i in 0...numPoints {
+            
+            print("Point \(i)")
+            let ii = Double(i)
+            let nextX = ii / Double(numPoints) * L
+            
+            let nextY = model.J(radialPos: 0, realZ: nextX) / 1000.0
+            
+            minY = min(minY, nextY)
+            maxY = max(maxY, nextY)
+            
+            points.append(NSPoint(x: nextX * 1000, y: nextY))
+        }
+        
+        let grafWidth = L * 1.1 * 1000
+        let grafHeight = (maxY - minY) * 1.1
+        
+        let origin = NSPoint(x: -grafWidth * 0.05, y: -(abs(minY) + grafHeight * 0.05))
+        let size = NSSize(width: grafWidth, height: grafHeight)
+        
+        self.graphWindowCtrl = PCH_GraphingWindow(graphBounds: NSRect(origin: origin, size: size))
+        
+        self.graphWindowCtrl!.graphView.showAxes(show: true)
+        self.graphWindowCtrl!.graphView.dataPaths = [PCH_GraphingView.DataPath(color: .red, points: points)]
+        self.graphWindowCtrl!.graphView.needsDisplay = true
+    }
+    
     
     
     
