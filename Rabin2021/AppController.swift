@@ -249,16 +249,29 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         for i in 0...1000 {
             
+            print("Point \(i)")
             let ii = Double(i)
             let nextX = ii / 1000.0 * L
             
-            let nextY = model.J(radialPos: 0, realZ: nextX)
+            let nextY = model.J(radialPos: 0, realZ: nextX) / 1000.0
             
             minY = min(minY, nextY)
             maxY = max(maxY, nextY)
             
             points.append(NSPoint(x: nextX, y: nextY))
         }
+        
+        let grafWidth = L * 1.1
+        let grafHeight = (maxY - minY) * 1.1
+        
+        let origin = NSPoint(x: -L * 0.05, y: -(abs(minY) + grafHeight * 0.05))
+        let size = NSSize(width: grafWidth, height: grafHeight)
+        
+        self.graphWindowCtrl = PCH_GraphingWindow(graphBounds: NSRect(origin: origin, size: size))
+        
+        self.graphWindowCtrl!.graphView.showAxes(show: true)
+        // self.graphWindowCtrl!.graphView.dataPaths = [PCH_GraphingView.DataPath(color: .red, points: points)]
+        // self.graphWindowCtrl!.graphView.needsDisplay = true
     }
     
     
