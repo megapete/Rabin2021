@@ -37,6 +37,17 @@ class PhaseModel:Codable {
         }
     }
     
+    var numCoils:Int {
+        get {
+            
+            guard self.segments.count > 0 else {
+                return 0
+            }
+            
+            return self.J.count
+        }
+    }
+    
     init(segments:[Segment]) {
         
         self.segments = segments
@@ -57,15 +68,15 @@ class PhaseModel:Codable {
         
         var result = coilJ[0]
         
-        var gotFirst = false
-        var lastHarmonic = 0.0
+        // var gotFirst = false
+        // var lastHarmonic = 0.0
         
         for n in 1...PCH_RABIN2021_IterationCount {
             
             let nn = Double(n)
             let nextHarmonic = coilJ[n] * cos(nn * π * z / L)
             
-            if gotFirst {
+            /* if gotFirst {
                 
                 if abs(nextHarmonic) / abs(lastHarmonic) > 1.0 {
                     print("NOT CONVERGING!")
@@ -73,10 +84,10 @@ class PhaseModel:Codable {
             }
             else {
                 gotFirst = true
-            }
+            } */
             
             result += nextHarmonic
-            lastHarmonic = nextHarmonic
+            // lastHarmonic = nextHarmonic
         }
         
         return result

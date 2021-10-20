@@ -236,10 +236,24 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     @IBAction func handleShowCoil1J(_ sender: Any) {
         
-        guard let model = self.currentModel else {
+        guard let model = self.currentModel, model.numCoils > 0 else {
             
             return
         }
+        
+        let integerFormatter = NumberFormatter()
+        integerFormatter.numberStyle = .none
+        integerFormatter.minimum = 0
+        integerFormatter.maximum = NSNumber(integerLiteral: model.numCoils - 1)
+        
+        let coilNumDlog = GetNumberDialog(descriptiveText: "Coil Number:", unitsText: "", noteText: "(0 is closest to core)", windowTitle: "J For Coil", initialValue: 0.0, fieldFormatter: integerFormatter)
+        
+        if coilNumDlog.runModal() == .cancel {
+            
+            return
+        }
+        
+        let radialPos = Int(coilNumDlog.numberValue)
         
         let L = model.realWindowHeight
         
@@ -254,7 +268,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             let ii = Double(i)
             let nextX = ii / Double(numPoints) * L
             
-            let nextY = model.J(radialPos: 0, realZ: nextX) / 1000.0
+            let nextY = model.J(radialPos: radialPos, realZ: nextX) / 1000.0
             
             minY = min(minY, nextY)
             maxY = max(maxY, nextY)
@@ -271,7 +285,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.graphWindowCtrl = PCH_GraphingWindow(graphBounds: NSRect(origin: origin, size: size))
         
         self.graphWindowCtrl!.graphView.showAxes(show: true)
-        self.graphWindowCtrl!.graphView.dataPaths = [PCH_GraphingView.DataPath(color: .red, points: points)]
+        self.graphWindowCtrl!.graphView.dataPaths = [PCH_GraphingView.DataPath(color: AppController.segmentColors[radialPos], points: points)]
         self.graphWindowCtrl!.graphView.needsDisplay = true
     }
     
