@@ -128,6 +128,38 @@ struct Segment: Codable, Equatable {
         }
     }
     
+    // Alternative variable names as defined in the paper "New Methods for Computation of the Inductance Matrix of Transformer Windings for Very Fast Transients Studies" by M. Eslamian and B. Vahidi. For now, we just use the single-Fourier series method inside the core window.
+    
+    var H:Double {
+        get {
+            return self.L
+        }
+    }
+    
+    var y1:Double {
+        get {
+            return self.z1
+        }
+    }
+    
+    var y2:Double {
+        get {
+            return self.z2
+        }
+    }
+    
+    var x1:Double {
+        get {
+            return self.r1
+        }
+    }
+    
+    var x2:Double {
+        get {
+            return self.r2
+        }
+    }
+    
     /// Constructor for a Segment. The array of BasicSections that is passed in is checked to make sure that all sections are part of the same coil, and that they are adjacent and in order from lowest Z to highest Z.
     /// - Parameter basicSections: An array of BasicSections. The sections must be part of the same Winding, be adjacent, and in order from lowest Z to highest Z.
     /// - Parameter interleaved: Boolean for indication of whether the Segment is interleaved or not (default: false)
