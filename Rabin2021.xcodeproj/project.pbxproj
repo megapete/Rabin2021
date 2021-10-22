@@ -23,6 +23,7 @@
 		F5BA813F2719B94100717C67 /* PCH_GraphingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5BA813D2719B94100717C67 /* PCH_GraphingWindow.swift */; };
 		F5BA81402719B94100717C67 /* PCH_GraphingWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = F5BA813E2719B94100717C67 /* PCH_GraphingWindow.xib */; };
 		F5BA81422719B9C800717C67 /* PCH_GraphingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5BA81412719B9C800717C67 /* PCH_GraphingView.swift */; };
+		F5D778FA2722FB2100B976AF /* EslamianVahidiModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5D778F92722FB2100B976AF /* EslamianVahidiModel.swift */; };
 		F5ED29ED270F1F9C003E84CB /* Segment.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED29EC270F1F9C003E84CB /* Segment.swift */; };
 		F5ED29EF271709B0003E84CB /* PhaseModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED29EE271709B0003E84CB /* PhaseModel.swift */; };
 /* End PBXBuildFile section */
@@ -46,6 +47,7 @@
 		F5BA813D2719B94100717C67 /* PCH_GraphingWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PCH_GraphingWindow.swift; sourceTree = "<group>"; };
 		F5BA813E2719B94100717C67 /* PCH_GraphingWindow.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = PCH_GraphingWindow.xib; sourceTree = "<group>"; };
 		F5BA81412719B9C800717C67 /* PCH_GraphingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PCH_GraphingView.swift; sourceTree = "<group>"; };
+		F5D778F92722FB2100B976AF /* EslamianVahidiModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EslamianVahidiModel.swift; sourceTree = "<group>"; };
 		F5ED29EC270F1F9C003E84CB /* Segment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Segment.swift; sourceTree = "<group>"; };
 		F5ED29EE271709B0003E84CB /* PhaseModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -91,6 +93,7 @@
 				D3B7FF25270E3704002537D3 /* PCH_ExcelDesignFileReader.swift */,
 				D39444F42718D9C700206019 /* GetNumber.xib */,
 				D39444F52718D9C700206019 /* GetNumberDialog.swift */,
+				F5D778F92722FB2100B976AF /* EslamianVahidiModel.swift */,
 				F5ED29EE271709B0003E84CB /* PhaseModel.swift */,
 				D3926C07270F3D3C00D2D17C /* Core.swift */,
 				F5ED29EC270F1F9C003E84CB /* Segment.swift */,
@@ -182,6 +185,7 @@
 				D39444F32718D7B600206019 /* PCH_BaseClass_DialogBox.swift in Sources */,
 				D3B7FF28270E3769002537D3 /* GlobalDefs.swift in Sources */,
 				D3B7FF22270E320E002537D3 /* BasicSection.swift in Sources */,
+				F5D778FA2722FB2100B976AF /* EslamianVahidiModel.swift in Sources */,
 				D39311BC2710C44200A29D65 /* TransformerView.swift in Sources */,
 				D3573254270E5DAE000CCCF9 /* AppController.swift in Sources */,
 				D39444F72718D9C700206019 /* GetNumberDialog.swift in Sources */,

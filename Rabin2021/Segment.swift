@@ -128,36 +128,26 @@ struct Segment: Codable, Equatable {
         }
     }
     
-    // Alternative variable names as defined in the paper "New Methods for Computation of the Inductance Matrix of Transformer Windings for Very Fast Transients Studies" by M. Eslamian and B. Vahidi. For now, we just use the single-Fourier series method inside the core window.
+    // Functions required by the paper "New Methods for Computation of the Inductance Matrix of Transformer Windings for Very Fast Transients Studies" by M. Eslamian and B. Vahidi.
     
-    var H:Double {
-        get {
-            return self.L
-        }
+    func y1() -> Double {
+        
+        return self.z1
     }
     
-    var y1:Double {
-        get {
-            return self.z1
-        }
+    func y2() -> Double {
+        
+        return self.z2
     }
     
-    var y2:Double {
-        get {
-            return self.z2
-        }
+    func x1(coreRadius:Double) -> Double {
+        
+        return self.r1 - coreRadius
     }
     
-    var x1:Double {
-        get {
-            return self.r1
-        }
-    }
-    
-    var x2:Double {
-        get {
-            return self.r2
-        }
+    func x2(coreRadius:Double) -> Double {
+        
+        return self.r2 - coreRadius
     }
     
     /// Constructor for a Segment. The array of BasicSections that is passed in is checked to make sure that all sections are part of the same coil, and that they are adjacent and in order from lowest Z to highest Z.
@@ -198,6 +188,7 @@ struct Segment: Codable, Equatable {
         self.serialNumber = Segment.nextSerialNumber
     }
     
+    /// Reset the value of the next Segment serial number to be assigned to 0. NOTE:  Any Segments that may have been created by the user prior to calling this function SHOULD BE DESTROYED to avoid problems when testing for equality between Segments (the equality test reiles on the the serial number).
     static func resetSerialNumber()
     {
         Segment.nextSerialNumberStore = 0

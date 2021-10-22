@@ -701,6 +701,12 @@
                                     <action selector="handleChangeCoil1:" target="XWq-sU-B2V" id="kAn-i3-Igk"/>
                                 </connections>
                             </menuItem>
+                            <menuItem title="Test New Method" id="Mcp-Gz-6Zn">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleTestEVMethod:" target="XWq-sU-B2V" id="R1n-fd-n2M"/>
+                                </connections>
+                            </menuItem>
                         </items>
                     </menu>
                 </menuItem>

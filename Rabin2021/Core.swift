@@ -11,13 +11,14 @@ class Core:Codable
 {
     let diameter:Double
     let realWindowHeight:Double
+    let legCenters:Double
     
     var windHtMultiplier:Double
     
     var adjustedWindHt:Double {
         
         get {
-            return realWindowHeight * windHtMultiplier
+            return self.realWindowHeight * self.windHtMultiplier
         }
     }
     
@@ -27,10 +28,17 @@ class Core:Codable
         }
     }
     
-    init(diameter:Double, realWindowHeight:Double, windHtMultiplier:Double = 3.0) {
+    var windowWidth:Double {
+        get {
+            return self.legCenters - self.diameter
+        }
+    }
+    
+    init(diameter:Double, realWindowHeight:Double, windHtMultiplier:Double = 3.0, legCenters:Double) {
         self.diameter = diameter
         self.realWindowHeight = realWindowHeight
         self.windHtMultiplier = windHtMultiplier
+        self.legCenters = legCenters
     }
     
     

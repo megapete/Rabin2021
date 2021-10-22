@@ -63,7 +63,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.tankDepth = xlFile.tankDepth
         
         // The idea here is to create the current model as a Core and an array of BasicSections and save it into the class' currentSections property
-        self.currentCore = Core(diameter: xlFile.core.diameter, realWindowHeight: xlFile.core.windowHeight)
+        self.currentCore = Core(diameter: xlFile.core.diameter, realWindowHeight: xlFile.core.windowHeight, legCenters: xlFile.core.legCenters)
         
         // replace any currently saved basic sections with the new ones
         self.currentSections = self.createBasicSections(xlFile: xlFile)
@@ -334,6 +334,16 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.graphWindowCtrl!.graphView.needsDisplay = true
     }
     
+    @IBAction func handleTestEVMethod(_ sender: Any) {
+        
+        let core = Core(diameter: 0.15, realWindowHeight: 0.3, legCenters: 0.25)
+        let basicSection = BasicSection(location: LocStruct(radial: 0, axial: 0), N: 1, I: 1, rect: NSRect(x: 0.091, y: 0.268, width: 0.004, height: 0.004))
+        let segment = Segment(basicSections: [basicSection], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
+        
+        let EVtest = EslamianVahidi(segment: segment!, core: core)
+        
+        print("Self-inductance: \(EVtest.L())")
+    }
     
     
     
