@@ -337,14 +337,51 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     @IBAction func handleTestEVMethod(_ sender: Any) {
         
         let core = Core(diameter: 0.15, realWindowHeight: 0.3, legCenters: 0.25)
-        let basicSection = BasicSection(location: LocStruct(radial: 0, axial: 0), N: 1, I: 1, rect: NSRect(x: 0.091, y: 0.268, width: 0.004, height: 0.004))
-        let segment = Segment(basicSections: [basicSection], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
+        let basicSection1 = BasicSection(location: LocStruct(radial: 0, axial: 1), N: 1, I: 1, rect: NSRect(x: 0.091, y: 0.268, width: 0.004, height: 0.004))
+        let basicSection2 = BasicSection(location: LocStruct(radial: 0, axial: 0), N: 1, I: 1, rect: NSRect(x: 0.091, y: 0.268 - 0.008, width: 0.004, height: 0.004))
+        let basicSection3 = BasicSection(location: LocStruct(radial: 0, axial: 0), N: 1, I: 1, rect: NSRect(x: 0.091, y: 0.268 - 0.016, width: 0.004, height: 0.004))
+        let segment1 = Segment(basicSections: [basicSection1], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
+        let segment2 = Segment(basicSections: [basicSection2], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
+        let segment3 = Segment(basicSections: [basicSection3], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
         
-        let EVtest = EslamianVahidi(segment: segment!, core: core)
+        let EVLtest1 = EslamianVahidi(segment: segment1!, core: core)
+        let EVLtest2 = EslamianVahidi(segment: segment2!, core: core)
+        let EVLtest3 = EslamianVahidi(segment: segment3!, core: core)
         
-        print("Self-inductance: \(EVtest.L())")
+        print("Self-inductance #1: \(EVLtest1.L())")
+        print("Self-Inductance #2: \(EVLtest2.L())")
+        
+        print("Mutual inductance 1-2: \(EVLtest1.M(otherSegment: EVLtest2))")
+        print("Mutual inductance 1-3: \(EVLtest1.M(otherSegment: EVLtest3))")
     }
     
+    @IBAction func handleGetInductances(_ sender: Any) {
+        
+        guard let model = self.currentModel, model.numCoils > 0, let core = self.currentCore else {
+            
+            return
+        }
+        
+        var EV:[EslamianVahidi] = []
+        var M:[Double] = []
+        
+        for nextSegment in model.segments {
+            
+            EV.append(EslamianVahidi(segment: nextSegment, core: core))
+        }
+        
+        print("Getting inductances...")
+        for i in 0..<EV.count {
+            
+            print("Segment #\(i)")
+            
+            for j in i..<EV.count {
+                
+                M.append(EV[i].M(otherSegment: EV[j]))
+            }
+        }
+        print("Done!")
+    }
     
     
     // MARK: File routines

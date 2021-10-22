@@ -54,7 +54,7 @@ struct EslamianVahidi {
     // mutual inductance
     func M(otherSegment:EslamianVahidi) -> Double {
         
-        let iterations = 200
+        let iterations = 300
         
         let L = self.core.windowWidth
         let H = self.core.realWindowHeight
