@@ -11,10 +11,33 @@
 
 import Foundation
 
-struct EslamianVahidi {
+class EslamianVahidi {
+    
+    static let iterations = 200
     
     let segment:Segment
     let core:Core
+    
+    var J:[[Double]] = Array(repeating: Array(repeating: 0.0, count: EslamianVahidi.iterations), count: EslamianVahidi.iterations)
+    var A:[[Double]] = Array(repeating: Array(repeating: 0.0, count: EslamianVahidi.iterations), count: EslamianVahidi.iterations)
+    
+    
+    init(segment:Segment, core:Core) {
+        
+        self.segment = segment
+        self.core = core
+        
+        print("Calculating all Jmn and Amn for segment: \(segment.serialNumber)")
+        for m in 0..<EslamianVahidi.iterations {
+            for n in 0..<EslamianVahidi.iterations {
+                
+                self.J[m][n] = self.J(m: m + 1, n: n + 1)
+                self.A[m][n] = self.A(m: m + 1, n: n + 1)
+            }
+        }
+        print("Done!")
+        
+    }
     
     func J(m:Int, n:Int) -> Double {
         
@@ -44,17 +67,15 @@ struct EslamianVahidi {
         
         return numerator / denominator
     }
-    
-    // self inductance
+     
+    // self inductance (in the window, per-unit-length)
     func L() -> Double {
         
         return M(otherSegment: self)
     }
     
-    // mutual inductance
+    // mutual inductance (in the window, per-unit-length)
     func M(otherSegment:EslamianVahidi) -> Double {
-        
-        let iterations = 300
         
         let L = self.core.windowWidth
         let H = self.core.realWindowHeight
@@ -62,11 +83,23 @@ struct EslamianVahidi {
         let I1 = self.segment.I
         let I2 = otherSegment.segment.I
         
+        //let sumQueue = DispatchQueue(label: "com.huberistech.rabin2021.sum")
+        
         var sum = 0.0
-        for m in 1...iterations {
-            for n in 1...iterations {
+        //
+        for m in 0..<EslamianVahidi.iterations {
+            
+            // DispatchQueue.concurrentPerform(iterations: EslamianVahidi.iterations) {
                 
-                sum += self.J(m: m, n: n) * otherSegment.A(m: m, n: n)
+                // (n:Int) -> Void in // this is the way to specify one of those "dangling" closures
+                
+                // let n = i
+            for n in 0..<EslamianVahidi.iterations {
+                
+                // sumQueue.sync {
+    
+                sum += self.J[m][n] * otherSegment.A[m][n]
+                // }
             }
         }
         

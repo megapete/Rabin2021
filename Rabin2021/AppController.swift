@@ -337,22 +337,42 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     @IBAction func handleTestEVMethod(_ sender: Any) {
         
         let core = Core(diameter: 0.15, realWindowHeight: 0.3, legCenters: 0.25)
-        let basicSection1 = BasicSection(location: LocStruct(radial: 0, axial: 1), N: 1, I: 1, rect: NSRect(x: 0.091, y: 0.268, width: 0.004, height: 0.004))
-        let basicSection2 = BasicSection(location: LocStruct(radial: 0, axial: 0), N: 1, I: 1, rect: NSRect(x: 0.091, y: 0.268 - 0.008, width: 0.004, height: 0.004))
+        let N1 = 1.0
+        let I1 = 1.0
+        let N4 = 2.0
+        let I4 = I1 * N1 / N4
+        let basicSection1 = BasicSection(location: LocStruct(radial: 0, axial: 2), N: N1, I: I1, rect: NSRect(x: 0.091, y: 0.268, width: 0.004, height: 0.004))
+        let basicSection2 = BasicSection(location: LocStruct(radial: 0, axial: 1), N: 1, I: 1, rect: NSRect(x: 0.091, y: 0.268 - 0.008, width: 0.004, height: 0.004))
         let basicSection3 = BasicSection(location: LocStruct(radial: 0, axial: 0), N: 1, I: 1, rect: NSRect(x: 0.091, y: 0.268 - 0.016, width: 0.004, height: 0.004))
+        let basicSection4 = BasicSection(location: LocStruct(radial: 1, axial: 0), N: N4, I: I4, rect: NSRect(x: 0.100, y: 0.268, width: 0.004, height: 0.004))
         let segment1 = Segment(basicSections: [basicSection1], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
         let segment2 = Segment(basicSections: [basicSection2], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
         let segment3 = Segment(basicSections: [basicSection3], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
+        let segment4 = Segment(basicSections: [basicSection4], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
         
         let EVLtest1 = EslamianVahidi(segment: segment1!, core: core)
         let EVLtest2 = EslamianVahidi(segment: segment2!, core: core)
         let EVLtest3 = EslamianVahidi(segment: segment3!, core: core)
+        let EVLtest4 = EslamianVahidi(segment: segment4!, core: core)
         
-        print("Self-inductance #1: \(EVLtest1.L())")
-        print("Self-Inductance #2: \(EVLtest2.L())")
+        
         
         print("Mutual inductance 1-2: \(EVLtest1.M(otherSegment: EVLtest2))")
+        print("Mutual inductance 2-1: \(EVLtest2.M(otherSegment: EVLtest1))")
         print("Mutual inductance 1-3: \(EVLtest1.M(otherSegment: EVLtest3))")
+        
+        let L1 = EVLtest1.L()
+        let L4 = EVLtest4.L()
+        let M14 = EVLtest1.M(otherSegment: EVLtest4)
+        print("Self-inductance #1: \(EVLtest1.L())")
+        print("Self-Inductance #4: \(EVLtest4.L())")
+        
+        print("Mutual inductance 1-4: \(EVLtest1.M(otherSegment: EVLtest4))")
+        print("Mutual inductance 4-1: \(EVLtest4.M(otherSegment: EVLtest1))")
+        
+        let energy14 = L1 * I1 * I1 + L4 * I4 * I4 + 2 * M14 * I1 * I4
+        
+        print("Energy: \(energy14)")
     }
     
     @IBAction func handleGetInductances(_ sender: Any) {
@@ -376,6 +396,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             print("Segment #\(i)")
             
             for j in i..<EV.count {
+                
+                if j % 50 == 0 {
+                    print("To: \(j)")
+                }
                 
                 M.append(EV[i].M(otherSegment: EV[j]))
             }
