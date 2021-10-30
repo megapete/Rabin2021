@@ -355,20 +355,18 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         let EVLtest3 = EslamianVahidi(segment: segment3!, core: core)
         let EVLtest4 = EslamianVahidi(segment: segment4!, core: core)
         
+        print("Mutual inductance 1-2: \(EVLtest1.M_pu_InWindow(otherSegment: EVLtest2))")
+        print("Mutual inductance 2-1: \(EVLtest2.M_pu_InWindow(otherSegment: EVLtest1))")
+        print("Mutual inductance 1-3: \(EVLtest1.M_pu_InWindow(otherSegment: EVLtest3))")
         
+        let L1 = EVLtest1.L_pu_InWindow()
+        let L4 = EVLtest4.L_pu_InWindow()
+        let M14 = EVLtest1.M_pu_InWindow(otherSegment: EVLtest4)
+        print("Self-inductance #1: \(EVLtest1.L_pu_InWindow())")
+        print("Self-Inductance #4: \(EVLtest4.L_pu_InWindow())")
         
-        print("Mutual inductance 1-2: \(EVLtest1.M(otherSegment: EVLtest2))")
-        print("Mutual inductance 2-1: \(EVLtest2.M(otherSegment: EVLtest1))")
-        print("Mutual inductance 1-3: \(EVLtest1.M(otherSegment: EVLtest3))")
-        
-        let L1 = EVLtest1.L()
-        let L4 = EVLtest4.L()
-        let M14 = EVLtest1.M(otherSegment: EVLtest4)
-        print("Self-inductance #1: \(EVLtest1.L())")
-        print("Self-Inductance #4: \(EVLtest4.L())")
-        
-        print("Mutual inductance 1-4: \(EVLtest1.M(otherSegment: EVLtest4))")
-        print("Mutual inductance 4-1: \(EVLtest4.M(otherSegment: EVLtest1))")
+        print("Mutual inductance 1-4: \(EVLtest1.M_pu_InWindow(otherSegment: EVLtest4))")
+        print("Mutual inductance 4-1: \(EVLtest4.M_pu_InWindow(otherSegment: EVLtest1))")
         
         let energy14 = L1 * I1 * I1 + L4 * I4 * I4 + 2 * M14 * I1 * I4
         
@@ -383,12 +381,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
         
         var EV:[EslamianVahidi] = []
-        var M:[Double] = []
         
         for nextSegment in model.segments {
             
             EV.append(EslamianVahidi(segment: nextSegment, core: core))
         }
+        
+        let M = PCH_BaseClass_Matrix(matrixType: .general, numType: .Double, rows: UInt(EV.count), columns: UInt(EV.count))
         
         print("Getting inductances...")
         for i in 0..<EV.count {
@@ -401,10 +400,17 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                     print("To: \(j)")
                 }
                 
-                M.append(EV[i].M(otherSegment: EV[j]))
+                let nextM:Double = EV[i].M_pu_InWindow(otherSegment: EV[j])
+                
+                M[i, j] = nextM
+                M[j, i] = nextM
+    
+                //M.append(EV[i].M(otherSegment: EV[j]))
             }
         }
         print("Done!")
+        
+        print("Inductance array is positive definite: \(M.TestPositiveDefinite())")
     }
     
     
@@ -429,8 +435,6 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             UserDefaults.standard.set(fileURL, forKey: LAST_OPENED_INPUT_FILE_KEY)
     
             NSDocumentController.shared.noteNewRecentDocumentURL(fileURL)
-            
-            
             
             self.updateModel(xlFile: xlFile, reinitialize: true)
             

@@ -18,8 +18,8 @@ class EslamianVahidi {
     let segment:Segment
     let core:Core
     
-    var J:[[Double]] = Array(repeating: Array(repeating: 0.0, count: EslamianVahidi.iterations), count: EslamianVahidi.iterations)
-    var A:[[Double]] = Array(repeating: Array(repeating: 0.0, count: EslamianVahidi.iterations), count: EslamianVahidi.iterations)
+    var J_DoubleFourier:[[Double]] = Array(repeating: Array(repeating: 0.0, count: EslamianVahidi.iterations), count: EslamianVahidi.iterations)
+    var A_InWindow:[[Double]] = Array(repeating: Array(repeating: 0.0, count: EslamianVahidi.iterations), count: EslamianVahidi.iterations)
     
     
     init(segment:Segment, core:Core) {
@@ -31,15 +31,15 @@ class EslamianVahidi {
         for m in 0..<EslamianVahidi.iterations {
             for n in 0..<EslamianVahidi.iterations {
                 
-                self.J[m][n] = self.J(m: m + 1, n: n + 1)
-                self.A[m][n] = self.A(m: m + 1, n: n + 1)
+                self.J_DoubleFourier[m][n] = self.J_DoubleFourier(m: m + 1, n: n + 1)
+                self.A_InWindow[m][n] = self.A_pu_InWindow(m: m + 1, n: n + 1)
             }
         }
         print("Done!")
         
     }
     
-    func J(m:Int, n:Int) -> Double {
+    func J_DoubleFourier(m:Int, n:Int) -> Double {
         
         let mm = Double(m)
         let nn = Double(n)
@@ -54,7 +54,7 @@ class EslamianVahidi {
         return firstTerm * secondTerm * thirdTerm
     }
     
-    func A(m:Int, n:Int) -> Double {
+    func A_pu_InWindow(m:Int, n:Int) -> Double {
         
         let mm = Double(m)
         let nn = Double(n)
@@ -62,44 +62,33 @@ class EslamianVahidi {
         let L = self.core.windowWidth
         let H = self.core.realWindowHeight
         
-        let numerator = µ0 * self.J(m: m, n: n)
+        let numerator = µ0 * self.J_DoubleFourier(m: m, n: n)
         let denominator = (mm * π / L) * (mm * π / L) + (nn * π / H) * (nn * π / H)
         
         return numerator / denominator
     }
      
     // self inductance (in the window, per-unit-length)
-    func L() -> Double {
+    func L_pu_InWindow() -> Double {
         
-        return M(otherSegment: self)
+        return M_pu_InWindow(otherSegment: self)
     }
     
     // mutual inductance (in the window, per-unit-length)
-    func M(otherSegment:EslamianVahidi) -> Double {
+    func M_pu_InWindow(otherSegment:EslamianVahidi) -> Double {
         
         let L = self.core.windowWidth
         let H = self.core.realWindowHeight
         
         let I1 = self.segment.I
         let I2 = otherSegment.segment.I
-        
-        //let sumQueue = DispatchQueue(label: "com.huberistech.rabin2021.sum")
-        
+                
         var sum = 0.0
-        //
         for m in 0..<EslamianVahidi.iterations {
             
-            // DispatchQueue.concurrentPerform(iterations: EslamianVahidi.iterations) {
-                
-                // (n:Int) -> Void in // this is the way to specify one of those "dangling" closures
-                
-                // let n = i
             for n in 0..<EslamianVahidi.iterations {
-                
-                // sumQueue.sync {
     
-                sum += self.J[m][n] * otherSegment.A[m][n]
-                // }
+                sum += self.J_DoubleFourier[m][n] * otherSegment.A_InWindow[m][n]
             }
         }
         
