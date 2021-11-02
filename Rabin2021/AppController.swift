@@ -362,15 +362,18 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         let L1 = EVLtest1.L_pu_InWindow()
         let L4 = EVLtest4.L_pu_InWindow()
         let M14 = EVLtest1.M_pu_InWindow(otherSegment: EVLtest4)
-        print("Self-inductance #1: \(EVLtest1.L_pu_InWindow())")
-        print("Self-Inductance #4: \(EVLtest4.L_pu_InWindow())")
+        print("Self-inductance (per-unit-length, in window) #1: \(EVLtest1.L_pu_InWindow())")
+        print("Self-Inductance (per-unit-length, in window) #4: \(EVLtest4.L_pu_InWindow())")
         
-        print("Mutual inductance 1-4: \(EVLtest1.M_pu_InWindow(otherSegment: EVLtest4))")
-        print("Mutual inductance 4-1: \(EVLtest4.M_pu_InWindow(otherSegment: EVLtest1))")
+        print("Mutual inductance (per-unit-length, in window) 1-4: \(EVLtest1.M_pu_InWindow(otherSegment: EVLtest4))")
+        print("Mutual inductance (per-unit-length, in window) 4-1: \(EVLtest4.M_pu_InWindow(otherSegment: EVLtest1))")
         
         let energy14 = L1 * I1 * I1 + L4 * I4 * I4 + 2 * M14 * I1 * I4
         
         print("Energy: \(energy14)")
+        
+        print("Self-inductance (per-unit-length, outside window) #1: \(EVLtest1.M_pu_OutsideWindow(otherSegment: EVLtest1))")
+        print("Mutual inductance (per-unit-length, outside window) 1-2: \(EVLtest1.M_pu_OutsideWindow(otherSegment: EVLtest2))")
     }
     
     @IBAction func handleGetInductances(_ sender: Any) {
@@ -389,23 +392,29 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         let M = PCH_BaseClass_Matrix(matrixType: .general, numType: .Double, rows: UInt(EV.count), columns: UInt(EV.count))
         
-        print("Getting inductances...")
+        print("Getting in-window inductances...")
         for i in 0..<EV.count {
             
             print("Segment #\(i)")
+            // Get self-inductance
+            let iR1 = EV[i].segment.r1
+            let iR2 = EV[i].segment.r2
+            M[i, i] = EV[i].L_pu_InWindow() * π * (iR1 + iR2)
             
-            for j in i..<EV.count {
+            for j in i+1..<EV.count {
                 
                 if j % 50 == 0 {
                     print("To: \(j)")
                 }
                 
-                let nextM:Double = EV[i].M_pu_InWindow(otherSegment: EV[j])
+                let innerRadius = min(iR1, EV[j].segment.r1)
+                let outerRadius = max(iR2, EV[j].segment.r2)
+                // let meanRadius = (innerRadius + outerRadius) / 2.0
+                let multiplier = π * (innerRadius + outerRadius)
+                let nextM:Double = EV[i].M_pu_InWindow(otherSegment: EV[j]) * multiplier
                 
                 M[i, j] = nextM
                 M[j, i] = nextM
-    
-                //M.append(EV[i].M(otherSegment: EV[j]))
             }
         }
         print("Done!")
