@@ -20,6 +20,7 @@
 		D3B7FF22270E320E002537D3 /* BasicSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B7FF21270E320E002537D3 /* BasicSection.swift */; };
 		D3B7FF26270E3704002537D3 /* PCH_ExcelDesignFileReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B7FF25270E3704002537D3 /* PCH_ExcelDesignFileReader.swift */; };
 		D3B7FF28270E3769002537D3 /* GlobalDefs.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B7FF27270E3769002537D3 /* GlobalDefs.swift */; };
+		D3BE820127330E9600EF964D /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D3BE820027330E9600EF964D /* Accelerate.framework */; platformFilter = maccatalyst; };
 		F5BA813F2719B94100717C67 /* PCH_GraphingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5BA813D2719B94100717C67 /* PCH_GraphingWindow.swift */; };
 		F5BA81402719B94100717C67 /* PCH_GraphingWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = F5BA813E2719B94100717C67 /* PCH_GraphingWindow.xib */; };
 		F5BA81422719B9C800717C67 /* PCH_GraphingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5BA81412719B9C800717C67 /* PCH_GraphingView.swift */; };
@@ -45,6 +46,7 @@
 		D3B7FF21270E320E002537D3 /* BasicSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BasicSection.swift; sourceTree = "<group>"; };
 		D3B7FF25270E3704002537D3 /* PCH_ExcelDesignFileReader.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = PCH_ExcelDesignFileReader.swift; path = "../../../../Dropbox/MyProjects/Base Classes/PCH_ExcelDesignFileReader.swift"; sourceTree = "<group>"; };
 		D3B7FF27270E3769002537D3 /* GlobalDefs.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = GlobalDefs.swift; path = ../../../../Dropbox/MyProjects/GlobalDefs.swift; sourceTree = "<group>"; };
+		D3BE820027330E9600EF964D /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		F5BA813D2719B94100717C67 /* PCH_GraphingWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PCH_GraphingWindow.swift; sourceTree = "<group>"; };
 		F5BA813E2719B94100717C67 /* PCH_GraphingWindow.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = PCH_GraphingWindow.xib; sourceTree = "<group>"; };
 		F5BA81412719B9C800717C67 /* PCH_GraphingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PCH_GraphingView.swift; sourceTree = "<group>"; };
@@ -59,6 +61,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D3BE820127330E9600EF964D /* Accelerate.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -70,6 +73,7 @@
 			children = (
 				D30D3AD6270E2F2C00A39051 /* Rabin2021 */,
 				D30D3AD5270E2F2C00A39051 /* Products */,
+				D3BE81FF27330E9600EF964D /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -107,6 +111,14 @@
 				D30D3ADE270E2F2D00A39051 /* Rabin2021.entitlements */,
 			);
 			path = Rabin2021;
+			sourceTree = "<group>";
+		};
+		D3BE81FF27330E9600EF964D /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				D3BE820027330E9600EF964D /* Accelerate.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -269,6 +281,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				OTHER_SWIFT_FLAGS = "-Xfrontend -warn-long-function-bodies=200 -Xfrontend -warn-long-expression-type-checking=100";
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -323,6 +336,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 11.3;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				OTHER_SWIFT_FLAGS = "-Xfrontend -warn-long-function-bodies=200 -Xfrontend -warn-long-expression-type-checking=100";
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
