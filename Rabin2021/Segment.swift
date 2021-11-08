@@ -7,8 +7,8 @@
 
 import Foundation
 
-/// A segment is a collection of BasicSections. The collection MUST be from the same Winding and it must represent a contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed).
-/// 
+/// A segment is a collection of BasicSections. The collection MUST be from the same Winding and it must represent an axially contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed).
+
 struct Segment: Codable, Equatable {
     
     static func == (lhs: Segment, rhs: Segment) -> Bool {
@@ -18,6 +18,7 @@ struct Segment: Codable, Equatable {
     
     private static var nextSerialNumberStore:Int = 0
     
+    /// Return the next available serial number for the Segment class.
     static var nextSerialNumber:Int {
         get {
             
@@ -30,13 +31,13 @@ struct Segment: Codable, Equatable {
     /// Segment serial number (needed for the mirrorSegment property and to make the "==" operator code simpler
     let serialNumber:Int
     
-    /// The first (index = 0) entry  has the lowest Z and the last enrty has the highest.
+    /// The first (index = 0) entry  has the lowest Z and the last entry has the highest.
     private var basicSectionStore:[BasicSection] = []
         
-    /// A Boolean to indicate whether the segment is interlaved
+    /// A Boolean to indicate whether the segment is interleaved
     var interleaved:Bool
     
-    /// The series current through the segment
+    /// The series current through a single turn in the segment
     let I:Double
     
     /// The radial position of the segment (0 = closest to core)
@@ -56,7 +57,7 @@ struct Segment: Codable, Equatable {
     /// The window height that is used for the model
     let useWindowHeight:Double
     
-    /// The rectangle that the segment occupies in the core window
+    /// The rectangle that the segment occupies in the core window, with the origin at (LegCenter, BottomYoke)
     var rect:NSRect
     
     /// The inner radius of the segment (from the core center)
@@ -103,12 +104,14 @@ struct Segment: Codable, Equatable {
         }
     }
     
+    /// The area of the segment
     var area:Double {
         get {
             return Double(self.rect.width * self.rect.height)
         }
     }
     
+    /// The number of tuns in the Segment
     var N:Double {
         get {
             var result = 0.0
@@ -122,6 +125,7 @@ struct Segment: Codable, Equatable {
         }
     }
     
+    /// The current density of the section
     var ActualJ:Double {
         get {
             return self.N * self.I / self.area
@@ -130,29 +134,36 @@ struct Segment: Codable, Equatable {
     
     // Functions required by the paper "New Methods for Computation of the Inductance Matrix of Transformer Windings for Very Fast Transients Studies" by M. Eslamian and B. Vahidi.
     
+    /// A synonym for z1
     func y1() -> Double {
         
         return self.z1
     }
     
+    /// A synonym for z2
     func y2() -> Double {
         
         return self.z2
     }
     
+    /// The radial dimension from the core _surface_ (diameter) to the inner edge of the segment
     func x1(coreRadius:Double) -> Double {
         
         return self.r1 - coreRadius
     }
     
+    /// The radial dimension from the core _surface_ (diameter) to the outer edge of the segment
     func x2(coreRadius:Double) -> Double {
         
         return self.r2 - coreRadius
     }
     
     /// Constructor for a Segment. The array of BasicSections that is passed in is checked to make sure that all sections are part of the same coil, and that they are adjacent and in order from lowest Z to highest Z.
+    /// - Note: This initiializer may fail.
     /// - Parameter basicSections: An array of BasicSections. The sections must be part of the same Winding, be adjacent, and in order from lowest Z to highest Z.
     /// - Parameter interleaved: Boolean for indication of whether the Segment is interleaved or not (default: false)
+    /// - Parameter realWindowHeight: The actual window height of the core
+    /// - Parameter useWindowHeight: The window height that should be used (important for some Delvecchio calculations)
     init?(basicSections:[BasicSection], interleaved:Bool = false, realWindowHeight:Double, useWindowHeight:Double)
     {
         guard let first = basicSections.first, let last = basicSections.last else {
@@ -194,7 +205,7 @@ struct Segment: Codable, Equatable {
         Segment.nextSerialNumberStore = 0
     }
     
-    /// Create the Fourier series representation of the current density for the segment. Note that the "useWindowHeight" property of the segment is used to create the series.
+    /// Create the Fourier series representation of the current density for the segment. Note that the "useWindowHeight" property of the segment is used to create the series. This is used by DelVecchio.
     func CreateFourierJ() -> [Double]
     {
         var result:[Double] = []
@@ -207,7 +218,7 @@ struct Segment: Codable, Equatable {
         return result
     }
     
-    /// Private function to create the n-th entry into the Fourier series representation of the current deinsity, using the max of the real and 'use'  window height as the 'L' variable.
+    /// Private function to create the n-th entry into the Fourier series representation of the current density, using the max of the real and 'use'  window height as the 'L' variable.
     private func J(n:Int) -> Double
     {
         let L = self.L

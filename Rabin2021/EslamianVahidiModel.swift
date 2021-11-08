@@ -7,24 +7,35 @@
 
 // This is an attempt to encapsulate the methods and formulas presented in the technical paper "New Methods for Computation of the Inductance Matrix of Transformer Windings for Very Fast Transients Studies" by M. Eslamian and B. Vahidi. To begin, only the Double-Fourier Series method Inside the Core Window is implemented. The Outside the Core Window method is also implemented. Both methods have been compared to the results in the paper. The Outside the Core Window calculations match exactly, while the Inside the Core Window reesults are very close (I think they probably used the Single-Fourier Series method).
 
-// Use of this struct requires that the "Segment" class from Rabin2021 be included in the project.
+// Use of this class requires that the "Segment" class from Rabin2021 also be included in the project.
 
 import Foundation
 import Accelerate
 
-class EslamianVahidi {
+/// This class encapsulates the methods and formulas in the technical paper "New Methods for Computation of the Inductance Matrix of Transformer Windings for Very Fast Transients Studies" by M. Eslamian and B. Vahidi. It uses the double-Fourier-series method to define the current density in a segment that is located "inside the core window".
+class EslamianVahidiSegment {
     
+    /// Class constant for the number of iterations used in the class
     static let iterations = 200
     
+    /// The defining Segment for this EslamianVahidiSegment
     let segment:Segment
+    
+    /// The core associated with this EslamianVahidiSegment
     let core:Core
     
+    /// The location of the axial center of the EslamianVahidiSegment
     let yCenter:Double
     
-    var J_DoubleFourier:[[Double]] = Array(repeating: Array(repeating: 0.0, count: EslamianVahidi.iterations), count: EslamianVahidi.iterations)
-    var A_InWindow:[[Double]] = Array(repeating: Array(repeating: 0.0, count: EslamianVahidi.iterations), count: EslamianVahidi.iterations)
+    /// To avoid long run times recalculating the double-fourier series, it is calculated once in the initilalizer and stored as a property
+    var J_DoubleFourier:[[Double]] = Array(repeating: Array(repeating: 0.0, count: EslamianVahidiSegment.iterations), count: EslamianVahidiSegment.iterations)
     
+    /// To avoid long run times recalculating the vector potentials in the window, they are calculated once in the initilalizer and stored as a property
+    var A_InWindow:[[Double]] = Array(repeating: Array(repeating: 0.0, count: EslamianVahidiSegment.iterations), count: EslamianVahidiSegment.iterations)
     
+    /// Designated initializer
+    /// - Parameter segment: The defining Segment for the EslamianVahidiSegment
+    /// - Parameter core: The core that this EslamianVahidiSegment lives on
     init(segment:Segment, core:Core) {
         
         self.segment = segment
@@ -32,8 +43,8 @@ class EslamianVahidi {
         self.yCenter = (segment.y1() + segment.y2()) / 2.0
         
         print("Calculating all Jmn and Amn for segment: \(segment.serialNumber)")
-        for m in 0..<EslamianVahidi.iterations {
-            for n in 0..<EslamianVahidi.iterations {
+        for m in 0..<EslamianVahidiSegment.iterations {
+            for n in 0..<EslamianVahidiSegment.iterations {
                 
                 self.J_DoubleFourier[m][n] = self.J_DoubleFourier(m: m + 1, n: n + 1)
                 self.A_InWindow[m][n] = self.A_pu_InWindow(m: m + 1, n: n + 1)
@@ -43,6 +54,7 @@ class EslamianVahidi {
         
     }
     
+    /// Function to calculate the entry in the J matrix located at (m,n)
     func J_DoubleFourier(m:Int, n:Int) -> Double {
         
         let mm = Double(m)
@@ -58,6 +70,7 @@ class EslamianVahidi {
         return firstTerm * secondTerm * thirdTerm
     }
     
+    /// Function to calculate the entry in the A matrix located at (m,n)
     func A_pu_InWindow(m:Int, n:Int) -> Double {
         
         let mm = Double(m)
@@ -73,14 +86,14 @@ class EslamianVahidi {
     }
 
      
-    // self inductance (in the window, per-unit-length)
+    /// Self inductance of this EslamianVahidiSegment (in the window, per-unit-length)
     func L_pu_InWindow() -> Double {
         
         return M_pu_InWindow(otherSegment: self)
     }
     
-    // mutual inductance (in the window, per-unit-length)
-    func M_pu_InWindow(otherSegment:EslamianVahidi) -> Double {
+    /// Mutual inductance between this EslamianVahidiSegment and otherSegment (in the window, per-unit-length)
+    func M_pu_InWindow(otherSegment:EslamianVahidiSegment) -> Double {
         
         let L = self.core.windowWidth
         let H = self.core.realWindowHeight
@@ -89,9 +102,9 @@ class EslamianVahidi {
         let I2 = otherSegment.segment.I
                 
         var sum = 0.0
-        for m in 0..<EslamianVahidi.iterations {
+        for m in 0..<EslamianVahidiSegment.iterations {
             
-            for n in 0..<EslamianVahidi.iterations {
+            for n in 0..<EslamianVahidiSegment.iterations {
     
                 sum += self.J_DoubleFourier[m][n] * otherSegment.A_InWindow[m][n]
             }
@@ -100,7 +113,8 @@ class EslamianVahidi {
         return L * H / (4 * I1 * I2) * sum
     }
     
-    func M_pu_OutsideWindow(otherSegment:EslamianVahidi) -> Double {
+    /// Mutual inductance between this EslamianVahidiSegment and otherSegment (outside the window, per-unit-length)
+    func M_pu_OutsideWindow(otherSegment:EslamianVahidiSegment) -> Double {
         
         let J1:Double = self.segment.ActualJ
         let I1:Double = self.segment.I
@@ -112,7 +126,6 @@ class EslamianVahidi {
         
         let uStart:Double = self.segment.x1(coreRadius: coreRadius)
         let uEnd:Double = self.segment.x2(coreRadius: coreRadius)
-        
         
         let absTol = 1.0E-10
         let relTol = 1.0E-9

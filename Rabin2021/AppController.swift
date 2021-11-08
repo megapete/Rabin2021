@@ -350,10 +350,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         let segment3 = Segment(basicSections: [basicSection3], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
         let segment4 = Segment(basicSections: [basicSection4], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
         
-        let EVLtest1 = EslamianVahidi(segment: segment1!, core: core)
-        let EVLtest2 = EslamianVahidi(segment: segment2!, core: core)
-        let EVLtest3 = EslamianVahidi(segment: segment3!, core: core)
-        let EVLtest4 = EslamianVahidi(segment: segment4!, core: core)
+        let EVLtest1 = EslamianVahidiSegment(segment: segment1!, core: core)
+        let EVLtest2 = EslamianVahidiSegment(segment: segment2!, core: core)
+        let EVLtest3 = EslamianVahidiSegment(segment: segment3!, core: core)
+        let EVLtest4 = EslamianVahidiSegment(segment: segment4!, core: core)
         
         print("Mutual inductance 1-2: \(EVLtest1.M_pu_InWindow(otherSegment: EVLtest2))")
         print("Mutual inductance 2-1: \(EVLtest2.M_pu_InWindow(otherSegment: EVLtest1))")
@@ -383,11 +383,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             return
         }
         
-        var EV:[EslamianVahidi] = []
+        var EV:[EslamianVahidiSegment] = []
         
         for nextSegment in model.segments {
             
-            EV.append(EslamianVahidi(segment: nextSegment, core: core))
+            EV.append(EslamianVahidiSegment(segment: nextSegment, core: core))
         }
         
         let M = PCH_BaseClass_Matrix(matrixType: .general, numType: .Double, rows: UInt(EV.count), columns: UInt(EV.count))

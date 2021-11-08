@@ -7,9 +7,12 @@
 
 import Cocoa
 
+/// A LocStruct holds the physical location of a coil section in the window.
 struct LocStruct:Codable {
-    let radial:Int // 0 is closest to core
-    let axial:Int // 0 is closest to bottom yoke
+    /// The radial location, where 0 is closest to the core leg
+    let radial:Int
+    /// The axial location, where 0 is closest to the bottom yoke
+    let axial:Int
 }
 
 /// This struct defines  the most basic definitiion of a coil section. There are no "electrical" functions defined for the struct. It is basically just used to describe the physical and electrical characteristics of a coil section (either a single disc or a single layer).
@@ -20,12 +23,17 @@ struct BasicSection:Codable {
     
     /// The number of turns in the section
     let N:Double
-    /// The series current in the section
+    /// The series current through a single turn in the section
     let I:Double
     
     /// The rectangle that holds the section, assuming that the origin is at (x=coreCenter, y=topOfBottomYoke)
     private var rect:NSRect
     
+    /// Deisgnated initializer
+    /// - Parameter location: A LocStruct that is the location of the BasicSection in the phase
+    /// - Parameter N: The number of turns in the section
+    /// - Parameter I: The series current in a single turn of the section
+    /// - Parameter rect: The rectangle that the section occupies. The origin is at (LegCenter, BottomYoke)
     init(location:LocStruct, N:Double, I:Double, rect:NSRect)
     {
         self.location = location
@@ -41,6 +49,7 @@ struct BasicSection:Codable {
         }
     }
     
+    /// The radial dimension from the core leg center to the left-most edge of the section
     var r1:Double {
         get {
             return Double(self.rect.origin.x)
@@ -50,6 +59,7 @@ struct BasicSection:Codable {
         }
     }
     
+    /// The radial dimension from the core leg center to the right-most edge of the section
     var r2:Double {
         get {
             return Double(self.rect.origin.x + self.rect.size.width)
@@ -59,6 +69,7 @@ struct BasicSection:Codable {
         }
     }
     
+    /// The axial dimension from the core bottom yoke to the bottom-most edge of the section
     var z1:Double {
         get {
             return Double(self.rect.origin.y)
@@ -68,6 +79,7 @@ struct BasicSection:Codable {
         }
     }
     
+    /// The axial dimension from the core bottom yoke to the top-most edge of the section
     var z2:Double {
         get {
             return Double(self.rect.origin.y + self.rect.size.height)
@@ -77,12 +89,14 @@ struct BasicSection:Codable {
         }
     }
     
+    /// The height of the section
     var height:Double {
         get {
             return Double(self.rect.size.height)
         }
     }
     
+    /// The radial build (width) of the section
     var width:Double {
         get {
             return Double(self.rect.size.width)
