@@ -84,6 +84,28 @@ class EslamianVahidiSegment {
         
         return numerator / denominator
     }
+    
+    /// This private function is used to calculate the weighting of the "in core window" portion of the inductance calculation (the "outside the core window" weighting would be equal to (1 - returnedVaue). This algorithm used in the function is liable to change with time so the function is declared as private.
+    /// - Returns: If succesful, a value between 0 and 1 which is the normalized weighting of the inductance calculation, otherwise -1
+    private func Weighting(otherSegment:EslamianVahidiSegment) -> Double {
+        
+        // We use a simple algorithm that calculates the fraction of a circle that is equal to the diameter of the core, as located at the mean radius of this EslamianVahidiSegment and otherSecgment. The number is doubled to account for the center phase of the transformer having a window on either side.
+        
+        let selfCenterX = self.segment.r1 + self.segment.rect.width / 2.0
+        let otherCenterX = otherSegment.segment.r1 + otherSegment.segment.rect.width / 2.0
+        let meanRadius = (selfCenterX + otherCenterX) / 2.0
+        let totalCircumference = 2.0 * meanRadius * π
+        
+        let result = self.core.diameter / totalCircumference * 2.0
+        
+        guard result <= 1.0 else {
+            
+            DLog("Illegal weighting value!")
+            return -1.0
+        }
+        
+        return result
+    }
 
      
     /// Self inductance of this EslamianVahidiSegment (in the window, per-unit-length)
