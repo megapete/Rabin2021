@@ -106,7 +106,34 @@ class EslamianVahidiSegment {
         
         return result
     }
-
+    
+    /// Get the mutual (or self) inductance of this EslamianVahidiSegment to another one (or itself). The default is to use the result of the Weighting function to calculate the inductance, but the user can choose to just get the "outside the window" result.  The paper calls for subtracting µ0/(8π) from the calculated values of self-inductance to account for  the skin effect. It is not clear to me whether that amount is in Henries/meter (I'm pretty sure it is), nor whether it should be used for the sizes of conductors used in power transformers. For now, a Boolean needs to be specified as true to have the amount deducted from the calculation (for self-inductance only).
+    /// - Parameter otherSegment: An optional EslamianVahidiSegment. If this parameter is nil, the routine calculates self-inductance. It is not an error to set this parameter to self to explicitly ask for the self-inductance
+    /// - Parameter useWeighting: If true (the default), the routine uses the Weighting function to calculate the inductance. If this parameter is false, only the "Outside the Window" calculation is used.
+    /// - Parameter adjustForSkinEffect: If true, deduct µ0/(8π) from the per-unit-length calculations for self inductance. The default is false.
+    /// - Returns: The inductance in Henries
+    func M(otherSegment:EslamianVahidiSegment?, useWeighting:Bool = true, adjustForSkinEffect:Bool = false) -> Double
+    {
+        let other:EslamianVahidiSegment = otherSegment == nil ? self : otherSegment!
+        
+        let inWindow = M_pu_InWindow(otherSegment: other)
+        let outWindow = M_pu_OutsideWindow(otherSegment: other)
+        
+        let weighting = useWeighting ? self.Weighting(otherSegment: other) : 1.0
+        
+        var M_pu = outWindow * weighting + inWindow * (1.0 - weighting)
+        
+        let selfCenterX = self.segment.r1 + self.segment.rect.width / 2.0
+        let otherCenterX = other.segment.r1 + other.segment.rect.width / 2.0
+        let meanRadius = (selfCenterX + otherCenterX) / 2.0
+        
+        if adjustForSkinEffect {
+            
+            M_pu -= µ0 / (8.0 * π)
+        }
+        
+        return 2.0 * π * meanRadius * M_pu
+    }
      
     /// Self inductance of this EslamianVahidiSegment (in the window, per-unit-length)
     func L_pu_InWindow() -> Double {
