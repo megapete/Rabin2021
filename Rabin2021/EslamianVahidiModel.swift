@@ -42,7 +42,7 @@ class EslamianVahidiSegment {
         self.core = core
         self.yCenter = (segment.y1() + segment.y2()) / 2.0
         
-        print("Calculating all Jmn and Amn for segment: \(segment.serialNumber)")
+        // print("Calculating all Jmn and Amn for segment: \(segment.serialNumber)")
         for m in 0..<EslamianVahidiSegment.iterations {
             for n in 0..<EslamianVahidiSegment.iterations {
                 
@@ -50,8 +50,64 @@ class EslamianVahidiSegment {
                 self.A_InWindow[m][n] = self.A_pu_InWindow(m: m + 1, n: n + 1)
             }
         }
-        print("Done!")
+        // print("Done!")
         
+    }
+    
+    /// Convenient class routine to create the inductance matrix  from an array of EslamianVahidiSegments. If successful, the returned matrix is in Cholesky factorization form and it can be used in a call to SolveForDoublePositiveDefinite(::) from PCH_BaseClass_Matrix.
+    /// - Parameter evSegments: An array of EslamianVahidiSegments
+    /// - Returns: The inductance matrix (as a Cholesky factorization)  or 'nil' if something went wrong
+    static func InductanceMatrix(evSegments:[EslamianVahidiSegment]) -> PCH_BaseClass_Matrix? {
+        
+        guard evSegments.count > 0 else {
+            
+            DLog("Empty array")
+            return nil
+        }
+        
+        let dim = evSegments.count
+        let result = PCH_BaseClass_Matrix(matrixType: .general, numType: .Double, rows: UInt(dim), columns: UInt(dim))
+        
+        for i in 0..<dim {
+            
+            result[i, i] = evSegments[i].M(otherSegment: nil, useWeighting: true, adjustForSkinEffect: false)
+            
+            for j in (i+1)..<dim {
+                
+                let newM = evSegments[i].M(otherSegment: evSegments[j], useWeighting: true, adjustForSkinEffect: false)
+                
+                result[i, j] = newM
+                result[j, i] = newM
+            }
+        }
+        
+        guard result.TestPositiveDefinite(overwriteExistingMatrix: true) else {
+            
+            DLog("Inductance matrix is not Positive-Definite!")
+            return nil
+        }
+        
+        
+        
+        return result
+    }
+    
+    /// Convenient class routine to create an array of EslamianVahidiSegment from an array of Segment and a core
+    /// - Parameter segments: An array of Segments
+    /// - Parameter core: The core for the model
+    /// - Returns: An array of EslamianVahidiSegments
+    static func Create_EV_Array(segments:[Segment], core:Core) -> [EslamianVahidiSegment]
+    {
+        var result:[EslamianVahidiSegment] = []
+        
+        for nextSegment in segments {
+            
+            let newEvSegment = EslamianVahidiSegment(segment: nextSegment, core: core)
+            
+            result.append(newEvSegment)
+        }
+        
+        return result
     }
     
     /// Function to calculate the entry in the J matrix located at (m,n)
@@ -230,7 +286,7 @@ class EslamianVahidiSegment {
         switch A_plus_2 {
             
         case .success((let result, _)):
-            print("A+ = \(result)")
+            // print("A+ = \(result)")
             funcResult = result
             
         case .failure(let error):
@@ -288,7 +344,7 @@ class EslamianVahidiSegment {
         switch A_minus_2 {
             
         case .success((let result, _)):
-            print("A- = \(result)")
+            // print("A- = \(result)")
             funcResult += result
             
         case .failure(let error):

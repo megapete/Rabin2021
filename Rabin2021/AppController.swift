@@ -422,6 +422,24 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         print("Inductance array is positive definite: \(M.TestPositiveDefinite())")
     }
     
+    @IBAction func handleGetIndMatrix(_ sender: Any) {
+        
+        guard let model = self.currentModel, model.numCoils > 0, let core = self.currentCore else {
+            
+            return
+        }
+        
+        print("Creating EV Segments...")
+        let evSegments = EslamianVahidiSegment.Create_EV_Array(segments: model.segments, core: core)
+        print("Done!\n\nCreating inductance matrix...")
+        guard let _ = EslamianVahidiSegment.InductanceMatrix(evSegments: evSegments) else {
+            
+            DLog("SHIT!")
+            return
+        }
+        
+        print("Done!")
+    }
     
     // MARK: File routines
     func doOpen(fileURL:URL) -> Bool {
@@ -442,7 +460,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             
             // if we make it here, we have successfully opened the file, so save it as the "last successfully opened file"
             UserDefaults.standard.set(fileURL, forKey: LAST_OPENED_INPUT_FILE_KEY)
-    
+                
             NSDocumentController.shared.noteNewRecentDocumentURL(fileURL)
             
             self.updateModel(xlFile: xlFile, reinitialize: true)
