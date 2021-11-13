@@ -566,13 +566,26 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     let zoomRatio:CGFloat = 0.75
     func handleZoomOut()
     {
-        self.scaleUnitSquare(to: (NSSize(width: zoomRatio, height: zoomRatio)))
+        self.frame.size.width *= zoomRatio
+        self.frame.size.height *= zoomRatio
+        self.frame.origin = NSPoint()
+        self.bounds.size.width /= zoomRatio
+        self.bounds.size.height /= zoomRatio
+        
         self.needsDisplay = true
     }
     
     func handleZoomIn()
     {
-        self.scaleUnitSquare(to: NSSize(width: 1.0 / zoomRatio, height: 1.0 / zoomRatio))
+        DLog("Before Zoom In: Bounds:\(self.bounds)\nFrame:\(self.frame)")
+        self.frame.size.width /= zoomRatio
+        self.frame.size.height /= zoomRatio
+        
+        self.bounds.size.width *= zoomRatio
+        self.bounds.size.height *= zoomRatio
+        DLog("After Zoom In: Bounds:\(self.bounds)\nFrame:\(self.frame)")
+        
+        
         self.needsDisplay = true
     }
     
@@ -581,29 +594,18 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         // reset the zoomRect
         self.zoomRect = NSRect()
         
-        // get the parent  view's aspect ratio
-        guard let parentView = self.superview else
-        {
-            DLog("There is no parent view!")
-            return
-        }
-                
-        let contentRectangle = parentView.bounds
-        let contentAspectRatio = contentRectangle.width / contentRectangle.height
-        
-        print("Old frame: \(self.frame); Old Bounds: \(self.bounds)")
-        
-        // Call PCH standard function (in GlobalDefs.swift) to force the current aspect ratio on the zoom rectangle
-        let newViewRect = ForceAspectRatioAndNormalize(srcRect: zRect, widthOverHeightRatio: contentAspectRatio)
-        let newScale = self.bounds.width / newViewRect.width
-        let frameToBoundsRatio = self.frame.width / self.bounds.width
-        let deltaX = newViewRect.origin.x - self.bounds.origin.x
-        let deltaY = newViewRect.origin.y - self.bounds.origin.y
-        let newFrameOrigin = NSPoint(x: -deltaX * newScale * frameToBoundsRatio, y: -deltaY * newScale * frameToBoundsRatio)
-        let newFrameSize = NSSize(width: self.boundary.width * newScale * frameToBoundsRatio, height: self.boundary.height * newScale * frameToBoundsRatio)
-        self.bounds = newViewRect
-        self.frame = NSRect(origin: newFrameOrigin, size: newFrameSize)
-        
+        print("Old frame: \(self.frame); Old bounds: \(self.bounds)")
+        // zRect is in the same units as self.bounds
+        print("New rect: \(zRect)")
+        // Get the width/height ratio of self.bounds
+        let reqWidthHeightRatio = self.bounds.width / self.bounds.height
+        // Fix the zRect
+        let newBoundsRect = ForceAspectRatioAndNormalize(srcRect: zRect, widthOverHeightRatio: reqWidthHeightRatio)
+        print("Fixed zoom rect: \(newBoundsRect)")
+        let zoomFactor = newBoundsRect.width / self.bounds.width
+        self.frame.size.width /= zoomFactor
+        self.frame.size.height /= zoomFactor
+        self.bounds = newBoundsRect
         
         print("New frame: \(self.frame); New Bounds: \(self.bounds)")
         
