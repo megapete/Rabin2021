@@ -169,6 +169,9 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         // This is my "simple" way to get a one-pixel (ish) line thickness
         NSBezierPath.defaultLineWidth = self.bounds.width / self.frame.width
+        print("New line width: \(self.bounds.width / self.frame.width)")
+        let scrollView = self.superview!.superview! as! NSScrollView
+        print("Magnification: \(scrollView.magnification)")
         
         // Drawing code here.
         let boundaryPath = NSBezierPath(rect: boundary)
@@ -459,6 +462,9 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             self.zoomRect!.size = newSize
             self.handleZoomRect(zRect: self.zoomRect!)
         }
+        else {
+            return
+        }
         
         self.mode = .selectSegment
         self.needsDisplay = true
@@ -477,6 +483,9 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     func mouseDownWithSelectSegment(event:NSEvent)
     {
         let clickPoint = self.convert(event.locationInWindow, from: nil)
+        print("Point:\(clickPoint)")
+        let clipBounds = self.convert(self.superview!.bounds, from: self.superview!)
+        print("Clip view: Bounds: \(clipBounds)")
         
         self.currentSegment = nil
         
@@ -488,6 +497,10 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 // self.appController!.UpdateToggleActivationMenu(deactivate: nextSegment.isActive)
                 break
             }
+        }
+        
+        if self.currentSegment == nil {
+            return
         }
         
         // check if it was actually a double-click
@@ -558,12 +571,13 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         self.boundary.size.width = tankWallR - coreRadius
         // DLog("Boundary: \(self.boundary)")
+        print("Clip view: Bounds:\(self.superview!.bounds)\nFrame:\(self.superview!.frame)")
         
         self.needsDisplay = true
     }
     
     // the zoom in/out ratio (maybe consider making this user-settable)
-    let zoomRatio:CGFloat = 0.75
+    var zoomRatio:CGFloat = 0.75
     func handleZoomOut()
     {
         self.frame.size.width *= zoomRatio
@@ -577,16 +591,30 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     func handleZoomIn()
     {
-        DLog("Before Zoom In: Bounds:\(self.bounds)\nFrame:\(self.frame)")
+        /*
+        print("Before Zoom In: Bounds:\(self.bounds)\nFrame:\(self.frame)")
+        self.bounds.size.width *= zoomRatio
+        self.bounds.size.height *= zoomRatio
+        
         self.frame.size.width /= zoomRatio
         self.frame.size.height /= zoomRatio
         
-        self.bounds.size.width *= zoomRatio
-        self.bounds.size.height *= zoomRatio
-        DLog("After Zoom In: Bounds:\(self.bounds)\nFrame:\(self.frame)")
         
+        print("After Zoom In: Bounds:\(self.bounds)\nFrame:\(self.frame)")
+        print("Clip view: Bounds:\(self.superview!.bounds)\nFrame:\(self.superview!.frame)")
+        */
         
-        self.needsDisplay = true
+        guard let clipView = self.superview as? NSClipView, let scrollView = clipView.superview as? NSScrollView else {
+            
+            DLog("Couldn't get clip view and/or scroll view")
+            return
+        }
+        
+        let contentCenter = NSPoint(x: scrollView.contentView.bounds.origin.x + scrollView.contentView.bounds.width / 2.0, y: scrollView.contentView.bounds.origin.y + scrollView.contentView.bounds.height / 2.0)
+        scrollView.setMagnification(scrollView.magnification / zoomRatio, centeredAt: contentCenter)
+        // zoomRatio *= zoomRatio
+        
+        // self.needsDisplay = true
     }
     
     func handleZoomRect(zRect:NSRect)
