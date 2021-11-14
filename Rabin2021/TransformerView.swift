@@ -10,6 +10,53 @@
 
 import Cocoa
 
+let dimensionMultiplier = 1000.0
+
+fileprivate extension NSPoint {
+    
+    /// Convert the dimensions in an NSPoint to some other unit
+    static func *(left:NSPoint, right:CGFloat) -> NSPoint {
+        
+        let newPoint = NSPoint(x: left.x * right, y: left.y * right)
+        return newPoint
+    }
+    
+    static func *=( left:inout NSPoint, right:CGFloat) {
+        
+        left = left * right
+    }
+    
+    static func +(left:NSPoint, right:NSSize) -> NSPoint {
+        
+        let newPoint = NSPoint(x: left.x + right.width, y: left.y + right.height)
+        return newPoint
+    }
+    
+    static func +=(left:inout NSPoint, right:NSSize) {
+        
+        left = left + right
+    }
+}
+
+fileprivate extension NSRect {
+    
+    /// Convert all the dimensions in an NSRect to some other unit
+    static func *(left:NSRect, right:CGFloat) -> NSRect {
+        
+        let newOrigin = left.origin * right
+        let newSize = NSSize(width: left.size.width * right, height: left.size.height * right)
+        
+        let newRect = NSRect(origin: newOrigin, size: newSize)
+        
+        return newRect
+    }
+    
+    static func *=(left:inout NSRect, right:CGFloat) {
+        
+        left = left * right
+    }
+}
+
 struct SegmentPath {
     
     let segment:Segment
@@ -18,13 +65,13 @@ struct SegmentPath {
     
     var path:NSBezierPath? {
         get {
-            return NSBezierPath(rect: self.segment.rect)
+            return NSBezierPath(rect: self.segment.rect * dimensionMultiplier)
         }
     }
     
     var rect:NSRect {
         get {
-            return self.segment.rect
+            return self.segment.rect * dimensionMultiplier
         }
     }
         
@@ -163,20 +210,29 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     // MARK: Draw function override
     override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
+        // super.draw(dirtyRect)
 
+        print("Dirty rect: \(dirtyRect)")
         let oldLineWidth = NSBezierPath.defaultLineWidth
         
-        // This is my "simple" way to get a one-pixel (ish) line thickness
+        /* This is my "simple" way to get a one-pixel (ish) line thickness
         NSBezierPath.defaultLineWidth = self.bounds.width / self.frame.width
         print("New line width: \(self.bounds.width / self.frame.width)")
+        */
+        // Set the line width to 1mm
+        NSBezierPath.defaultLineWidth = 1.0
         let scrollView = self.superview!.superview! as! NSScrollView
         print("Magnification: \(scrollView.magnification)")
         
         // Drawing code here.
-        let boundaryPath = NSBezierPath(rect: boundary)
-        self.boundaryColor.set()
-        boundaryPath.stroke()
+        
+        if self.needsToDraw(self.boundary) {
+            
+            print("Drawing boundary")
+            let boundaryPath = NSBezierPath(rect: boundary)
+            self.boundaryColor.set()
+            boundaryPath.stroke()
+        }
         
         for nextSegment in self.segments
         {
@@ -561,7 +617,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         let aspectRatio = parentView.bounds.width / parentView.bounds.height
         let boundsW = windowHt * aspectRatio
         
-        let newRect = NSRect(x: coreRadius, y: 0.0, width: boundsW, height: windowHt)
+        let newRect = NSRect(x: coreRadius, y: 0.0, width: boundsW, height: windowHt) * dimensionMultiplier
         // DLog("NewRect: \(newRect)")
         
         self.bounds = newRect
@@ -569,7 +625,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         // DLog("Bounds: \(self.bounds)")
         self.boundary = self.bounds
         
-        self.boundary.size.width = tankWallR - coreRadius
+        self.boundary.size.width = (tankWallR - coreRadius) * dimensionMultiplier
         // DLog("Boundary: \(self.boundary)")
         print("Clip view: Bounds:\(self.superview!.bounds)\nFrame:\(self.superview!.frame)")
         
@@ -610,7 +666,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             return
         }
         
-        let contentCenter = NSPoint(x: scrollView.contentView.bounds.origin.x + scrollView.contentView.bounds.width / 2.0, y: scrollView.contentView.bounds.origin.y + scrollView.contentView.bounds.height / 2.0)
+        let contentCenter = NSPoint(x: clipView.bounds.origin.x + clipView.bounds.width / 2.0, y: clipView.bounds.origin.y + clipView.bounds.height / 2.0)
         scrollView.setMagnification(scrollView.magnification / zoomRatio, centeredAt: contentCenter)
         // zoomRatio *= zoomRatio
         
