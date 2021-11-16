@@ -12,8 +12,14 @@ class PhaseModel:Codable {
     /// The segments that make up the model
     var segments:[Segment]
     
-    /// An array of arrays where the first index is the segment number and the second index (i) is J[i] for the segment
+    /// The core for the model
+    let core:Core
+    
+    /// An array of arrays where the first index is the segment number and the second index (i) is J[i] for the segment (used for DelVecchio only)
     var J:[[Double]] = []
+    
+    /// An array of Eslamian Vahidi segments
+    var evSegments:[EslamianVahidiSegment] = []
     
     var useWindowHeight:Double {
         get {
@@ -48,14 +54,69 @@ class PhaseModel:Codable {
         }
     }
     
-    init(segments:[Segment]) {
+    struct PhaseModelError:LocalizedError
+    {
+        enum errorType
+        {
+            case EmptyModel
+            case IllegalMatrix
+        }
+        
+        let info:String
+        let type:errorType
+        
+        var errorDescription: String?
+        {
+            get
+            {
+                if self.type == .EmptyModel
+                {
+                   return "There are no segments in the model!"
+                }
+                else if self.type == .IllegalMatrix {
+                    
+                    return "The inductance matrix is not positive-definite!"
+                }
+                
+                return "An unknown error occurred."
+            }
+        }
+    }
+    
+    init(segments:[Segment], core:Core, useEslamianVahidi:Bool = true) {
         
         self.segments = segments
+        self.core = core
         
-        for nextSegment in segments {
+        if useEslamianVahidi {
             
-            self.J.append(nextSegment.CreateFourierJ())
+            if segments.count > 0 {
+                
+                self.evSegments = EslamianVahidiSegment.Create_EV_Array(segments: segments, core: self.core)
+            }
+            
+        } else {
+            
+            for nextSegment in segments {
+                
+                self.J.append(nextSegment.CreateFourierJ())
+            }
         }
+    }
+    
+    func InductanceMatrix(useEslamianVahidi:Bool = true) throws -> PCH_BaseClass_Matrix  {
+        
+        guard self.evSegments.count > 0 else {
+            
+            throw PhaseModelError(info: "", type: .EmptyModel)
+        }
+        
+        guard let result = EslamianVahidiSegment.InductanceMatrix(evSegments: self.evSegments) else {
+            
+            throw PhaseModelError(info: "", type: .IllegalMatrix)
+        }
+        
+        return result
     }
     
     

@@ -13,7 +13,7 @@ import Foundation
 import Accelerate
 
 /// This class encapsulates the methods and formulas in the technical paper "New Methods for Computation of the Inductance Matrix of Transformer Windings for Very Fast Transients Studies" by M. Eslamian and B. Vahidi. It uses the double-Fourier-series method to define the current density in a segment that is located "inside the core window".
-class EslamianVahidiSegment {
+class EslamianVahidiSegment:Codable {
     
     /// Class constant for the number of iterations used in the class
     static let iterations = 200

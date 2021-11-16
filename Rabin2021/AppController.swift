@@ -94,7 +94,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             result.append(newSegment)
         }
         
-        return PhaseModel(segments: result)
+        return PhaseModel(segments: result, core: self.currentCore!)
     }
     
     func createBasicSections(xlFile:PCH_ExcelDesignFile) -> [BasicSection] {
@@ -210,7 +210,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             }
             else {
                 
-                let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: axialPos), N: nextWinding.numTurns.max, I: nextWinding.I, rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: nextWinding.bottomEdgePack, width: nextWinding.electricalRadialBuild, height: nextWinding.electricalHeight))
+                let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: axialPos), N: nextWinding.numTurns.max, I: nextWinding.I, rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: axialCenter - nextWinding.electricalHeight / 2.0, width: nextWinding.electricalRadialBuild, height: nextWinding.electricalHeight))
                 
                 result.append(newBasicSection)
             }
@@ -297,7 +297,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         let segment1 = Segment(basicSections: sections1, interleaved: false, realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentCore!.adjustedWindHt)
         let segment2 = Segment(basicSections: sections2, interleaved: false, realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentCore!.adjustedWindHt)
         
-        let model = PhaseModel(segments: [segment1!, segment2!])
+        let model = PhaseModel(segments: [segment1!, segment2!], core: self.currentCore!)
         
         let L = model.realWindowHeight
         
