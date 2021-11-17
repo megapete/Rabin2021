@@ -204,7 +204,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     var currentSegment:SegmentPath? = nil
     
-    var fluxlines:[NSBezierPath] = []
+    // var fluxlines:[NSBezierPath] = []
     
     @IBOutlet weak var contextualMenu:NSMenu!
     @IBOutlet weak var reverseCurrentDirectionMenuItem:NSMenuItem!
@@ -215,21 +215,19 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     @IBOutlet weak var moveWdgAxiallyMenuItem:NSMenuItem!
     @IBOutlet weak var splitSegmentMenuItem:NSMenuItem!
     
+    // The scrollview that this view is in
+    @IBOutlet weak var scrollView:NSScrollView!
+    
     // MARK: Draw function override
     override func draw(_ dirtyRect: NSRect) {
         // super.draw(dirtyRect)
 
-        print("Dirty rect: \(dirtyRect)")
         let oldLineWidth = NSBezierPath.defaultLineWidth
         
-        /* This is my "simple" way to get a one-pixel (ish) line thickness
-        NSBezierPath.defaultLineWidth = self.bounds.width / self.frame.width
-        print("New line width: \(self.bounds.width / self.frame.width)")
-        */
-        // Set the line width to 1mm
-        NSBezierPath.defaultLineWidth = 1.0
-        let scrollView = self.superview!.superview! as! NSScrollView
-        print("Magnification: \(scrollView.magnification)")
+        // Set the line width to 1mm (as defined by the original ZoomAll)
+        NSBezierPath.defaultLineWidth = 1.0 / scrollView.magnification
+        //let scrollView = self.superview!.superview! as! NSScrollView
+        // print("Magnification: \(scrollView.magnification)")
         
         // Drawing code here.
         
@@ -251,6 +249,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             self.ShowHandles(segment: currSeg)
         }
         
+        /*
         if !fluxlines.isEmpty
         {
             NSColor.black.set()
@@ -260,6 +259,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 nextPath.stroke()
             }
         }
+         */
         
         if self.mode == .zoomRect
         {

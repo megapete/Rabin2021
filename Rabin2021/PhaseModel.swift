@@ -42,6 +42,9 @@ class PhaseModel:Codable {
             case UnimplementedInductanceMethod
             case EmptyModel
             case IllegalMatrix
+            case CoilDoesNotExist
+            case NotADiscCoil
+            case IllegalAxialGap
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -65,6 +68,18 @@ class PhaseModel:Codable {
                 else if self.type == .UnimplementedInductanceMethod {
                     
                     return "DelVecchio inductance calculation method is not implemented!"
+                }
+                else if self.type == .CoilDoesNotExist {
+                    
+                    return "The coil does not exist!"
+                }
+                else if self.type == .NotADiscCoil {
+                    
+                    return "Expected a disc coil!"
+                }
+                else if self.type == .IllegalAxialGap {
+                    
+                    return "The axial gap is illegal. \(info)"
                 }
                 
                 return "An unknown error occurred."
@@ -95,6 +110,52 @@ class PhaseModel:Codable {
                 self.J.append(nextSegment.CreateFourierJ())
             }
         }
+    }
+    
+    /// Get the axial index of the highest (max Z) section for the given coil
+    func GetHighestSection(coil:Int) throws -> Int {
+        
+        guard let _ = Segment.SegmentAt(location: LocStruct(radial: coil, axial: 0), segments: self.segments) else {
+            
+            throw PhaseModelError(info: "", type: .CoilDoesNotExist)
+        }
+        
+        var result = 0
+        
+        while Segment.SegmentAt(location: LocStruct(radial: coil, axial: result + 1), segments: self.segments) != nil {
+            
+            result += 1
+        }
+        
+        return result
+    }
+    
+    /// Get the gap between the bottom-most section of a coil and the next adjacent section.  If the coil at the given radial position is not a disc coil, an error is thrown.
+    func StandardAxialGap(coil:Int) throws -> Double {
+        
+        guard let bottomMostDisc = Segment.SegmentAt(location: LocStruct(radial: coil, axial: 0), segments: self.segments) else {
+            
+            throw PhaseModelError(info: "", type: .CoilDoesNotExist)
+        }
+        
+        if bottomMostDisc.wdgType != .disc && bottomMostDisc.wdgType != .helix {
+            
+            throw PhaseModelError(info: "", type: .NotADiscCoil)
+        }
+        
+        guard let nextDisc = Segment.SegmentAt(location: LocStruct(radial: coil, axial: 1), segments: self.segments) else {
+            
+            throw PhaseModelError(info: "", type: .CoilDoesNotExist)
+        }
+        
+        let result = nextDisc.z1 - bottomMostDisc.z2
+        
+        if result < 0.0 {
+            
+            throw PhaseModelError(info: "It is negative", type: .IllegalAxialGap)
+        }
+        
+        return result
     }
     
     /// Calculate the inductance (M) matrix for the model, using the Eslamian & Vahidi method (DelVecchio is not implemented). Always pass 'true' to the parameter (or ignore it and it defaults it to true).

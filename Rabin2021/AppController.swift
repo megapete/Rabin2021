@@ -21,6 +21,18 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     /// The transformer view
     @IBOutlet weak var txfoView: TransformerView!
     
+    /// Menu items (for valiidation)
+    /// Zooming
+    @IBOutlet weak var zoomInMenuItem: NSMenuItem!
+    @IBOutlet weak var zoomOutMenuItem: NSMenuItem!
+    @IBOutlet weak var zoomRectMenuItem: NSMenuItem!
+    @IBOutlet weak var zoomAllMenuItem: NSMenuItem!
+    /// Static RIngs
+    @IBOutlet weak var staticRingOverMenuItem: NSMenuItem!
+    @IBOutlet weak var staticRingBelowMenuItem: NSMenuItem!
+    @IBOutlet weak var removeStaticRingMenuItem: NSMenuItem!
+    
+    
     /// Window controller to display graphs
     var graphWindowCtrl:PCH_GraphingWindow? = nil
     
@@ -577,6 +589,34 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     // MARK: Menu routines
     
     @IBAction func handleAddStaticRingOver(_ sender: Any) {
+        
+        guard let model = self.currentModel, let currentSegment = self.txfoView.currentSegment else {
+            
+            return
+        }
+        
+        // do some checking to make sure that there is room over the current disc for a static ring
+    
+        
+        do {
+            
+            let stdAxialGap = try model.StandardAxialGap(coil: currentSegment.segment.radialPos)
+            
+            
+            let newStaticRing = try Segment.StaticRing(adjacentSegment: currentSegment.segment, gapToSegment: stdAxialGap / 2.0, staticRingIsAbove: true, staticRingThickness: nil)
+            
+            model.segments.append(newStaticRing)
+            self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segmentColor: currentSegment.segmentColor))
+            self.txfoView.currentSegment = self.txfoView.segments.last!
+            
+            self.txfoView.needsDisplay = true
+        }
+        catch {
+            
+            let alert = NSAlert(error: error)
+            let _ = alert.runModal()
+            return
+        }
     }
     
     
@@ -630,6 +670,24 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     // MARK: Menu Validation
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         
+        if menuItem == self.zoomInMenuItem || menuItem == self.zoomOutMenuItem || menuItem == self.zoomRectMenuItem || menuItem == self.zoomRectMenuItem {
+            
+            return self.currentModel != nil
+        }
+        
+        if menuItem == self.staticRingOverMenuItem || menuItem == self.staticRingBelowMenuItem {
+            
+            return self.currentModel != nil && self.txfoView.currentSegment != nil && !self.txfoView.currentSegment!.segment.isStaticRing
+        }
+        
+        if menuItem == self.removeStaticRingMenuItem {
+            
+            return self.currentModel != nil && self.txfoView.currentSegment != nil && self.txfoView.currentSegment!.segment.isStaticRing
+        }
+        
+        // default to true
         return true
     }
+    
+    
 }

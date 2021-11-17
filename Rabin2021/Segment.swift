@@ -32,7 +32,7 @@ struct Segment: Codable, Equatable {
     
     private var serialnumberStore:Int
     
-    /// Segment serial number (needed for the mirrorSegment property and to make the "==" operator code simpler. Note that this value is equal to the negative of the adjacent segment's serial number for static rings.
+    /// Segment serial number (needed for the mirrorSegment property and to make the "==" operator code simpler. Note that this value is equal to the negative of the adjacent segment's serial number for static rings with the exception of coils at axial position zero, which are assigned Int.min.
     var serialNumber:Int {
         get {
             return serialnumberStore
@@ -303,7 +303,7 @@ struct Segment: Codable, Equatable {
             
             var newSegment = try Segment(basicSections: [srSection], interleaved: false, isStaticRing: true, realWindowHeight: adjacentSegment.realWindowHeight, useWindowHeight: adjacentSegment.useWindowHeight)
             
-            newSegment.serialnumberStore = -adjacentSegment.serialNumber
+            newSegment.serialnumberStore = adjacentSegment.serialNumber > 0 ? -adjacentSegment.serialNumber : Int.min
             
             return newSegment
         }
