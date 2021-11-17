@@ -7,6 +7,9 @@
 
 import Foundation
 
+/// A file-private constant for the thickness of a standard static ring
+fileprivate let stdStaticRingThickness = 0.625 * meterPerInch
+
 /// A segment is a collection of BasicSections. The collection MUST be from the same Winding and it must represent an axially contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed). Static rings and radial shields are special Segments - creation routines (class functions) are provided for each.
 struct Segment: Codable, Equatable {
     
@@ -27,8 +30,14 @@ struct Segment: Codable, Equatable {
         }
     }
     
-    /// Segment serial number (needed for the mirrorSegment property and to make the "==" operator code simpler
-    let serialNumber:Int
+    private var serialnumberStore:Int
+    
+    /// Segment serial number (needed for the mirrorSegment property and to make the "==" operator code simpler. Note that this value is equal to the negative of the adjacent segment's serial number for static rings.
+    var serialNumber:Int {
+        get {
+            return serialnumberStore
+        }
+    }
     
     /// The first (index = 0) entry  has the lowest Z and the last entry has the highest.
     private var basicSectionStore:[BasicSection] = []
@@ -182,15 +191,14 @@ struct Segment: Codable, Equatable {
     /// - Note: This initiializer may fail.
     /// - Parameter basicSections: An array of BasicSections. The sections must be part of the same Winding, be adjacent, and in order from lowest Z to highest Z.
     /// - Parameter interleaved: Boolean for indication of whether the Segment is interleaved or not (default: false)
-    /// - Parameter isStaticRing: Boolean to indicate that the Segment is actaully a static ring
+    /// - Parameter isStaticRing: Boolean to indicate that the Segment is actaully a static ring (defualt: false)
     /// - Parameter realWindowHeight: The actual window height of the core
     /// - Parameter useWindowHeight: The window height that should be used (important for some Delvecchio calculations)
-    init?(basicSections:[BasicSection], interleaved:Bool = false, isStaticRing:Bool = false, realWindowHeight:Double, useWindowHeight:Double)
+    init(basicSections:[BasicSection], interleaved:Bool = false, isStaticRing:Bool = false, realWindowHeight:Double, useWindowHeight:Double) throws
     {
         guard let first = basicSections.first, let last = basicSections.last else {
             
-            DLog("Array is empty")
-            return nil
+            throw SegmentError(info: "", type: .EmptyModel)
         }
         
         let winding = first.location.radial
@@ -204,8 +212,8 @@ struct Segment: Codable, Equatable {
             
             guard basicSections[i].location.axial == axialIndex + 1, basicSections[i].z1 > zCurrent, basicSections[i].location.radial == winding else {
                 
-                DLog("Illegal entry in array")
-                return nil
+                
+                throw SegmentError(info: "\(basicSections[i].location)", type: .IllegalSection)
             }
             
             axialIndex = basicSections[i].location.axial
@@ -217,20 +225,92 @@ struct Segment: Codable, Equatable {
         self.interleaved = interleaved
         
         self.rect = NSRect(x: first.r1, y: first.z1, width: first.width, height: last.z2 - first.z1)
-        self.serialNumber = Segment.nextSerialNumber
+        
+        // if it's a static ring, set the serial number to a dummy number
+        self.serialnumberStore = isStaticRing ? -1 : Segment.nextSerialNumber
+        self.isStaticRing = isStaticRing
+    }
+    
+    struct SegmentError:LocalizedError {
+        
+        /// The different error types that are available
+        enum errorType {
+            
+            case EmptyModel
+            case IllegalSection
+        }
+        
+        /// Specialized information that can be added to the descritpion String (can be the empty string)
+        let info:String
+        /// The error type
+        let type:errorType
+        
+        /// The error string to return with the error
+        var errorDescription: String? {
+            
+            get {
+                
+                if self.type == .EmptyModel {
+                    
+                    return "There are no BasicSections in the array!"
+                }
+                else if self.type == .IllegalSection {
+                    
+                    return "There is an illegal BasicSection (at location \(info)) in the array. All sections must be part of the same coil, must be adjacent, and in order from lowest Z to highest Z."
+                }
+                
+                return "An unknown error occurred."
+            }
+        }
+    }
+    
+    /// Class function to find a Segment at a particular location (as defined by a LocStruct) in an array of Segments. If there is no segment at the location, the function returns nil. 
+    static func SegmentAt(location:LocStruct, segments:[Segment]) -> Segment? {
+        
+        for nextSegment in segments {
+            
+            if nextSegment.basicSectionStore[0].location.radial == location.radial {
+                
+                if nextSegment.basicSectionStore[0].location.axial == location.axial {
+                    
+                    return nextSegment
+                }
+            }
+        }
+        
+        return nil
     }
     
     /// Class function to create a static ring.
-    static func StaticRing(adjacentSegment:Segment, gapToSegment:Double, staticRingIsAbove:Bool) -> Segment {
+    /// - Parameter adjacentSegment: The segment that is immediately adjacent to the static ring.
+    /// - Parameter gapToSegment: The axial gap (shrunk) between the adjacent segment and the static ring
+    /// - Parameter staticRingIsAbove: Boolean to indicate whether the static ring is above (true) or below (false) the adjacentSegment
+    /// - Parameter staticRingThickness: An optional static ring thickness (axial height). If nil, then the "standard" thickness of 5/8" is used.
+    static func StaticRing(adjacentSegment:Segment, gapToSegment:Double, staticRingIsAbove:Bool, staticRingThickness:Double? = nil) throws -> Segment {
         
         // Create a special BasicSection as follows
         // The location is the same as the adjacent segment EXCEPT the axial position is the NEGATIVE of the adjacent segment
         let srLocation = LocStruct(radial: adjacentSegment.radialPos, axial: -adjacentSegment.axialPos)
         // The rect has the same x-origin and width as the adjacent segment but is offset by the gaptoSegment and the standard static-ring axial dimension
-        let srThickness = 0.625 * meterPerInch
-        let offsetY = gapToSegment + srThickness
-        let srRect = adjacentSegment.rect.offsetBy(dx: 0.0, dy: staticRingIsAbove ? offsetY : -offsetY)
+        let srThickness = staticRingThickness == nil ? stdStaticRingThickness : staticRingThickness!
+        let offsetY = staticRingIsAbove ? adjacentSegment.rect.height + gapToSegment : -(gapToSegment + srThickness)
+        var srRect = adjacentSegment.rect
+        srRect.origin.y += offsetY
+        srRect.size.height = srThickness
         let srSection = BasicSection(location: srLocation, N: 0.0, I: 0.0, wdgType: .disc, rect: srRect)
+        
+        do {
+            
+            var newSegment = try Segment(basicSections: [srSection], interleaved: false, isStaticRing: true, realWindowHeight: adjacentSegment.realWindowHeight, useWindowHeight: adjacentSegment.useWindowHeight)
+            
+            newSegment.serialnumberStore = -adjacentSegment.serialNumber
+            
+            return newSegment
+        }
+        catch {
+            
+            throw error
+        }
     }
     
     /*

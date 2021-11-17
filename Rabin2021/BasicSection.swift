@@ -8,7 +8,13 @@
 import Cocoa
 
 /// A LocStruct holds the physical location of a coil section in the window.
-struct LocStruct:Codable {
+struct LocStruct:Codable, CustomStringConvertible {
+    
+    var description: String {
+        
+        return "(R:\(self.radial), A:\(self.axial))"
+    }
+    
     /// The radial location, where 0 is closest to the core leg.
     let radial:Int
     /// The axial location, where 0 is closest to the bottom yoke.

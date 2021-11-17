@@ -69,7 +69,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.currentSections = self.createBasicSections(xlFile: xlFile)
         
         // initialize the model so that all the BasicSections are modeled
-        self.currentModel = self.initializeModel(basicSections: self.currentSections)
+        self.currentModel = self.initializeModel(basicSections: self.currentSections, xlFile: xlFile)
         
         self.initializeViews()
         
@@ -77,7 +77,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
     }
     
-    func initializeModel(basicSections:[BasicSection]) -> PhaseModel?
+    func initializeModel(basicSections:[BasicSection], xlFile:PCH_ExcelDesignFile) -> PhaseModel?
     {
         var result:[Segment] = []
         
@@ -85,13 +85,18 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         for nextSection in basicSections {
             
-            guard let newSegment = Segment(basicSections: [nextSection],  realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentWindowMultiplier * self.currentCore!.realWindowHeight) else {
+            do {
                 
-                ALog("Could not create Segment!")
+                let newSegment = try Segment(basicSections: [nextSection],  realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentWindowMultiplier * self.currentCore!.realWindowHeight)
+                
+                result.append(newSegment)
+            }
+            catch {
+                
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
                 return nil
             }
-            
-            result.append(newSegment)
         }
         
         return PhaseModel(segments: result, core: self.currentCore!)
@@ -294,8 +299,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         let sections1 = Array(self.currentSections[0...35])
         let sections2 = Array(self.currentSections[36...71])
         Segment.resetSerialNumber()
-        let segment1 = Segment(basicSections: sections1, interleaved: false, realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentCore!.adjustedWindHt)
-        let segment2 = Segment(basicSections: sections2, interleaved: false, realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentCore!.adjustedWindHt)
+        let segment1 = try? Segment(basicSections: sections1, interleaved: false, realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentCore!.adjustedWindHt)
+        let segment2 = try? Segment(basicSections: sections2, interleaved: false, realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentCore!.adjustedWindHt)
         
         let model = PhaseModel(segments: [segment1!, segment2!], core: self.currentCore!)
         
@@ -345,15 +350,15 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         let basicSection2 = BasicSection(location: LocStruct(radial: 0, axial: 1), N: 1, I: 1, wdgType: .disc, rect: NSRect(x: 0.091, y: 0.268 - 0.008, width: 0.004, height: 0.004))
         let basicSection3 = BasicSection(location: LocStruct(radial: 0, axial: 0), N: 1, I: 1, wdgType: .disc, rect: NSRect(x: 0.091, y: 0.268 - 0.016, width: 0.004, height: 0.004))
         let basicSection4 = BasicSection(location: LocStruct(radial: 1, axial: 0), N: N4, I: I4, wdgType: .disc, rect: NSRect(x: 0.100, y: 0.268, width: 0.004, height: 0.004))
-        let segment1 = Segment(basicSections: [basicSection1], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
-        let segment2 = Segment(basicSections: [basicSection2], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
-        let segment3 = Segment(basicSections: [basicSection3], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
-        let segment4 = Segment(basicSections: [basicSection4], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
+        let segment1 = try? Segment(basicSections: [basicSection1], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
+        let segment2 = try? Segment(basicSections: [basicSection2], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
+        let segment3 = try? Segment(basicSections: [basicSection3], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
+        let segment4 = try? Segment(basicSections: [basicSection4], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
         
-        let EVLtest1 = EslamianVahidiSegment(segment: segment1!, core: core)
-        let EVLtest2 = EslamianVahidiSegment(segment: segment2!, core: core)
-        let EVLtest3 = EslamianVahidiSegment(segment: segment3!, core: core)
-        let EVLtest4 = EslamianVahidiSegment(segment: segment4!, core: core)
+        let EVLtest1 = EslamianVahidiSegment(segment: segment1!, core: core)!
+        let EVLtest2 = EslamianVahidiSegment(segment: segment2!, core: core)!
+        let EVLtest3 = EslamianVahidiSegment(segment: segment3!, core: core)!
+        let EVLtest4 = EslamianVahidiSegment(segment: segment4!, core: core)!
         
         print("Mutual inductance 1-2: \(EVLtest1.M_pu_InWindow(otherSegment: EVLtest2))")
         print("Mutual inductance 2-1: \(EVLtest2.M_pu_InWindow(otherSegment: EVLtest1))")
@@ -387,7 +392,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         for nextSegment in model.segments {
             
-            EV.append(EslamianVahidiSegment(segment: nextSegment, core: core))
+            EV.append(EslamianVahidiSegment(segment: nextSegment, core: core)!)
         }
         
         let M = PCH_BaseClass_Matrix(matrixType: .general, numType: .Double, rows: UInt(EV.count), columns: UInt(EV.count))
@@ -570,6 +575,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     }
     
     // MARK: Menu routines
+    
+    @IBAction func handleAddStaticRingOver(_ sender: Any) {
+    }
+    
+    
+    @IBAction func handleAddStaticRingBelow(_ sender: Any) {
+    }
+    
     
     @IBAction func handleShowGraph(_ sender: Any) {
         

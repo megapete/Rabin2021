@@ -33,10 +33,15 @@ class EslamianVahidiSegment:Codable {
     /// To avoid long run times recalculating the vector potentials in the window, they are calculated once in the initilalizer and stored as a property
     var A_InWindow:[[Double]] = Array(repeating: Array(repeating: 0.0, count: EslamianVahidiSegment.iterations), count: EslamianVahidiSegment.iterations)
     
-    /// Designated initializer
-    /// - Parameter segment: The defining Segment for the EslamianVahidiSegment
+    /// Designated initializer. The routine may return nil if an illegal segment type (such as a static ring) is passed to it.
+    /// - Parameter segment: The defining Segment for the EslamianVahidiSegment. The segment cannot be a static ring or this call will fail.
     /// - Parameter core: The core that this EslamianVahidiSegment lives on
-    init(segment:Segment, core:Core) {
+    init?(segment:Segment, core:Core) {
+        
+        if segment.isStaticRing {
+            
+            return nil
+        }
         
         self.segment = segment
         self.core = core
@@ -102,9 +107,8 @@ class EslamianVahidiSegment:Codable {
         
         for nextSegment in segments {
             
-            if !nextSegment.isStaticRing {
-                
-                let newEvSegment = EslamianVahidiSegment(segment: nextSegment, core: core)
+            // the initializer will return nil if a static ring is passed to the routine
+            if let newEvSegment = EslamianVahidiSegment(segment: nextSegment, core: core) {
                 
                 result.append(newEvSegment)
             }

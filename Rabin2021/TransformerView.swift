@@ -65,6 +65,13 @@ struct SegmentPath {
     
     var path:NSBezierPath? {
         get {
+        
+            if segment.isStaticRing {
+                
+                let radius = self.segment.rect.height / 2.0
+                return NSBezierPath(roundedRect: self.segment.rect * dimensionMultiplier, xRadius: radius * dimensionMultiplier, yRadius: radius * dimensionMultiplier)
+            }
+            
             return NSBezierPath(rect: self.segment.rect * dimensionMultiplier)
         }
     }

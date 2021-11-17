@@ -673,6 +673,25 @@
                         </items>
                     </menu>
                 </menuItem>
+                <menuItem title="Shielding" id="goy-CL-wKA">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                    <menu key="submenu" title="Shielding" id="SoZ-oa-EmO">
+                        <items>
+                            <menuItem title="Add Static Ring Above Current Selection" id="fe2-2p-HNJ">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleAddStaticRingOver:" target="XWq-sU-B2V" id="Als-kO-rWN"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Add Static Ring Below Current Selection" id="mY3-zG-R2v">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleAddStaticRingBelow:" target="XWq-sU-B2V" id="3NU-cD-Axh"/>
+                                </connections>
+                            </menuItem>
+                        </items>
+                    </menu>
+                </menuItem>
                 <menuItem title="Test" id="CVY-Kw-ekf">
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <menu key="submenu" title="Test" id="385-Dl-vRU">
