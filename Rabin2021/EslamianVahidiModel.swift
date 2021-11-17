@@ -102,9 +102,12 @@ class EslamianVahidiSegment:Codable {
         
         for nextSegment in segments {
             
-            let newEvSegment = EslamianVahidiSegment(segment: nextSegment, core: core)
-            
-            result.append(newEvSegment)
+            if !nextSegment.isStaticRing {
+                
+                let newEvSegment = EslamianVahidiSegment(segment: nextSegment, core: core)
+                
+                result.append(newEvSegment)
+            }
         }
         
         return result

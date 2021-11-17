@@ -7,8 +7,7 @@
 
 import Foundation
 
-/// A segment is a collection of BasicSections. The collection MUST be from the same Winding and it must represent an axially contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed).
-
+/// A segment is a collection of BasicSections. The collection MUST be from the same Winding and it must represent an axially contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed). Static rings and radial shields are special Segments - creation routines (class functions) are provided for each.
 struct Segment: Codable, Equatable {
     
     static func == (lhs: Segment, rhs: Segment) -> Bool {
@@ -37,6 +36,15 @@ struct Segment: Codable, Equatable {
     /// A Boolean to indicate whether the segment is interleaved
     var interleaved:Bool
     
+    /// A Boolean to indicate whether the segment is actually a static ring
+    let isStaticRing:Bool
+    
+    /// The type of the coil that owns this segment
+    var wdgType:PCH_ExcelDesignFile.Winding.WindingType {
+        
+        return self.basicSectionStore[0].wdgType
+    }
+    
     /// The series current through a single turn in the segment
     let I:Double
     
@@ -44,10 +52,22 @@ struct Segment: Codable, Equatable {
     var radialPos:Int {
         get {
             guard self.basicSectionStore.count > 0 else {
-                return -1
+                return Int.min
             }
             
             return self.basicSectionStore[0].location.radial
+        }
+    }
+    
+    /// The axial position of the Segment. In the case where a Segment is made up of more than one BasicSection, the lowest BasicSection's axial position is used.
+    var axialPos:Int {
+        
+        get {
+            guard self.basicSectionStore.count > 0 else {
+                return Int.min
+            }
+            
+            return self.basicSectionStore[0].location.axial
         }
     }
     
@@ -162,9 +182,10 @@ struct Segment: Codable, Equatable {
     /// - Note: This initiializer may fail.
     /// - Parameter basicSections: An array of BasicSections. The sections must be part of the same Winding, be adjacent, and in order from lowest Z to highest Z.
     /// - Parameter interleaved: Boolean for indication of whether the Segment is interleaved or not (default: false)
+    /// - Parameter isStaticRing: Boolean to indicate that the Segment is actaully a static ring
     /// - Parameter realWindowHeight: The actual window height of the core
     /// - Parameter useWindowHeight: The window height that should be used (important for some Delvecchio calculations)
-    init?(basicSections:[BasicSection], interleaved:Bool = false, realWindowHeight:Double, useWindowHeight:Double)
+    init?(basicSections:[BasicSection], interleaved:Bool = false, isStaticRing:Bool = false, realWindowHeight:Double, useWindowHeight:Double)
     {
         guard let first = basicSections.first, let last = basicSections.last else {
             
@@ -198,6 +219,24 @@ struct Segment: Codable, Equatable {
         self.rect = NSRect(x: first.r1, y: first.z1, width: first.width, height: last.z2 - first.z1)
         self.serialNumber = Segment.nextSerialNumber
     }
+    
+    /// Class function to create a static ring.
+    static func StaticRing(adjacentSegment:Segment, gapToSegment:Double, staticRingIsAbove:Bool) -> Segment {
+        
+        // Create a special BasicSection as follows
+        // The location is the same as the adjacent segment EXCEPT the axial position is the NEGATIVE of the adjacent segment
+        let srLocation = LocStruct(radial: adjacentSegment.radialPos, axial: -adjacentSegment.axialPos)
+        // The rect has the same x-origin and width as the adjacent segment but is offset by the gaptoSegment and the standard static-ring axial dimension
+        let srThickness = 0.625 * meterPerInch
+        let offsetY = gapToSegment + srThickness
+        let srRect = adjacentSegment.rect.offsetBy(dx: 0.0, dy: staticRingIsAbove ? offsetY : -offsetY)
+        let srSection = BasicSection(location: srLocation, N: 0.0, I: 0.0, wdgType: .disc, rect: srRect)
+    }
+    
+    /*
+    func DiscSeriesCapacitance(discAbove:Segment, discBelow:Segment) throws -> Double {
+    
+    } */
     
     /// Reset the value of the next Segment serial number to be assigned to 0. NOTE:  Any Segments that may have been created by the user prior to calling this function SHOULD BE DESTROYED to avoid problems when testing for equality between Segments (the equality test reiles on the the serial number).
     static func resetSerialNumber()

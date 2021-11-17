@@ -21,50 +21,35 @@ class PhaseModel:Codable {
     /// An array of Eslamian Vahidi segments
     var evSegments:[EslamianVahidiSegment] = []
     
+    /// The window height to actually use
     var useWindowHeight:Double {
-        get {
-            if self.segments.count == 0 {
-            
-                return 0.0
-            }
-            
-            return self.segments[0].useWindowHeight
-        }
+        
+        return self.core.adjustedWindHt
     }
     
+    /// The real window height of the core
     var realWindowHeight:Double {
-        get {
-            if self.segments.count == 0 {
-            
-                return 0.0
-            }
-            
-            return self.segments[0].realWindowHeight
-        }
+        
+        return self.core.realWindowHeight
     }
     
-    var numCoils:Int {
-        get {
-            
-            guard self.segments.count > 0 else {
-                return 0
-            }
-            
-            return self.J.count
-        }
-    }
-    
+    /// Errors that can be thrown by some routines
     struct PhaseModelError:LocalizedError
     {
+        /// The different error types that are available
         enum errorType
         {
+            case UnimplementedInductanceMethod
             case EmptyModel
             case IllegalMatrix
         }
         
+        /// Specialized information that can be added to the descritpion String (can be the empty string)
         let info:String
+        /// The error type
         let type:errorType
         
+        /// The error string to return with the error
         var errorDescription: String?
         {
             get
@@ -77,12 +62,20 @@ class PhaseModel:Codable {
                     
                     return "The inductance matrix is not positive-definite!"
                 }
+                else if self.type == .UnimplementedInductanceMethod {
+                    
+                    return "DelVecchio inductance calculation method is not implemented!"
+                }
                 
                 return "An unknown error occurred."
             }
         }
     }
     
+    /// Designated initializer. Depending on the value of the 'useEslamianVahidi' parameter either a DelVecchio or EV-tyoe model will be created
+    /// - Parameter segments: The segments that make up the basis for the model
+    /// - Parameter core: The core (duh)
+    /// - Parameter useEslamianVahidi: A Boolean to indicate whether the inductance model should be per the Eslamian & Vahidi paper (the default), or per the DelVecchio book.
     init(segments:[Segment], core:Core, useEslamianVahidi:Bool = true) {
         
         self.segments = segments
@@ -104,7 +97,14 @@ class PhaseModel:Codable {
         }
     }
     
+    /// Calculate the inductance (M) matrix for the model, using the Eslamian & Vahidi method (DelVecchio is not implemented). Always pass 'true' to the parameter (or ignore it and it defaults it to true).
     func InductanceMatrix(useEslamianVahidi:Bool = true) throws -> PCH_BaseClass_Matrix  {
+        
+        // The DelVecchio method is not implemented so return an error if the useEslamianVahidi parameter is false
+        if !useEslamianVahidi {
+            
+            throw PhaseModelError(info: "", type: .UnimplementedInductanceMethod)
+        }
         
         guard self.evSegments.count > 0 else {
             
@@ -154,7 +154,7 @@ class PhaseModel:Codable {
         return result
     }
     
-    /// Get the Fourier series representation of the current density for the coil
+    /// Get the Fourier series representation of the current density for the coil (DelVecchio)
     func CoilJ(radialPos:Int) -> [Double]
     {
         var result:[Double] = Array(repeating: 0.0, count: PCH_RABIN2021_IterationCount + 1)

@@ -9,13 +9,13 @@ import Cocoa
 
 /// A LocStruct holds the physical location of a coil section in the window.
 struct LocStruct:Codable {
-    /// The radial location, where 0 is closest to the core leg
+    /// The radial location, where 0 is closest to the core leg.
     let radial:Int
-    /// The axial location, where 0 is closest to the bottom yoke
+    /// The axial location, where 0 is closest to the bottom yoke.
     let axial:Int
 }
 
-/// This struct defines  the most basic definitiion of a coil section. There are no "electrical" functions defined for the struct. It is basically just used to describe the physical and electrical characteristics of a coil section (either a single disc or a single layer).
+/// This struct defines  the most basic definitiion of a coil section. There are no "electrical" functions defined for the struct. It is basically just used to describe the physical and electrical characteristics of a coil section (either a single disc or a single layer). 
 struct BasicSection:Codable {
     
     /// The location of the section
@@ -26,20 +26,25 @@ struct BasicSection:Codable {
     /// The series current through a single turn in the section
     let I:Double
     
+    /// The coil type
+    let wdgType:PCH_ExcelDesignFile.Winding.WindingType
+    
     /// The rectangle that holds the section, assuming that the origin is at (x=coreCenter, y=topOfBottomYoke)
     private var rect:NSRect
     
     /// Deisgnated initializer
     /// - Parameter location: A LocStruct that is the location of the BasicSection in the phase
+    /// - Parameter wdgType: The PCH_ExcelDesignFile.Winding.WindingType of the owning winding
     /// - Parameter N: The number of turns in the section
     /// - Parameter I: The series current in a single turn of the section
     /// - Parameter rect: The rectangle that the section occupies. The origin is at (LegCenter, BottomYoke)
-    init(location:LocStruct, N:Double, I:Double, rect:NSRect)
+    init(location:LocStruct, N:Double, I:Double, wdgType:PCH_ExcelDesignFile.Winding.WindingType, rect:NSRect)
     {
         self.location = location
         self.N = N
         self.I = I
         self.rect = rect
+        self.wdgType = wdgType
     }
     
     /// The area of the section

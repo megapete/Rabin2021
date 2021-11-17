@@ -190,7 +190,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                         
                         let nextAxialPos = axialPos + sectionIndex
                         
-                        let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: nextAxialPos), N: turnsPerDisc, I: nextWinding.I, rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: currentZ, width: nextWinding.electricalRadialBuild, height: discHt))
+                        let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: nextAxialPos), N: turnsPerDisc, I: nextWinding.I, wdgType: wType, rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: currentZ, width: nextWinding.electricalRadialBuild, height: discHt))
                         
                         result.append(newBasicSection)
                         
@@ -210,7 +210,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             }
             else {
                 
-                let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: axialPos), N: nextWinding.numTurns.max, I: nextWinding.I, rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: axialCenter - nextWinding.electricalHeight / 2.0, width: nextWinding.electricalRadialBuild, height: nextWinding.electricalHeight))
+                let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: axialPos), N: nextWinding.numTurns.max, I: nextWinding.I, wdgType: wType, rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: axialCenter - nextWinding.electricalHeight / 2.0, width: nextWinding.electricalRadialBuild, height: nextWinding.electricalHeight))
                 
                 result.append(newBasicSection)
             }
@@ -236,7 +236,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     @IBAction func handleShowCoil1J(_ sender: Any) {
         
-        guard let model = self.currentModel, model.numCoils > 0 else {
+        guard let model = self.currentModel, model.segments.count > 0 else {
             
             return
         }
@@ -244,7 +244,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         let integerFormatter = NumberFormatter()
         integerFormatter.numberStyle = .none
         integerFormatter.minimum = 0
-        integerFormatter.maximum = NSNumber(integerLiteral: model.numCoils - 1)
+        integerFormatter.maximum = NSNumber(integerLiteral: model.segments.count - 1)
         
         let coilNumDlog = GetNumberDialog(descriptiveText: "Coil Number:", unitsText: "", noteText: "(0 is closest to core)", windowTitle: "J For Coil", initialValue: 0.0, fieldFormatter: integerFormatter)
         
@@ -341,10 +341,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         let I1 = 1.0
         let N4 = 2.0
         let I4 = I1 * N1 / N4
-        let basicSection1 = BasicSection(location: LocStruct(radial: 0, axial: 2), N: N1, I: I1, rect: NSRect(x: 0.091, y: 0.268, width: 0.004, height: 0.004))
-        let basicSection2 = BasicSection(location: LocStruct(radial: 0, axial: 1), N: 1, I: 1, rect: NSRect(x: 0.091, y: 0.268 - 0.008, width: 0.004, height: 0.004))
-        let basicSection3 = BasicSection(location: LocStruct(radial: 0, axial: 0), N: 1, I: 1, rect: NSRect(x: 0.091, y: 0.268 - 0.016, width: 0.004, height: 0.004))
-        let basicSection4 = BasicSection(location: LocStruct(radial: 1, axial: 0), N: N4, I: I4, rect: NSRect(x: 0.100, y: 0.268, width: 0.004, height: 0.004))
+        let basicSection1 = BasicSection(location: LocStruct(radial: 0, axial: 2), N: N1, I: I1, wdgType: .disc, rect: NSRect(x: 0.091, y: 0.268, width: 0.004, height: 0.004))
+        let basicSection2 = BasicSection(location: LocStruct(radial: 0, axial: 1), N: 1, I: 1, wdgType: .disc, rect: NSRect(x: 0.091, y: 0.268 - 0.008, width: 0.004, height: 0.004))
+        let basicSection3 = BasicSection(location: LocStruct(radial: 0, axial: 0), N: 1, I: 1, wdgType: .disc, rect: NSRect(x: 0.091, y: 0.268 - 0.016, width: 0.004, height: 0.004))
+        let basicSection4 = BasicSection(location: LocStruct(radial: 1, axial: 0), N: N4, I: I4, wdgType: .disc, rect: NSRect(x: 0.100, y: 0.268, width: 0.004, height: 0.004))
         let segment1 = Segment(basicSections: [basicSection1], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
         let segment2 = Segment(basicSections: [basicSection2], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
         let segment3 = Segment(basicSections: [basicSection3], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
@@ -378,7 +378,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     @IBAction func handleGetInductances(_ sender: Any) {
         
-        guard let model = self.currentModel, model.numCoils > 0, let core = self.currentCore else {
+        guard let model = self.currentModel, model.segments.count > 0, let core = self.currentCore else {
             
             return
         }
@@ -424,7 +424,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     @IBAction func handleGetIndMatrix(_ sender: Any) {
         
-        guard let model = self.currentModel, model.numCoils > 0, let core = self.currentCore else {
+        guard let model = self.currentModel, model.segments.count > 0, let core = self.currentCore else {
             
             return
         }
