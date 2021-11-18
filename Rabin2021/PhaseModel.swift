@@ -173,8 +173,52 @@ class PhaseModel:Codable {
             throw PhaseModelError(info: "", type: .SegmentNotInModel)
         }
         
+        var aboveResult:Double = -1.0
+        var belowResult:Double = -1.0
         
-        
+        do {
+            
+            if let staticRingAbove = try self.StaticRingAbove(segment: segment, recursiveCheck: true) {
+                
+                aboveResult = staticRingAbove.z1 - segment.z2
+            }
+            
+            if let staticRingBelow = try self.StaticRingBelow(segment: segment, recursiveCheck: true) {
+                
+                belowResult = segment.z1 - staticRingBelow.z2
+            }
+            
+            if aboveResult < 0.0 {
+                
+                let highest = try self.GetHighestSection(coil: segment.radialPos)
+                if segment.axialPos == highest {
+                    
+                    aboveResult = segment.realWindowHeight - segment.z2
+                }
+                else {
+                    
+                    aboveResult = self.segmentStore[segIndex + 1].z1 - segment.z2
+                }
+            }
+            
+            if belowResult < 0.0 {
+                
+                if segment.axialPos == 0 {
+                    
+                    belowResult = segment.z1
+                }
+                else {
+                    
+                    belowResult = segment.z1 - self.segmentStore[segIndex - 1].z2
+                }
+            }
+            
+            return (aboveResult, belowResult)
+        }
+        catch {
+            
+            throw error
+        }
     }
     
     /// Check if there is a static ring  above the given segment, and if so, return the segment - otherwise return nil. If the segment is not in the model, this function throws an error.
@@ -238,16 +282,16 @@ class PhaseModel:Codable {
             }
         }
         
-        // if this is the first segment, just return
-        guard segIndex + 1 < self.segmentStore.count else {
+        // if this is the bottom-most segment of a coil, just return
+        guard segment.axialPos > 0 else {
             
             return staticRingBelow
         }
         
         // there might still be a static ring below, but it's been defined as being above the previous segment in the array
-        if staticRingBelow == nil && recursiveCheck && self.segmentStore[segIndex + 1].radialPos == segment.radialPos {
+        if staticRingBelow == nil && recursiveCheck && self.segmentStore[segIndex - 1].radialPos == segment.radialPos {
             
-            staticRingBelow = try? StaticRingBelow(segment: self.segmentStore[segIndex + 1], recursiveCheck: false)
+            staticRingBelow = try? StaticRingAbove(segment: self.segmentStore[segIndex - 1], recursiveCheck: false)
         }
         
         return staticRingBelow
@@ -259,6 +303,7 @@ class PhaseModel:Codable {
         
         return self.segmentStore.first(where: {$0.location == location})
     }
+    
     
     /// Get the axial index of the highest (max Z) section for the given coil
     func GetHighestSection(coil:Int) throws -> Int {
@@ -273,6 +318,7 @@ class PhaseModel:Codable {
         
         return coilSections.last!.axialPos
     }
+    
     
     /// Get the gap between the bottom-most section of a coil and the next adjacent section.  If the coil at the given radial position is not a disc coil, an error is thrown.
     func StandardAxialGap(coil:Int) throws -> Double {
