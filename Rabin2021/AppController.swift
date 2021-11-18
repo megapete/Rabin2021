@@ -605,7 +605,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             
             let newStaticRing = try Segment.StaticRing(adjacentSegment: currentSegment.segment, gapToSegment: stdAxialGap / 2.0, staticRingIsAbove: true, staticRingThickness: nil)
             
-            model.segments.append(newStaticRing)
+            try model.InsertSegment(newSegment: newStaticRing)
             self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segmentColor: currentSegment.segmentColor))
             self.txfoView.currentSegment = self.txfoView.segments.last!
             

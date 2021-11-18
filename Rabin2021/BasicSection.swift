@@ -8,7 +8,20 @@
 import Cocoa
 
 /// A LocStruct holds the physical location of a coil section in the window.
-struct LocStruct:Codable, CustomStringConvertible {
+struct LocStruct:Codable, CustomStringConvertible, Comparable {
+    
+    static func < (lhs: LocStruct, rhs: LocStruct) -> Bool {
+        
+        if lhs.radial != rhs.radial {
+            
+            return lhs.radial < rhs.radial
+        }
+        else {
+            
+            return lhs.axial < rhs.axial
+        }
+    }
+    
     
     var description: String {
         

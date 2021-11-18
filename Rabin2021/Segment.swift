@@ -60,7 +60,9 @@ struct Segment: Codable, Equatable {
     /// The radial position of the segment (0 = closest to core)
     var radialPos:Int {
         get {
+            
             guard self.basicSectionStore.count > 0 else {
+                
                 return Int.min
             }
             
@@ -72,11 +74,19 @@ struct Segment: Codable, Equatable {
     var axialPos:Int {
         
         get {
+            
             guard self.basicSectionStore.count > 0 else {
+                
                 return Int.min
             }
             
             return self.basicSectionStore[0].location.axial
+        }
+    }
+    
+    var location:LocStruct {
+        get {
+            return LocStruct(radial: self.radialPos, axial: self.axialPos)
         }
     }
     
@@ -263,7 +273,7 @@ struct Segment: Codable, Equatable {
             }
         }
     }
-    
+    /*
     /// Class function to find a Segment at a particular location (as defined by a LocStruct) in an array of Segments. If there is no segment at the location, the function returns nil. 
     static func SegmentAt(location:LocStruct, segments:[Segment]) -> Segment? {
         
@@ -280,6 +290,7 @@ struct Segment: Codable, Equatable {
         
         return nil
     }
+     */
     
     /// Class function to create a static ring.
     /// - Parameter adjacentSegment: The segment that is immediately adjacent to the static ring.

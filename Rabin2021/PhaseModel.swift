@@ -9,8 +9,15 @@ import Foundation
 
 class PhaseModel:Codable {
     
-    /// The segments that make up the model
-    var segments:[Segment]
+    /// The segments that make up the model. This array is kept sorted by the LocStruct of the segments (radial first, then axial).
+    private var segmentStore:[Segment]
+    
+    /// read-only access to the segment store
+    var segments:[Segment] {
+        get {
+            return segmentStore
+        }
+    }
     
     /// The core for the model
     let core:Core
@@ -45,6 +52,8 @@ class PhaseModel:Codable {
             case CoilDoesNotExist
             case NotADiscCoil
             case IllegalAxialGap
+            case SegmentExists
+            case SegmentNotInModel
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -81,6 +90,14 @@ class PhaseModel:Codable {
                     
                     return "The axial gap is illegal. \(info)"
                 }
+                else if self.type == .SegmentExists {
+                    
+                    return "A segment already exists at location \(info)!"
+                }
+                else if self.type == .SegmentNotInModel {
+                    
+                    return "The segment does not exist in the model"
+                }
                 
                 return "An unknown error occurred."
             }
@@ -93,7 +110,16 @@ class PhaseModel:Codable {
     /// - Parameter useEslamianVahidi: A Boolean to indicate whether the inductance model should be per the Eslamian & Vahidi paper (the default), or per the DelVecchio book.
     init(segments:[Segment], core:Core, useEslamianVahidi:Bool = true) {
         
-        self.segments = segments
+        self.segmentStore = segments.sorted(by: { lhs, rhs in
+            
+            if lhs.radialPos != rhs.radialPos {
+                
+                return lhs.radialPos < rhs.radialPos
+            }
+            
+            return lhs.axialPos < rhs.axialPos
+        })
+        
         self.core = core
         
         if useEslamianVahidi {
@@ -112,54 +138,146 @@ class PhaseModel:Codable {
         }
     }
     
-    func SpaceAboveSegment(segment:Segment) -> Double {
+    /// Insert a new Segment into the correct spot in the model to keep the segmentStore array sorted. If there is an existing Segment with the same LocStruct as the new one, this function throws an error.
+    func InsertSegment(newSegment:Segment) throws {
         
-        let radial = segment.radialPos
-        let axial = segment.axialPos
-        
-        let sortedSegments = self.segments.sorted(by: { lhs, rhs in
+        // use binary search method to insert (probably unnecessary, but what the hell)
+        var lo = 0
+        var hi = self.segmentStore.count - 1
+        while lo <= hi {
             
-            if lhs.radialPos != rhs.radialPos {
+            let mid = (lo + hi) / 2
+            if self.segmentStore[mid].location < newSegment.location {
                 
-                return lhs.radialPos < rhs.radialPos
+                lo = mid + 1
             }
-            
-            return lhs.axialPos < rhs.axialPos
-        })
+            else if newSegment.location < self.segmentStore[mid].location {
+                
+                hi = mid - 1
+            }
+            else {
+                
+                // The location already exists, throw an error
+                throw PhaseModelError(info: "\(newSegment.location)", type: .SegmentExists)
+            }
+        }
         
-        // check if the segment has a static ring above it, and if so, return the gap
-        if self.segments.contains(where: {$0.radialPos == radial && $0.axialPos == -axial}) {
+        self.segmentStore.insert(newSegment, at: lo)
+    }
+    
+    /// Return the spaces above and below the given segment. If the segment is not in the model, throw an error.
+    func SpacesAboutSegment(segment:Segment) throws -> (above: Double, below: Double) {
+        
+        guard let segIndex = self.segmentStore.firstIndex(of: segment) else {
             
-            let staticRing = Segment.SegmentAt(location: LocStruct(radial: radial, axial: -axial), segments: sortedSegments)!
-            
-            return staticRing.z1 - segment.z2
+            throw PhaseModelError(info: "", type: .SegmentNotInModel)
         }
         
         
+        
+    }
+    
+    /// Check if there is a static ring  above the given segment, and if so, return the segment - otherwise return nil. If the segment is not in the model, this function throws an error.
+    /// - Parameter segment: The segment that we want to check
+    /// - Parameter recursiveCheck: A Boolean to indicate whether we should check below the next segment as well (needed to avoid infinite loops)
+    func StaticRingAbove(segment:Segment, recursiveCheck:Bool) throws -> Segment? {
+        
+        guard let segIndex = self.segmentStore.firstIndex(of: segment) else {
+            
+            throw PhaseModelError(info: "", type: .SegmentNotInModel)
+        }
+        
+        var staticRingAbove:Segment? = nil
+        
+        // check the easy thing first, looking for a direct reference to a static ring
+        let srAxial = segment.axialPos == 0 ? Int.min : -segment.axialPos
+        let srLocation = LocStruct(radial: segment.radialPos, axial: srAxial)
+        if let srSegment = self.SegmentAt(location: srLocation) {
+            
+            if srSegment.z1 > segment.z1 {
+                
+                staticRingAbove = srSegment
+            }
+        }
+        
+        // if this is the last segment, just return
+        guard segIndex + 1 < self.segmentStore.count else {
+            
+            return staticRingAbove
+        }
+        
+        // there might still be a static ring above, but it's been defined as being below the next segment in the array
+        if staticRingAbove == nil && recursiveCheck && self.segmentStore[segIndex + 1].radialPos == segment.radialPos {
+            
+            staticRingAbove = try? StaticRingBelow(segment: self.segmentStore[segIndex + 1], recursiveCheck: false)
+        }
+        
+        return staticRingAbove
+    }
+    
+    /// Check if there is a static ring  below the given segment, and if so, return the segment - otherwise return nil. If the segment is not in the model, this function throws an error.
+    /// - Parameter segment: The segment that we want to check
+    /// - Parameter recursiveCheck: A Boolean to indicate whether we should check above the next segment as well (needed to avoid infinite loops)
+    func StaticRingBelow(segment:Segment, recursiveCheck:Bool) throws -> Segment? {
+        
+        guard let segIndex = self.segmentStore.firstIndex(of: segment) else {
+            
+            throw PhaseModelError(info: "", type: .SegmentNotInModel)
+        }
+        
+        var staticRingBelow:Segment? = nil
+        
+        // check the easy thing first, looking for a direct reference to a static ring
+        let srAxial = segment.axialPos == 0 ? Int.min : -segment.axialPos
+        let srLocation = LocStruct(radial: segment.radialPos, axial: srAxial)
+        if let srSegment = self.SegmentAt(location: srLocation) {
+            
+            if srSegment.z1 < segment.z1 {
+                
+                staticRingBelow = srSegment
+            }
+        }
+        
+        // if this is the first segment, just return
+        guard segIndex + 1 < self.segmentStore.count else {
+            
+            return staticRingBelow
+        }
+        
+        // there might still be a static ring below, but it's been defined as being above the previous segment in the array
+        if staticRingBelow == nil && recursiveCheck && self.segmentStore[segIndex + 1].radialPos == segment.radialPos {
+            
+            staticRingBelow = try? StaticRingBelow(segment: self.segmentStore[segIndex + 1], recursiveCheck: false)
+        }
+        
+        return staticRingBelow
+    }
+    
+    
+    /// Check if there is a Segment at the specified location and if so, return it (otherwise, return nil)
+    func SegmentAt(location:LocStruct) -> Segment? {
+        
+        return self.segmentStore.first(where: {$0.location == location})
     }
     
     /// Get the axial index of the highest (max Z) section for the given coil
     func GetHighestSection(coil:Int) throws -> Int {
         
-        guard let _ = Segment.SegmentAt(location: LocStruct(radial: coil, axial: 0), segments: self.segments) else {
+        guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
             throw PhaseModelError(info: "", type: .CoilDoesNotExist)
         }
         
-        var result = 0
+        // I believe that this is in order but it should be tested
+        let coilSections = self.segmentStore.filter({$0.radialPos == coil})
         
-        while Segment.SegmentAt(location: LocStruct(radial: coil, axial: result + 1), segments: self.segments) != nil {
-            
-            result += 1
-        }
-        
-        return result
+        return coilSections.last!.axialPos
     }
     
     /// Get the gap between the bottom-most section of a coil and the next adjacent section.  If the coil at the given radial position is not a disc coil, an error is thrown.
     func StandardAxialGap(coil:Int) throws -> Double {
         
-        guard let bottomMostDisc = Segment.SegmentAt(location: LocStruct(radial: coil, axial: 0), segments: self.segments) else {
+        guard let bottomMostDisc = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
             throw PhaseModelError(info: "", type: .CoilDoesNotExist)
         }
@@ -169,7 +287,7 @@ class PhaseModel:Codable {
             throw PhaseModelError(info: "", type: .NotADiscCoil)
         }
         
-        guard let nextDisc = Segment.SegmentAt(location: LocStruct(radial: coil, axial: 1), segments: self.segments) else {
+        guard let nextDisc = self.SegmentAt(location: LocStruct(radial: coil, axial: 1)) else {
             
             throw PhaseModelError(info: "", type: .CoilDoesNotExist)
         }
