@@ -112,6 +112,32 @@ class PhaseModel:Codable {
         }
     }
     
+    func SpaceAboveSegment(segment:Segment) -> Double {
+        
+        let radial = segment.radialPos
+        let axial = segment.axialPos
+        
+        let sortedSegments = self.segments.sorted(by: { lhs, rhs in
+            
+            if lhs.radialPos != rhs.radialPos {
+                
+                return lhs.radialPos < rhs.radialPos
+            }
+            
+            return lhs.axialPos < rhs.axialPos
+        })
+        
+        // check if the segment has a static ring above it, and if so, return the gap
+        if self.segments.contains(where: {$0.radialPos == radial && $0.axialPos == -axial}) {
+            
+            let staticRing = Segment.SegmentAt(location: LocStruct(radial: radial, axial: -axial), segments: sortedSegments)!
+            
+            return staticRing.z1 - segment.z2
+        }
+        
+        
+    }
+    
     /// Get the axial index of the highest (max Z) section for the given coil
     func GetHighestSection(coil:Int) throws -> Int {
         
