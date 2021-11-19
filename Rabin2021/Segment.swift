@@ -49,9 +49,9 @@ struct Segment: Codable, Equatable {
     let isStaticRing:Bool
     
     /// The type of the coil that owns this segment
-    var wdgType:PCH_ExcelDesignFile.Winding.WindingType {
+    var wdgType:BasicSectionWindingData.WdgType {
         
-        return self.basicSectionStore[0].wdgType
+        return self.basicSectionStore[0].wdgData.type
     }
     
     /// The series current through a single turn in the segment
@@ -291,19 +291,19 @@ struct Segment: Codable, Equatable {
             throw SegmentError(info: "\(self.location)", type: .StaticRing)
         }
         
-        if self.wdgType == .helix || self.wdgType == .sheet {
+        if self.wdgType == .helical || self.wdgType == .sheet {
             
             return 0.0
         }
         
         // For disc coils, this corresponds to Ctt in the DelVeccio book. For layer windings, it is the turn-turn capacitance in the axial direction (my own invention).
         
-        let tau = 2.0 * self.basicSectionStore[0].turnInsulation
+        let tau = 2.0 * self.basicSectionStore[0].wdgData.turn.turnInsulation
         
         if self.wdgType == .disc || self.wdgType == .layer {
             
             // the calculation of the turn thickness of laye windings does not account for ducts in the winding
-            let h = self.wdgType == .disc ? self.basicSectionStore[0].height - tau : self.basicSectionStore[0].width / self.basicSectionStore[0].numLayers
+            let h = self.wdgType == .disc ? self.basicSectionStore[0].height - tau : self.basicSectionStore[0].width / Double(self.basicSectionStore[0].wdgData.layers.numLayers)
             
             var Ctt:Double = ε0 * εPaper
             Ctt *= π * (self.r1 + self.r2)
@@ -333,8 +333,8 @@ struct Segment: Codable, Equatable {
         srRect.origin.y += offsetY
         srRect.size.height = srThickness
         // we need to create a dummy cable definition for the static ring
-        let srCableDef = PCH_ExcelDesignFile.Winding.Cable(conductor: .single, numStrandsAxial: 1, numStrandsRadial: 1, numCTCstrands: 1, strandAxialDimension: 0.0, strandRadialDimension: 0.0, strandInsulation: 0.0, insulation: 0.125 * meterPerInch)
-        let srSection = BasicSection(location: srLocation, N: 0.0, I: 0.0, wdgType: .disc, cableDef: srCableDef, numLayers: 1, rect: srRect)
+        let srWdgData = BasicSectionWindingData(type: .disc, layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: 0, axialDimn: 0, turnInsulation: 0.125 * meterPerInch))
+        let srSection = BasicSection(location: srLocation, N: 0.0, I: 0.0, wdgData: srWdgData,  rect: srRect)
         
         do {
             

@@ -328,7 +328,7 @@ class PhaseModel:Codable {
             throw PhaseModelError(info: "", type: .CoilDoesNotExist)
         }
         
-        if bottomMostDisc.wdgType != .disc && bottomMostDisc.wdgType != .helix {
+        if bottomMostDisc.wdgType != .disc && bottomMostDisc.wdgType != .helical {
             
             throw PhaseModelError(info: "", type: .NotADiscCoil)
         }

@@ -207,7 +207,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                         
                         let nextAxialPos = axialPos + sectionIndex
                         
-                        let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: nextAxialPos), N: turnsPerDisc, I: nextWinding.I, wdgType: wType, cableDef: nextWinding.turnDefinition.cable, numLayers: 1.0, rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: currentZ, width: nextWinding.electricalRadialBuild, height: discHt))
+                        let wdgData = BasicSectionWindingData(type: wType == .disc ? .disc : .helical, layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: nextWinding.turnDefinition.radialDimension, axialDimn: nextWinding.turnDefinition.axialDimension, turnInsulation: nextWinding.turnDefinition.cable.strandInsulation + nextWinding.turnDefinition.cable.insulation))
+                        
+                        let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: nextAxialPos), N: turnsPerDisc, I: nextWinding.I, wdgData: wdgData, rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: currentZ, width: nextWinding.electricalRadialBuild, height: discHt))
                         
                         result.append(newBasicSection)
                         
@@ -227,7 +229,19 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             }
             else {
                 
-                let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: axialPos), N: nextWinding.numTurns.max, I: nextWinding.I, wdgType: wType, cableDef: nextWinding.turnDefinition.cable, numLayers: Double(nextWinding.numRadialSections), rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: axialCenter - nextWinding.electricalHeight / 2.0, width: nextWinding.electricalRadialBuild, height: nextWinding.electricalHeight))
+                var bsWdgType:BasicSectionWindingData.WdgType = .sheet
+                if nextWinding.windingType == .layer || nextWinding.windingType == .section {
+                    bsWdgType = .layer
+                }
+                else if nextWinding.windingType == .multistart {
+                    bsWdgType = .multistart
+                }
+                
+                let layerData = BasicSectionWindingData.LayerData(numLayers: bsWdgType == .disc ? Int(nextWinding.numTurns.max) : nextWinding.numRadialSections, interLayerInsulation: nextWinding.interLayerInsulation, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: nextWinding.numRadialDucts, ductDimn: nextWinding.radialDuctDimension))
+                
+                let turnData = BasicSectionWindingData.TurnData(radialDimn: nextWinding.turnDefinition.radialDimension, axialDimn: nextWinding.turnDefinition.axialDimension, turnInsulation: nextWinding.turnDefinition.cable.strandInsulation + nextWinding.turnDefinition.cable.insulation)
+                
+                let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: axialPos), N: nextWinding.numTurns.max, I: nextWinding.I, wdgData: BasicSectionWindingData(type: bsWdgType, layers: layerData, turn: turnData), rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: axialCenter - nextWinding.electricalHeight / 2.0, width: nextWinding.electricalRadialBuild, height: nextWinding.electricalHeight))
                 
                 result.append(newBasicSection)
             }
@@ -358,11 +372,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         let I1 = 1.0
         let N4 = 2.0
         let I4 = I1 * N1 / N4
-        let cable = PCH_ExcelDesignFile.Winding.Cable(conductor: .single, numStrandsAxial: 1, numStrandsRadial: 1, numCTCstrands: 1, strandAxialDimension: 0.0039, strandRadialDimension: 0.0039, strandInsulation: 0.0, insulation: 0.0001)
-        let basicSection1 = BasicSection(location: LocStruct(radial: 0, axial: 2), N: N1, I: I1, wdgType: .disc, cableDef: cable, numLayers: 1.0, rect: NSRect(x: 0.091, y: 0.268, width: 0.004, height: 0.004))
-        let basicSection2 = BasicSection(location: LocStruct(radial: 0, axial: 1), N: 1, I: 1, wdgType: .disc, cableDef: cable, numLayers: 1.0, rect: NSRect(x: 0.091, y: 0.268 - 0.008, width: 0.004, height: 0.004))
-        let basicSection3 = BasicSection(location: LocStruct(radial: 0, axial: 0), N: 1, I: 1, wdgType: .disc, cableDef: cable, numLayers: 1.0, rect: NSRect(x: 0.091, y: 0.268 - 0.016, width: 0.004, height: 0.004))
-        let basicSection4 = BasicSection(location: LocStruct(radial: 1, axial: 0), N: N4, I: I4, wdgType: .disc, cableDef: cable, numLayers: 1.0, rect: NSRect(x: 0.100, y: 0.268, width: 0.004, height: 0.004))
+        let wdgData = BasicSectionWindingData(type: .disc, layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: 0.004, axialDimn: 0.004, turnInsulation: 0.001))
+        let basicSection1 = BasicSection(location: LocStruct(radial: 0, axial: 2), N: N1, I: I1, wdgData: wdgData, rect: NSRect(x: 0.091, y: 0.268, width: 0.004, height: 0.004))
+        let basicSection2 = BasicSection(location: LocStruct(radial: 0, axial: 1), N: 1, I: 1, wdgData: wdgData, rect: NSRect(x: 0.091, y: 0.268 - 0.008, width: 0.004, height: 0.004))
+        let basicSection3 = BasicSection(location: LocStruct(radial: 0, axial: 0), N: 1, I: 1, wdgData: wdgData, rect: NSRect(x: 0.091, y: 0.268 - 0.016, width: 0.004, height: 0.004))
+        let basicSection4 = BasicSection(location: LocStruct(radial: 1, axial: 0), N: N4, I: I4, wdgData: wdgData, rect: NSRect(x: 0.100, y: 0.268, width: 0.004, height: 0.004))
         let segment1 = try? Segment(basicSections: [basicSection1], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
         let segment2 = try? Segment(basicSections: [basicSection2], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
         let segment3 = try? Segment(basicSections: [basicSection3], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)

@@ -34,6 +34,45 @@ struct LocStruct:Codable, CustomStringConvertible, Comparable {
     let axial:Int
 }
 
+struct BasicSectionWindingData:Codable {
+    
+    enum WdgType:Int, Codable {
+        
+        case layer
+        case disc
+        case helical
+        case multistart
+        case sheet
+    }
+    
+    let type:WdgType
+    
+    struct LayerData:Codable {
+        
+        let numLayers:Int
+        let interLayerInsulation:Double
+        
+        struct DuctData:Codable {
+            
+            let numDucts:Int
+            let ductDimn:Double
+        }
+        
+        let ducts:DuctData
+    }
+    
+    let layers:LayerData
+    
+    struct TurnData:Codable {
+        
+        let radialDimn:Double
+        let axialDimn:Double
+        let turnInsulation:Double
+    }
+    
+    let turn:TurnData
+}
+
 /// This struct defines  the most basic definitiion of a coil section. There are no "electrical" functions defined for the struct. It is basically just used to describe the physical and electrical characteristics of a coil section (either a single disc or a single layer). 
 struct BasicSection:Codable {
     
@@ -45,22 +84,8 @@ struct BasicSection:Codable {
     /// The series current through a single turn in the section
     let I:Double
     
-    /// The coil type
-    let wdgType:PCH_ExcelDesignFile.Winding.WindingType
-    
-    /// The base cable for a turn definition
-    let cableDef:PCH_ExcelDesignFile.Winding.Cable
-    
-    /// The number of layers
-    let numLayers:Double
-    
-    /// The insulation (radially) over one turn
-    var turnInsulation:Double {
-        get {
-        
-            return (self.cableDef.strandInsulation + self.cableDef.insulation) * self.cableDef.shrinkageInsulation
-        }
-    }
+    /// Extra winding data that we need for certain calculations
+    let wdgData:BasicSectionWindingData
     
     /// The rectangle that holds the section, assuming that the origin is at (x=coreCenter, y=topOfBottomYoke)
     private var rect:NSRect
@@ -73,15 +98,13 @@ struct BasicSection:Codable {
     /// - Parameter N: The number of turns in the section
     /// - Parameter I: The series current in a single turn of the section
     /// - Parameter rect: The rectangle that the section occupies. The origin is at (LegCenter, BottomYoke)
-    init(location:LocStruct, N:Double, I:Double, wdgType:PCH_ExcelDesignFile.Winding.WindingType, cableDef:PCH_ExcelDesignFile.Winding.Cable, numLayers:Double, rect:NSRect)
+    init(location:LocStruct, N:Double, I:Double, wdgData:BasicSectionWindingData, rect:NSRect)
     {
         self.location = location
         self.N = N
         self.I = I
         self.rect = rect
-        self.wdgType = wdgType
-        self.cableDef = cableDef
-        self.numLayers = numLayers
+        self.wdgData = wdgData
     }
     
     /// The area of the section
