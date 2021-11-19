@@ -157,7 +157,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             
             let numMainGaps = Double(mainGaps.count)
             
-            // let numMainAxialSections = 1.0 + numMainGaps
+            // let turnInsulation = nextWinding.turnDefinition.cable.insulation
             
             // We treat disc coils and helical coils the same way (specifically, we treat helical coils as disc coils with 1 turn per disc). For now, all other coil types are treated as one huge lumped section that spans the entire radial build by the electrical height. Note that the series capacitance calculations for those types of coils should still be done properly.
             if wType == .disc || wType == .helix {
@@ -207,7 +207,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                         
                         let nextAxialPos = axialPos + sectionIndex
                         
-                        let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: nextAxialPos), N: turnsPerDisc, I: nextWinding.I, wdgType: wType, rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: currentZ, width: nextWinding.electricalRadialBuild, height: discHt))
+                        let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: nextAxialPos), N: turnsPerDisc, I: nextWinding.I, wdgType: wType, cableDef: nextWinding.turnDefinition.cable, numLayers: 1.0, rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: currentZ, width: nextWinding.electricalRadialBuild, height: discHt))
                         
                         result.append(newBasicSection)
                         
@@ -227,7 +227,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             }
             else {
                 
-                let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: axialPos), N: nextWinding.numTurns.max, I: nextWinding.I, wdgType: wType, rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: axialCenter - nextWinding.electricalHeight / 2.0, width: nextWinding.electricalRadialBuild, height: nextWinding.electricalHeight))
+                let newBasicSection = BasicSection(location: LocStruct(radial: radialPos, axial: axialPos), N: nextWinding.numTurns.max, I: nextWinding.I, wdgType: wType, cableDef: nextWinding.turnDefinition.cable, numLayers: Double(nextWinding.numRadialSections), rect: NSRect(x: nextWinding.innerDiameter / 2.0, y: axialCenter - nextWinding.electricalHeight / 2.0, width: nextWinding.electricalRadialBuild, height: nextWinding.electricalHeight))
                 
                 result.append(newBasicSection)
             }
@@ -358,10 +358,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         let I1 = 1.0
         let N4 = 2.0
         let I4 = I1 * N1 / N4
-        let basicSection1 = BasicSection(location: LocStruct(radial: 0, axial: 2), N: N1, I: I1, wdgType: .disc, rect: NSRect(x: 0.091, y: 0.268, width: 0.004, height: 0.004))
-        let basicSection2 = BasicSection(location: LocStruct(radial: 0, axial: 1), N: 1, I: 1, wdgType: .disc, rect: NSRect(x: 0.091, y: 0.268 - 0.008, width: 0.004, height: 0.004))
-        let basicSection3 = BasicSection(location: LocStruct(radial: 0, axial: 0), N: 1, I: 1, wdgType: .disc, rect: NSRect(x: 0.091, y: 0.268 - 0.016, width: 0.004, height: 0.004))
-        let basicSection4 = BasicSection(location: LocStruct(radial: 1, axial: 0), N: N4, I: I4, wdgType: .disc, rect: NSRect(x: 0.100, y: 0.268, width: 0.004, height: 0.004))
+        let cable = PCH_ExcelDesignFile.Winding.Cable(conductor: .single, numStrandsAxial: 1, numStrandsRadial: 1, numCTCstrands: 1, strandAxialDimension: 0.0039, strandRadialDimension: 0.0039, strandInsulation: 0.0, insulation: 0.0001)
+        let basicSection1 = BasicSection(location: LocStruct(radial: 0, axial: 2), N: N1, I: I1, wdgType: .disc, cableDef: cable, numLayers: 1.0, rect: NSRect(x: 0.091, y: 0.268, width: 0.004, height: 0.004))
+        let basicSection2 = BasicSection(location: LocStruct(radial: 0, axial: 1), N: 1, I: 1, wdgType: .disc, cableDef: cable, numLayers: 1.0, rect: NSRect(x: 0.091, y: 0.268 - 0.008, width: 0.004, height: 0.004))
+        let basicSection3 = BasicSection(location: LocStruct(radial: 0, axial: 0), N: 1, I: 1, wdgType: .disc, cableDef: cable, numLayers: 1.0, rect: NSRect(x: 0.091, y: 0.268 - 0.016, width: 0.004, height: 0.004))
+        let basicSection4 = BasicSection(location: LocStruct(radial: 1, axial: 0), N: N4, I: I4, wdgType: .disc, cableDef: cable, numLayers: 1.0, rect: NSRect(x: 0.100, y: 0.268, width: 0.004, height: 0.004))
         let segment1 = try? Segment(basicSections: [basicSection1], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
         let segment2 = try? Segment(basicSections: [basicSection2], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
         let segment3 = try? Segment(basicSections: [basicSection3], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)

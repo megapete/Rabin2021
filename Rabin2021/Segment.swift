@@ -248,6 +248,8 @@ struct Segment: Codable, Equatable {
             
             case EmptyModel
             case IllegalSection
+            case StaticRing
+            case UnimplementedWdgType
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -268,29 +270,51 @@ struct Segment: Codable, Equatable {
                     
                     return "There is an illegal BasicSection (at location \(info)) in the array. All sections must be part of the same coil, must be adjacent, and in order from lowest Z to highest Z."
                 }
+                else if self.type == .StaticRing {
+                    
+                    return "The segment at location \(info) is a static ring"
+                }
+                else if self.type == .UnimplementedWdgType {
+                    
+                    return "Unimplemented winding type!"
+                }
                 
                 return "An unknown error occurred."
             }
         }
     }
-    /*
-    /// Class function to find a Segment at a particular location (as defined by a LocStruct) in an array of Segments. If there is no segment at the location, the function returns nil. 
-    static func SegmentAt(location:LocStruct, segments:[Segment]) -> Segment? {
+    
+    func CapacitanceTurnToTurn() throws -> Double {
         
-        for nextSegment in segments {
+        guard !self.isStaticRing else {
             
-            if nextSegment.basicSectionStore[0].location.radial == location.radial {
-                
-                if nextSegment.basicSectionStore[0].location.axial == location.axial {
-                    
-                    return nextSegment
-                }
-            }
+            throw SegmentError(info: "\(self.location)", type: .StaticRing)
         }
         
-        return nil
+        if self.wdgType == .helix || self.wdgType == .sheet {
+            
+            return 0.0
+        }
+        
+        // For disc coils, this corresponds to Ctt in the DelVeccio book. For layer windings, it is the turn-turn capacitance in the axial direction (my own invention).
+        
+        let tau = 2.0 * self.basicSectionStore[0].turnInsulation
+        
+        if self.wdgType == .disc || self.wdgType == .layer {
+            
+            // the calculation of the turn thickness of laye windings does not account for ducts in the winding
+            let h = self.wdgType == .disc ? self.basicSectionStore[0].height - tau : self.basicSectionStore[0].width / self.basicSectionStore[0].numLayers
+            
+            var Ctt:Double = ε0 * εPaper
+            Ctt *= π * (self.r1 + self.r2)
+            Ctt *= (h + 2 * tau) / tau
+            
+            return Ctt
+        }
+        
+        throw SegmentError(info: "", type: .UnimplementedWdgType)
     }
-     */
+    
     
     /// Class function to create a static ring.
     /// - Parameter adjacentSegment: The segment that is immediately adjacent to the static ring.
@@ -308,7 +332,9 @@ struct Segment: Codable, Equatable {
         var srRect = adjacentSegment.rect
         srRect.origin.y += offsetY
         srRect.size.height = srThickness
-        let srSection = BasicSection(location: srLocation, N: 0.0, I: 0.0, wdgType: .disc, rect: srRect)
+        // we need to create a dummy cable definition for the static ring
+        let srCableDef = PCH_ExcelDesignFile.Winding.Cable(conductor: .single, numStrandsAxial: 1, numStrandsRadial: 1, numCTCstrands: 1, strandAxialDimension: 0.0, strandRadialDimension: 0.0, strandInsulation: 0.0, insulation: 0.125 * meterPerInch)
+        let srSection = BasicSection(location: srLocation, N: 0.0, I: 0.0, wdgType: .disc, cableDef: srCableDef, numLayers: 1, rect: srRect)
         
         do {
             
@@ -323,11 +349,6 @@ struct Segment: Codable, Equatable {
             throw error
         }
     }
-    
-    /*
-    func DiscSeriesCapacitance(discAbove:Segment, discBelow:Segment) throws -> Double {
-    
-    } */
     
     /// Reset the value of the next Segment serial number to be assigned to 0. NOTE:  Any Segments that may have been created by the user prior to calling this function SHOULD BE DESTROYED to avoid problems when testing for equality between Segments (the equality test reiles on the the serial number).
     static func resetSerialNumber()

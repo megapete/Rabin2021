@@ -48,22 +48,40 @@ struct BasicSection:Codable {
     /// The coil type
     let wdgType:PCH_ExcelDesignFile.Winding.WindingType
     
+    /// The base cable for a turn definition
+    let cableDef:PCH_ExcelDesignFile.Winding.Cable
+    
+    /// The number of layers
+    let numLayers:Double
+    
+    /// The insulation (radially) over one turn
+    var turnInsulation:Double {
+        get {
+        
+            return (self.cableDef.strandInsulation + self.cableDef.insulation) * self.cableDef.shrinkageInsulation
+        }
+    }
+    
     /// The rectangle that holds the section, assuming that the origin is at (x=coreCenter, y=topOfBottomYoke)
     private var rect:NSRect
     
     /// Deisgnated initializer
     /// - Parameter location: A LocStruct that is the location of the BasicSection in the phase
     /// - Parameter wdgType: The PCH_ExcelDesignFile.Winding.WindingType of the owning winding
+    /// - Parameter cableDef: The basic cable used for the  turn definition for the section
+    /// - Parameter numLayers: The number of layers in the section (generally only important for layer windings - should be 1 for disc coils
     /// - Parameter N: The number of turns in the section
     /// - Parameter I: The series current in a single turn of the section
     /// - Parameter rect: The rectangle that the section occupies. The origin is at (LegCenter, BottomYoke)
-    init(location:LocStruct, N:Double, I:Double, wdgType:PCH_ExcelDesignFile.Winding.WindingType, rect:NSRect)
+    init(location:LocStruct, N:Double, I:Double, wdgType:PCH_ExcelDesignFile.Winding.WindingType, cableDef:PCH_ExcelDesignFile.Winding.Cable, numLayers:Double, rect:NSRect)
     {
         self.location = location
         self.N = N
         self.I = I
         self.rect = rect
         self.wdgType = wdgType
+        self.cableDef = cableDef
+        self.numLayers = numLayers
     }
     
     /// The area of the section
