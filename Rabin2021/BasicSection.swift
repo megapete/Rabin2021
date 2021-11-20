@@ -5,11 +5,15 @@
 //  Created by Peter Huber on 2021-10-06.
 //
 
+// This file contains the definition for the most basic section that our program recognizes, along with a few support structs that it uses.
+
 import Cocoa
 
 /// A LocStruct holds the physical location of a coil section in the window.
 struct LocStruct:Codable, CustomStringConvertible, Comparable {
     
+    // Required function for Comparable. Note that the '==' operator is automatically created for us since the member properties of the class (radial and axial) are both of type Int, which is also Comparable.
+    // Basically, a section that is part of a coil that is closer to the core is "less than" a section that is further away. If the two sections are in the same coil, then the one closer to the bottom yoke is the 'lesser' of the two.
     static func < (lhs: LocStruct, rhs: LocStruct) -> Bool {
         
         if lhs.radial != rhs.radial {
@@ -34,8 +38,10 @@ struct LocStruct:Codable, CustomStringConvertible, Comparable {
     let axial:Int
 }
 
+/// A struct that holds data important to calculations like capacitance. I chose to create this structure instead of dragging around stuff form PCH_ExcelDesignFileReader_ (and thus requiring that that class be attched to any program that this class becomes a part of).
 struct BasicSectionWindingData:Codable {
     
+    /// The winding types that we recognize
     enum WdgType:Int, Codable {
         
         case layer
@@ -45,8 +51,10 @@ struct BasicSectionWindingData:Codable {
         case sheet
     }
     
+    /// The WdgType of the section
     let type:WdgType
     
+    /// Layer data for the section (only relevent for layer, sheet, and multistart windings)
     struct LayerData:Codable {
         
         let numLayers:Int
@@ -63,6 +71,7 @@ struct BasicSectionWindingData:Codable {
     
     let layers:LayerData
     
+    /// Turn data for the section (note that we do not store the data for the cables that make up the turn)
     struct TurnData:Codable {
         
         let radialDimn:Double
@@ -92,11 +101,9 @@ struct BasicSection:Codable {
     
     /// Deisgnated initializer
     /// - Parameter location: A LocStruct that is the location of the BasicSection in the phase
-    /// - Parameter wdgType: The PCH_ExcelDesignFile.Winding.WindingType of the owning winding
-    /// - Parameter cableDef: The basic cable used for the  turn definition for the section
-    /// - Parameter numLayers: The number of layers in the section (generally only important for layer windings - should be 1 for disc coils
     /// - Parameter N: The number of turns in the section
     /// - Parameter I: The series current in a single turn of the section
+    /// - Parameter wdgData: A BasicSectionWindingData struct for the winding to which the new section belongs
     /// - Parameter rect: The rectangle that the section occupies. The origin is at (LegCenter, BottomYoke)
     init(location:LocStruct, N:Double, I:Double, wdgData:BasicSectionWindingData, rect:NSRect)
     {
@@ -154,7 +161,7 @@ struct BasicSection:Codable {
         }
     }
     
-    /// The height of the section
+    /// The axial height of the section
     var height:Double {
         get {
             return Double(self.rect.size.height)

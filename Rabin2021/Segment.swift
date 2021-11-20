@@ -5,22 +5,26 @@
 //  Created by Peter Huber on 2021-10-07.
 //
 
+// This file defines the most basic segment that is used for calculations of inductance and capacitance for the model. A Segment is made up of one or more BasicSections.
+
 import Foundation
 
 /// A file-private constant for the thickness of a standard static ring
 fileprivate let stdStaticRingThickness = 0.625 * meterPerInch
 
-/// A segment is a collection of BasicSections. The collection MUST be from the same Winding and it must represent an axially contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed). Static rings and radial shields are special Segments - creation routines (class functions) are provided for each.
-struct Segment: Codable, Equatable {
+/// A Segment is, at its most basic, a collection of BasicSections. The collection MUST be from the same Winding and it must represent an axially contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (for disc coils, only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed). Static rings and radial shields are special Segments - creation routines (class functions) are provided for each.
+class Segment: Codable, Equatable {
     
+    /// Function required to make Segment be Equatable. Basically, we use the serial number to decide if two Segments are equal. This allows us to use Segment as a struct instead of a class, but it means that we must be very careful about setting those serial numbers.
     static func == (lhs: Segment, rhs: Segment) -> Bool {
         
         return lhs.serialNumber == rhs.serialNumber
     }
     
+    /// Global storage for the next serial number to assign
     private static var nextSerialNumberStore:Int = 0
     
-    /// Return the next available serial number for the Segment class.
+    /// Return the next available serial number for the Segment class, then advance the counter to the next number.
     static var nextSerialNumber:Int {
         get {
             
@@ -30,6 +34,7 @@ struct Segment: Codable, Equatable {
         }
     }
     
+    /// This segment's serial number
     private var serialnumberStore:Int
     
     /// Segment serial number (needed for the mirrorSegment property and to make the "==" operator code simpler. Note that this value is equal to the negative of the adjacent segment's serial number for static rings with the exception of coils at axial position zero, which are assigned Int.min.
@@ -47,6 +52,9 @@ struct Segment: Codable, Equatable {
     
     /// A Boolean to indicate whether the segment is actually a static ring
     let isStaticRing:Bool
+    
+    /// A Boolean to indicate whether the segment is actually a radial shield
+    let isRadialSheild:Bool
     
     /// The type of the coil that owns this segment
     var wdgType:BasicSectionWindingData.WdgType {
@@ -93,7 +101,7 @@ struct Segment: Codable, Equatable {
     /// The _actual_ window height for the core
     let realWindowHeight:Double
     
-    /// The window height that is used for the model
+    /// The window height that is used for DelVecchio inductance modeling
     let useWindowHeight:Double
     
     /// The rectangle that the segment occupies in the core window, with the origin at (LegCenter, BottomYoke)
@@ -150,7 +158,7 @@ struct Segment: Codable, Equatable {
         }
     }
     
-    /// The number of tuns in the Segment
+    /// The number of turns in the Segment
     var N:Double {
         get {
             var result = 0.0
@@ -198,13 +206,14 @@ struct Segment: Codable, Equatable {
     }
     
     /// Constructor for a Segment. The array of BasicSections that is passed in is checked to make sure that all sections are part of the same coil, and that they are adjacent and in order from lowest Z to highest Z.
-    /// - Note: This initiializer may fail.
+    /// - Note: This initiializer may fail and throw an error.
     /// - Parameter basicSections: An array of BasicSections. The sections must be part of the same Winding, be adjacent, and in order from lowest Z to highest Z.
     /// - Parameter interleaved: Boolean for indication of whether the Segment is interleaved or not (default: false)
-    /// - Parameter isStaticRing: Boolean to indicate that the Segment is actaully a static ring (defualt: false)
+    /// - Parameter isStaticRing: Boolean to indicate that the Segment is actaully a static ring (default: false)
+    /// - Parameter isRadialShield: Boolean to indicate that the Segment is actually a radial sheild (default: false)
     /// - Parameter realWindowHeight: The actual window height of the core
     /// - Parameter useWindowHeight: The window height that should be used (important for some Delvecchio calculations)
-    init(basicSections:[BasicSection], interleaved:Bool = false, isStaticRing:Bool = false, realWindowHeight:Double, useWindowHeight:Double) throws
+    init(basicSections:[BasicSection], interleaved:Bool = false, isStaticRing:Bool = false, isRadialShield:Bool = false, realWindowHeight:Double, useWindowHeight:Double) throws
     {
         guard let first = basicSections.first, let last = basicSections.last else {
             
@@ -236,11 +245,13 @@ struct Segment: Codable, Equatable {
         
         self.rect = NSRect(x: first.r1, y: first.z1, width: first.width, height: last.z2 - first.z1)
         
-        // if it's a static ring, set the serial number to a dummy number
-        self.serialnumberStore = isStaticRing ? -1 : Segment.nextSerialNumber
+        // if it's a static ring or radial shield, set the serial number to a dummy number, otherwise set it to the next available serial number
+        self.serialnumberStore = isStaticRing || isRadialShield ? -1 : Segment.nextSerialNumber
         self.isStaticRing = isStaticRing
+        self.isRadialSheild = isRadialShield
     }
     
+    /// Errors for the Segment class
     struct SegmentError:LocalizedError {
         
         /// The different error types that are available
@@ -249,6 +260,7 @@ struct Segment: Codable, Equatable {
             case EmptyModel
             case IllegalSection
             case StaticRing
+            case RadialShield
             case UnimplementedWdgType
         }
         
@@ -272,7 +284,11 @@ struct Segment: Codable, Equatable {
                 }
                 else if self.type == .StaticRing {
                     
-                    return "The segment at location \(info) is a static ring"
+                    return "The segment at location \(info) is a static ring!"
+                }
+                else if self.type == .RadialShield {
+                    
+                    return "The segment at location \(info) is a radial shield!"
                 }
                 else if self.type == .UnimplementedWdgType {
                     
@@ -289,6 +305,11 @@ struct Segment: Codable, Equatable {
         guard !self.isStaticRing else {
             
             throw SegmentError(info: "\(self.location)", type: .StaticRing)
+        }
+        
+        guard !self.isRadialSheild else {
+            
+            throw SegmentError(info: "\(self.location)", type: .RadialShield)
         }
         
         if self.wdgType == .helical || self.wdgType == .sheet {
@@ -315,8 +336,9 @@ struct Segment: Codable, Equatable {
         throw SegmentError(info: "", type: .UnimplementedWdgType)
     }
     
+    /// Class function to create a radial shield. The Segment has its 'isRadialShield' property set to true. The radial location of the shield is equal to the _negative_ of the 'adjacentSegment' argument. 
     
-    /// Class function to create a static ring.
+    /// Class function to create a static ring. The Segment is marked as a static ring using its 'isStaticRing' property. The radial location of the static ring is equal to the radial location of the 'adjacentSegment' argument. The axial location is equal to the _negative_ of the adjacentSegment argument, unless the adjacent segment is at axial location 0, in which case the static ring's axial location is equal to Int.min
     /// - Parameter adjacentSegment: The segment that is immediately adjacent to the static ring.
     /// - Parameter gapToSegment: The axial gap (shrunk) between the adjacent segment and the static ring
     /// - Parameter staticRingIsAbove: Boolean to indicate whether the static ring is above (true) or below (false) the adjacentSegment
@@ -338,7 +360,7 @@ struct Segment: Codable, Equatable {
         
         do {
             
-            var newSegment = try Segment(basicSections: [srSection], interleaved: false, isStaticRing: true, realWindowHeight: adjacentSegment.realWindowHeight, useWindowHeight: adjacentSegment.useWindowHeight)
+            let newSegment = try Segment(basicSections: [srSection], interleaved: false, isStaticRing: true, realWindowHeight: adjacentSegment.realWindowHeight, useWindowHeight: adjacentSegment.useWindowHeight)
             
             newSegment.serialnumberStore = adjacentSegment.serialNumber > 0 ? -adjacentSegment.serialNumber : Int.min
             
