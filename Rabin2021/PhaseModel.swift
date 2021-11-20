@@ -166,7 +166,7 @@ class PhaseModel:Codable {
     }
     
     /// Return the spaces above and below the given segment. If the segment is not in the model, throw an error.
-    func SpacesAboutSegment(segment:Segment) throws -> (above: Double, below: Double) {
+    func AxialSpacesAboutSegment(segment:Segment) throws -> (above: Double, below: Double) {
         
         guard let segIndex = self.segmentStore.firstIndex(of: segment) else {
             

@@ -37,7 +37,7 @@ class Segment: Codable, Equatable {
     /// This segment's serial number
     private var serialnumberStore:Int
     
-    /// Segment serial number (needed for the mirrorSegment property and to make the "==" operator code simpler. Note that this value is equal to the negative of the adjacent segment's serial number for static rings with the exception of coils at axial position zero, which are assigned Int.min.
+    /// Segment serial number (needed to make the "==" operator code simpler.
     var serialNumber:Int {
         get {
             return serialnumberStore
@@ -49,6 +49,9 @@ class Segment: Codable, Equatable {
         
     /// A Boolean to indicate whether the segment is interleaved
     var interleaved:Bool
+    
+    /// A  constant used to identify the location of radial shields and static rings whose associated Segment is in position 0
+    static let negativeZeroPosition = -2048
     
     /// A Boolean to indicate whether the segment is actually a static ring
     let isStaticRing:Bool
@@ -68,12 +71,6 @@ class Segment: Codable, Equatable {
     /// The radial position of the segment (0 = closest to core)
     var radialPos:Int {
         get {
-            
-            guard self.basicSectionStore.count > 0 else {
-                
-                return Int.min
-            }
-            
             return self.basicSectionStore[0].location.radial
         }
     }
@@ -82,12 +79,6 @@ class Segment: Codable, Equatable {
     var axialPos:Int {
         
         get {
-            
-            guard self.basicSectionStore.count > 0 else {
-                
-                return Int.min
-            }
-            
             return self.basicSectionStore[0].location.axial
         }
     }
@@ -336,9 +327,36 @@ class Segment: Codable, Equatable {
         throw SegmentError(info: "", type: .UnimplementedWdgType)
     }
     
-    /// Class function to create a radial shield. The Segment has its 'isRadialShield' property set to true. The radial location of the shield is equal to the _negative_ of the 'adjacentSegment' argument. 
+    /// Class function to create a radial shield. The Segment has its 'isRadialShield' property set to true. The radial location of the shield is equal to the _negative_ of the 'adjacentSegment' argument unless the adjacent segment is in coil '0', in which case the radial location of the shield is Int.min. The adjacent segment must be the FIRST (lowest) Segment in the NEXT coil position from the core.  That is, the radial shield will be placed in the hilo UNDER the adjacent Segment. The thickness of the shield is fixed at 2mm. The radial shield should be set to have  the full electrical height of the coil to which adjacentSegment belongs.
+    /// - Parameter adjacentSegment: The segment that is immediately outside the radial shield..
+    /// - Parameter hiloToSegment: The radial gap between the shield and the adjacent Segment.
+    /// - Parameter elecHt: The height of the radial shield
+    static func RadialShield(adjacentSegment:Segment, hiloToSegment:Double, elecHt:Double) throws -> Segment {
+        
+        // Create the special BasicSection for a radial shield
+        let radialPos = adjacentSegment.radialPos == 0 ? Segment.negativeZeroPosition : -adjacentSegment.radialPos
+        let rsLocation = LocStruct(radial: radialPos, axial: 0)
+        let rsThickness = 0.002 // 2mm standard thickness
+        let originX = adjacentSegment.rect.origin.x - hiloToSegment - rsThickness
+        let originY = adjacentSegment.rect.origin.y
+        let rsRect = NSRect(x: originX, y: originY, width: rsThickness, height: elecHt)
+        // create a dummy BSdata struct
+        let rsWdgData = BasicSectionWindingData(type: .disc, layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: rsThickness, axialDimn: elecHt, turnInsulation: 0))
+        let rsSection = BasicSection(location: rsLocation, N: 0, I: 0, wdgData: rsWdgData, rect: rsRect)
+        
+        do {
+            
+            let newSegment = try Segment(basicSections: [rsSection], interleaved: false, isStaticRing: false, isRadialShield: true, realWindowHeight: adjacentSegment.realWindowHeight, useWindowHeight: adjacentSegment.useWindowHeight)
+            
+            return newSegment
+        }
+        catch {
+            
+            throw error
+        }
+    }
     
-    /// Class function to create a static ring. The Segment is marked as a static ring using its 'isStaticRing' property. The radial location of the static ring is equal to the radial location of the 'adjacentSegment' argument. The axial location is equal to the _negative_ of the adjacentSegment argument, unless the adjacent segment is at axial location 0, in which case the static ring's axial location is equal to Int.min
+    /// Class function to create a static ring. The Segment is marked as a static ring using its 'isStaticRing' property. The radial location of the static ring is equal to the radial location of the 'adjacentSegment' argument. The axial location is equal to the _negative_ of the adjacentSegment argument, unless the adjacent segment is at axial location 0, in which case the static ring's axial location is equal to Segment.negativeZeroPosition
     /// - Parameter adjacentSegment: The segment that is immediately adjacent to the static ring.
     /// - Parameter gapToSegment: The axial gap (shrunk) between the adjacent segment and the static ring
     /// - Parameter staticRingIsAbove: Boolean to indicate whether the static ring is above (true) or below (false) the adjacentSegment
@@ -347,7 +365,8 @@ class Segment: Codable, Equatable {
         
         // Create a special BasicSection as follows
         // The location is the same as the adjacent segment EXCEPT the axial position is the NEGATIVE of the adjacent segment
-        let srLocation = LocStruct(radial: adjacentSegment.radialPos, axial: -adjacentSegment.axialPos)
+        let axialPos = adjacentSegment.axialPos == 0 ? Segment.negativeZeroPosition : -adjacentSegment.axialPos
+        let srLocation = LocStruct(radial: adjacentSegment.radialPos, axial: axialPos)
         // The rect has the same x-origin and width as the adjacent segment but is offset by the gaptoSegment and the standard static-ring axial dimension
         let srThickness = staticRingThickness == nil ? stdStaticRingThickness : staticRingThickness!
         let offsetY = staticRingIsAbove ? adjacentSegment.rect.height + gapToSegment : -(gapToSegment + srThickness)
@@ -361,9 +380,7 @@ class Segment: Codable, Equatable {
         do {
             
             let newSegment = try Segment(basicSections: [srSection], interleaved: false, isStaticRing: true, realWindowHeight: adjacentSegment.realWindowHeight, useWindowHeight: adjacentSegment.useWindowHeight)
-            
-            newSegment.serialnumberStore = adjacentSegment.serialNumber > 0 ? -adjacentSegment.serialNumber : Int.min
-            
+                        
             return newSegment
         }
         catch {
