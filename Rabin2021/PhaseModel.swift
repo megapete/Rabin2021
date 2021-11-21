@@ -54,6 +54,8 @@ class PhaseModel:Codable {
             case IllegalAxialGap
             case SegmentExists
             case SegmentNotInModel
+            case ShieldingElementExists
+            case NoRoomForShieldingElement
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -98,6 +100,15 @@ class PhaseModel:Codable {
                     
                     return "The segment does not exist in the model"
                 }
+                else if self.type == .ShieldingElementExists {
+                    
+                    return "A \(info) already exists adjacent to the segment!"
+                }
+                else if self.type == .NoRoomForShieldingElement {
+                    
+                    return "There is no room for a \(info) adjacent to the segment!"
+                }
+                
                 
                 return "An unknown error occurred."
             }
@@ -221,6 +232,40 @@ class PhaseModel:Codable {
         }
     }
     
+    /// Try to add a static ring either above or below the adjacent Segment. If unsuccessful, this function throws an error.
+    func AddStaticRing(adjacentSegment:Segment, above:Bool, staticRingThickness:Double? = nil, gapToStaticRing:Double? = nil) throws -> Segment {
+        
+        let srAxial = adjacentSegment.location.axial == 0 ? Segment.negativeZeroPosition : -adjacentSegment.location.axial
+        
+        if SegmentAt(location: LocStruct(radial: adjacentSegment.location.radial, axial: srAxial)) != nil {
+            
+            throw PhaseModelError(info: "Static Ring", type: .ShieldingElementExists)
+        }
+        
+        do {
+        
+            let axialSpaces = try self.AxialSpacesAboutSegment(segment: adjacentSegment)
+            let gapToRing = gapToStaticRing != nil ? gapToStaticRing! : try self.StandardAxialGap(coil: adjacentSegment.location.radial) / 2
+            let srThickness = staticRingThickness != nil ? staticRingThickness! : Segment.stdStaticRingThickness
+            let requiredSpace = gapToRing + srThickness
+            
+            if (above && requiredSpace >= axialSpaces.above) || (!above && requiredSpace >= axialSpaces.below) {
+                
+                throw PhaseModelError(info: "Static Ring", type: .NoRoomForShieldingElement)
+            }
+            
+            // There is room for the static ring, so try creating it
+            let newRing = try Segment.StaticRing(adjacentSegment: adjacentSegment, gapToSegment: gapToRing, staticRingIsAbove: above, staticRingThickness: srThickness)
+            
+            // if we get here, we know that the call was succesful
+            return newRing
+        }
+        catch {
+            
+            throw error
+        }
+    }
+    
     /// Check if there is a static ring  above the given segment, and if so, return the segment - otherwise return nil. If the segment is not in the model, this function throws an error.
     /// - Parameter segment: The segment that we want to check
     /// - Parameter recursiveCheck: A Boolean to indicate whether we should check below the next segment as well (needed to avoid infinite loops)
@@ -244,7 +289,7 @@ class PhaseModel:Codable {
             }
         }
         
-        // if this is the last segment, just return
+        // if this is the last segment in the whole model, just return
         guard segIndex + 1 < self.segmentStore.count else {
             
             return staticRingAbove

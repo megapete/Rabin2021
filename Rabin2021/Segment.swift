@@ -9,8 +9,7 @@
 
 import Foundation
 
-/// A file-private constant for the thickness of a standard static ring
-fileprivate let stdStaticRingThickness = 0.625 * meterPerInch
+
 
 /// A Segment is, at its most basic, a collection of BasicSections. The collection MUST be from the same Winding and it must represent an axially contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (for disc coils, only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed). Static rings and radial shields are special Segments - creation routines (class functions) are provided for each.
 class Segment: Codable, Equatable {
@@ -33,6 +32,9 @@ class Segment: Codable, Equatable {
             return nextNum
         }
     }
+    
+    /// A class constant for the thickness of a standard static ring
+    static let stdStaticRingThickness = 0.625 * meterPerInch
     
     /// This segment's serial number
     private var serialnumberStore:Int

@@ -218,7 +218,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                     
                     if gapIndex < mainGaps.count {
                         
-                        currentZ += (mainGaps[gapIndex] - discPitch)
+                        currentZ += (mainGaps[gapIndex] - discPitch + discHt)
                         print("Gap center: \(currentZ - mainGaps[gapIndex] / 2.0)")
                         gapIndex += 1
                     }
@@ -603,6 +603,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     // MARK: Menu routines
     
+    // For now, this routine adds a "standard" static ring at the "standard" gap
     @IBAction func handleAddStaticRingOver(_ sender: Any) {
         
         guard let model = self.currentModel, let currentSegment = self.txfoView.currentSegment else {
@@ -610,15 +611,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             return
         }
         
-        // do some checking to make sure that there is room over the current disc for a static ring
-    
-        
         do {
             
-            let stdAxialGap = try model.StandardAxialGap(coil: currentSegment.segment.radialPos)
-            
-            
-            let newStaticRing = try Segment.StaticRing(adjacentSegment: currentSegment.segment, gapToSegment: stdAxialGap / 2.0, staticRingIsAbove: true, staticRingThickness: nil)
+            let newStaticRing = try model.AddStaticRing(adjacentSegment: currentSegment.segment, above: true)
             
             try model.InsertSegment(newSegment: newStaticRing)
             self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segmentColor: currentSegment.segmentColor))
@@ -636,6 +631,28 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     
     @IBAction func handleAddStaticRingBelow(_ sender: Any) {
+        
+        guard let model = self.currentModel, let currentSegment = self.txfoView.currentSegment else {
+            
+            return
+        }
+        
+        do {
+            
+            let newStaticRing = try model.AddStaticRing(adjacentSegment: currentSegment.segment, above: false)
+            
+            try model.InsertSegment(newSegment: newStaticRing)
+            self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segmentColor: currentSegment.segmentColor))
+            self.txfoView.currentSegment = self.txfoView.segments.last!
+            
+            self.txfoView.needsDisplay = true
+        }
+        catch {
+            
+            let alert = NSAlert(error: error)
+            let _ = alert.runModal()
+            return
+        }
     }
     
     
