@@ -235,14 +235,29 @@ class PhaseModel:Codable {
     /// Try to add a static ring either above or below the adjacent Segment. If unsuccessful, this function throws an error.
     func AddStaticRing(adjacentSegment:Segment, above:Bool, staticRingThickness:Double? = nil, gapToStaticRing:Double? = nil) throws -> Segment {
         
-        let srAxial = adjacentSegment.location.axial == 0 ? Segment.negativeZeroPosition : -adjacentSegment.location.axial
-        
-        if SegmentAt(location: LocStruct(radial: adjacentSegment.location.radial, axial: srAxial)) != nil {
+        guard let _ = self.segmentStore.firstIndex(of: adjacentSegment) else {
             
-            throw PhaseModelError(info: "Static Ring", type: .ShieldingElementExists)
+            throw PhaseModelError(info: "", type: .SegmentNotInModel)
         }
         
         do {
+            
+            // check if there is already a static ring above/below the adjacent segment
+            if above {
+                
+                if let _ = try StaticRingAbove(segment: adjacentSegment, recursiveCheck: true) {
+                    
+                    throw PhaseModelError(info: "Static Ring", type: .ShieldingElementExists)
+                }
+                
+            }
+            else {
+                
+                if let _ = try StaticRingBelow(segment: adjacentSegment, recursiveCheck: true) {
+                    
+                    throw PhaseModelError(info: "Static Ring", type: .ShieldingElementExists)
+                }
+            }
         
             let axialSpaces = try self.AxialSpacesAboutSegment(segment: adjacentSegment)
             let gapToRing = gapToStaticRing != nil ? gapToStaticRing! : try self.StandardAxialGap(coil: adjacentSegment.location.radial) / 2
@@ -295,8 +310,8 @@ class PhaseModel:Codable {
             return staticRingAbove
         }
         
-        // there might still be a static ring above, but it's been defined as being below the next segment in the array
-        if staticRingAbove == nil && recursiveCheck && self.segmentStore[segIndex + 1].radialPos == segment.radialPos {
+        // there might still be a static ring above, but it's been defined as being below the next segment in the array (and there is not a gap there, which is defined as anything greater or equal to 25mm)
+        if staticRingAbove == nil && recursiveCheck && self.segmentStore[segIndex + 1].radialPos == segment.radialPos && self.segmentStore[segIndex + 1].z1 - segment.z2 < 0.025 {
             
             staticRingAbove = try? StaticRingBelow(segment: self.segmentStore[segIndex + 1], recursiveCheck: false)
         }
@@ -333,8 +348,8 @@ class PhaseModel:Codable {
             return staticRingBelow
         }
         
-        // there might still be a static ring below, but it's been defined as being above the previous segment in the array
-        if staticRingBelow == nil && recursiveCheck && self.segmentStore[segIndex - 1].radialPos == segment.radialPos {
+        // there might still be a static ring below, but it's been defined as being above the previous segment in the array (and there is not a gap there, which is defined as anything greater or equal to 25mm)
+        if staticRingBelow == nil && recursiveCheck && self.segmentStore[segIndex - 1].radialPos == segment.radialPos && segment.z1 - self.segmentStore[segIndex - 1].z2 < 0.025 {
             
             staticRingBelow = try? StaticRingAbove(segment: self.segmentStore[segIndex - 1], recursiveCheck: false)
         }
