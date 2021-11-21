@@ -656,6 +656,35 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     }
     
     
+    @IBAction func handleRemoveStaticRing(_ sender: Any) {
+        
+        guard let model = self.currentModel, let currentSegment = self.txfoView.currentSegment else {
+            
+            return
+        }
+        
+        do {
+            
+            try model.RemoveStaticRing(staticRing: currentSegment.segment)
+            
+            if let index = self.txfoView.currentSegmentIndex {
+                
+                self.txfoView.segments.remove(at: index)
+            }
+            
+            self.txfoView.currentSegment = nil
+            self.txfoView.currentSegmentIndex = nil
+            self.txfoView.needsDisplay = true
+        }
+        catch {
+            
+            let alert = NSAlert(error: error)
+            let _ = alert.runModal()
+            return
+        }
+    }
+    
+    
     @IBAction func handleShowGraph(_ sender: Any) {
         
         DLog("Creating window controller")

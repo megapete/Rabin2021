@@ -56,6 +56,7 @@ class PhaseModel:Codable {
             case SegmentNotInModel
             case ShieldingElementExists
             case NoRoomForShieldingElement
+            case NotAShieldingElement
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -107,6 +108,10 @@ class PhaseModel:Codable {
                 else if self.type == .NoRoomForShieldingElement {
                     
                     return "There is no room for a \(info) adjacent to the segment!"
+                }
+                else if self.type == .NotAShieldingElement {
+                    
+                    return "The selected segment is not a \(info)"
                 }
                 
                 
@@ -355,6 +360,23 @@ class PhaseModel:Codable {
         }
         
         return staticRingBelow
+    }
+    
+    
+    /// Function to remove a static ring
+    func RemoveStaticRing(staticRing:Segment) throws {
+        
+        guard let srIndex = self.segmentStore.firstIndex(of: staticRing) else {
+            
+            throw PhaseModelError(info: "", type: .SegmentNotInModel)
+        }
+        
+        guard staticRing.isStaticRing else {
+            
+            throw PhaseModelError(info: "Static Ring", type: .NotAShieldingElement)
+        }
+        
+        self.segmentStore.remove(at: srIndex)
     }
     
     

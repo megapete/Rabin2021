@@ -203,6 +203,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     let zoomRectLineDash:[CGFloat] = [15.0, 8.0]
     
     var currentSegment:SegmentPath? = nil
+    var currentSegmentIndex:Int? = nil
     
     // var fluxlines:[NSBezierPath] = []
     
@@ -551,12 +552,14 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         print("Clip view: Bounds: \(clipBounds)")
         
         self.currentSegment = nil
+        self.currentSegmentIndex = nil
         
-        for nextSegment in self.segments
+        for (index, nextSegment) in self.segments.enumerated()
         {
             if nextSegment.contains(point: clickPoint)
             {
                 self.currentSegment = nextSegment
+                self.currentSegmentIndex = index
                 // self.appController!.UpdateToggleActivationMenu(deactivate: nextSegment.isActive)
                 break
             }
@@ -596,11 +599,12 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         let eventLocation = event.locationInWindow
         let clickPoint = self.convert(eventLocation, from: nil)
         
-        for nextPath in self.segments
+        for (index, nextPath) in self.segments.enumerated()
         {
             if nextPath.contains(point: clickPoint)
             {
                 self.currentSegment = nextPath
+                self.currentSegmentIndex = index
                 // self.UpdateToggleActivationMenu(deactivate: nextPath.segment.IsActive())
                 self.needsDisplay = true
                 NSMenu.popUpContextMenu(self.contextualMenu, with: event, for: self)
