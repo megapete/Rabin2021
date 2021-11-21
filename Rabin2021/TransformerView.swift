@@ -234,7 +234,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         if self.needsToDraw(self.boundary) {
             
-            print("Drawing boundary")
+            // print("Drawing boundary")
             let boundaryPath = NSBezierPath(rect: boundary)
             self.boundaryColor.set()
             boundaryPath.stroke()
@@ -547,9 +547,9 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     func mouseDownWithSelectSegment(event:NSEvent)
     {
         let clickPoint = self.convert(event.locationInWindow, from: nil)
-        print("Point:\(clickPoint)")
+        // print("Point:\(clickPoint)")
         let clipBounds = self.convert(self.superview!.bounds, from: self.superview!)
-        print("Clip view: Bounds: \(clipBounds)")
+        // print("Clip view: Bounds: \(clipBounds)")
         
         self.currentSegment = nil
         self.currentSegmentIndex = nil
@@ -638,48 +638,25 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         self.boundary.size.width = (tankWallR - coreRadius) * dimensionMultiplier
         // DLog("Boundary: \(self.boundary)")
-        print("Clip view: Bounds:\(self.superview!.bounds)\nFrame:\(self.superview!.frame)")
+        // print("Clip view: Bounds:\(self.superview!.bounds)\nFrame:\(self.superview!.frame)")
         
         self.needsDisplay = true
     }
     
     // the zoom in/out ratio (maybe consider making this user-settable)
     var zoomRatio:CGFloat = 0.75
+    
     func handleZoomOut()
     {
-        self.frame.size.width *= zoomRatio
-        self.frame.size.height *= zoomRatio
-        self.frame.origin = NSPoint()
-        self.bounds.size.width /= zoomRatio
-        self.bounds.size.height /= zoomRatio
-        
-        self.needsDisplay = true
+        let contentCenter = NSPoint(x: self.scrollView.contentView.bounds.origin.x + self.scrollView.contentView.bounds.width / 2.0, y: self.scrollView.contentView.bounds.origin.y + self.scrollView.contentView.bounds.height / 2.0)
+        self.scrollView.setMagnification(scrollView.magnification * zoomRatio, centeredAt: contentCenter)
     }
     
     func handleZoomIn()
     {
-        /*
-        print("Before Zoom In: Bounds:\(self.bounds)\nFrame:\(self.frame)")
-        self.bounds.size.width *= zoomRatio
-        self.bounds.size.height *= zoomRatio
         
-        self.frame.size.width /= zoomRatio
-        self.frame.size.height /= zoomRatio
-        
-        
-        print("After Zoom In: Bounds:\(self.bounds)\nFrame:\(self.frame)")
-        print("Clip view: Bounds:\(self.superview!.bounds)\nFrame:\(self.superview!.frame)")
-        */
-        
-        guard let clipView = self.superview as? NSClipView, let scrollView = clipView.superview as? NSScrollView else {
-            
-            DLog("Couldn't get clip view and/or scroll view")
-            return
-        }
-        
-        let contentCenter = NSPoint(x: clipView.bounds.origin.x + clipView.bounds.width / 2.0, y: clipView.bounds.origin.y + clipView.bounds.height / 2.0)
-        scrollView.setMagnification(scrollView.magnification / zoomRatio, centeredAt: contentCenter)
-        // zoomRatio *= zoomRatio
+        let contentCenter = NSPoint(x: self.scrollView.contentView.bounds.origin.x + self.scrollView.contentView.bounds.width / 2.0, y: self.scrollView.contentView.bounds.origin.y + self.scrollView.contentView.bounds.height / 2.0)
+        self.scrollView.setMagnification(scrollView.magnification / zoomRatio, centeredAt: contentCenter)
         
         // self.needsDisplay = true
     }
@@ -689,22 +666,22 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         // reset the zoomRect
         self.zoomRect = NSRect()
         
-        print("Old frame: \(self.frame); Old bounds: \(self.bounds)")
+        // print("Old frame: \(self.frame); Old bounds: \(self.bounds)")
         // zRect is in the same units as self.bounds
-        print("New rect: \(zRect)")
+        // print("New rect: \(zRect)")
         // Get the width/height ratio of self.bounds
         let reqWidthHeightRatio = self.bounds.width / self.bounds.height
         // Fix the zRect
         let newBoundsRect = ForceAspectRatioAndNormalize(srcRect: zRect, widthOverHeightRatio: reqWidthHeightRatio)
-        print("Fixed zoom rect: \(newBoundsRect)")
+        // print("Fixed zoom rect: \(newBoundsRect)")
         let zoomFactor = newBoundsRect.width / self.bounds.width
-        self.frame.size.width /= zoomFactor
-        self.frame.size.height /= zoomFactor
-        self.bounds = newBoundsRect
         
-        print("New frame: \(self.frame); New Bounds: \(self.bounds)")
+        let clipView = self.scrollView.contentView
+        let contentCenter = NSPoint(x: newBoundsRect.origin.x + newBoundsRect.width / 2, y: newBoundsRect.origin.y + newBoundsRect.height / 2)
         
-        self.needsDisplay = true
+        self.scrollView.setMagnification(scrollView.magnification / zoomFactor, centeredAt: clipView.convert(contentCenter, from: self))
+
+        // self.needsDisplay = true
         
     }
     

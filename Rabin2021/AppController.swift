@@ -31,6 +31,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     @IBOutlet weak var staticRingOverMenuItem: NSMenuItem!
     @IBOutlet weak var staticRingBelowMenuItem: NSMenuItem!
     @IBOutlet weak var removeStaticRingMenuItem: NSMenuItem!
+    /// Radial Shield
+    @IBOutlet weak var radialShieldInsideMenuItem: NSMenuItem!
+    @IBOutlet weak var removeRadialShieldMenuItem: NSMenuItem!
     
     
     /// Window controller to display graphs
@@ -685,6 +688,37 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     }
     
     
+    @IBAction func handleAddRadialShield(_ sender: Any) {
+        
+        guard let model = self.currentModel, let currentSegment = self.txfoView.currentSegment else {
+            
+            return
+        }
+        
+        do {
+            
+            let hilo = 0.012
+            let newRadialShield = try model.AddRadialShieldInside(coil: currentSegment.segment.location.radial, hiloToShield: hilo)
+            
+            try model.InsertSegment(newSegment: newRadialShield)
+            self.txfoView.segments.append(SegmentPath(segment: newRadialShield, segmentColor: currentSegment.segmentColor))
+            self.txfoView.currentSegment = self.txfoView.segments.last!
+            
+            self.txfoView.needsDisplay = true
+        }
+        catch {
+            
+            let alert = NSAlert(error: error)
+            let _ = alert.runModal()
+            return
+        }
+    }
+    
+    
+    @IBAction func handleRemoveRadialShield(_ sender: Any) {
+    }
+    
+    
     @IBAction func handleShowGraph(_ sender: Any) {
         
         DLog("Creating window controller")
@@ -736,14 +770,19 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             return self.currentModel != nil
         }
         
-        if menuItem == self.staticRingOverMenuItem || menuItem == self.staticRingBelowMenuItem {
+        if menuItem == self.staticRingOverMenuItem || menuItem == self.staticRingBelowMenuItem || menuItem == self.radialShieldInsideMenuItem {
             
-            return self.currentModel != nil && self.txfoView.currentSegment != nil && !self.txfoView.currentSegment!.segment.isStaticRing
+            return self.currentModel != nil && self.txfoView.currentSegment != nil && !self.txfoView.currentSegment!.segment.isStaticRing && !self.txfoView.currentSegment!.segment.isRadialShield
         }
         
         if menuItem == self.removeStaticRingMenuItem {
             
             return self.currentModel != nil && self.txfoView.currentSegment != nil && self.txfoView.currentSegment!.segment.isStaticRing
+        }
+        
+        if menuItem == self.removeRadialShieldMenuItem {
+            
+            return self.currentModel != nil && self.txfoView.currentSegment != nil && self.txfoView.currentSegment!.segment.isRadialShield
         }
         
         // default to true

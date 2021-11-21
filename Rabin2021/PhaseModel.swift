@@ -83,7 +83,7 @@ class PhaseModel:Codable {
                 }
                 else if self.type == .CoilDoesNotExist {
                     
-                    return "The coil does not exist!"
+                    return "The coil '\(info)' does not exist!"
                 }
                 else if self.type == .NotADiscCoil {
                     
@@ -181,6 +181,55 @@ class PhaseModel:Codable {
         self.segmentStore.insert(newSegment, at: lo)
     }
     
+    /// Check if there is a radial shield inside the given coil and if so, return it as a Segment
+    func RadialShieldInside(coil:Int) throws -> Segment? {
+        
+        guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+            
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
+        }
+        
+        let radialPos = coil == 0 ? Segment.negativeZeroPosition : -coil
+        
+        return self.SegmentAt(location: LocStruct(radial: radialPos, axial: 0))
+    }
+    
+    /// Check if there a radial shield  outside the given coil and if so, return it as a Segment
+    func RadialShieldOutside(coil:Int) throws -> Segment? {
+        
+        guard let _ = self.SegmentAt(location: LocStruct(radial: coil + 1, axial: 0)) else {
+            
+            throw PhaseModelError(info: "\(coil + 1)", type: .CoilDoesNotExist)
+        }
+        
+        return self.SegmentAt(location: LocStruct(radial: -(coil + 1), axial: 0))
+    }
+    
+    /// Get the Hilo under the given coil
+    func HiloUnder(coil:Int) throws -> Double {
+        
+        guard let segment = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+            
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
+        }
+        
+        let coilInnerRadius = segment.r1
+        
+        if segment.radialPos == 0 {
+            
+            return coilInnerRadius - self.core.radius
+        }
+        else {
+            
+            guard let innerSegment = self.SegmentAt(location: LocStruct(radial: coil - 1, axial: 0)) else {
+                
+                throw PhaseModelError(info: "\(coil - 1)", type: .CoilDoesNotExist)
+            }
+            
+            return coilInnerRadius - innerSegment.r2
+        }
+    }
+    
     /// Return the spaces above and below the given segment. If the segment is not in the model, throw an error.
     func AxialSpacesAboutSegment(segment:Segment) throws -> (above: Double, below: Double) {
         
@@ -230,6 +279,50 @@ class PhaseModel:Codable {
             }
             
             return (aboveResult, belowResult)
+        }
+        catch {
+            
+            throw error
+        }
+    }
+    
+    /// Try to add a radial shield inside the given coil and return it as a Segment. If unsuccessful, the function throws an error.
+    func AddRadialShieldInside(coil:Int, hiloToShield:Double) throws -> Segment {
+        
+        guard let segment = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+            
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
+        }
+        
+        // check if there is already a radial shield under the coil
+        let radPos = coil == 0 ? Segment.negativeZeroPosition : -coil
+        guard self.SegmentAt(location: LocStruct(radial: radPos, axial: 0)) == nil else {
+            
+            throw PhaseModelError(info: "Radial Shield", type: .ShieldingElementExists)
+        }
+        
+        do {
+            
+            let requiredSpace = hiloToShield + 0.002
+            let availableSpace = try self.HiloUnder(coil: coil)
+            
+            if requiredSpace >= availableSpace {
+                
+                throw PhaseModelError(info: "Radial Shield", type: .NoRoomForShieldingElement)
+            }
+            
+            let highestSegmentIndex = try self.GetHighestSection(coil: coil)
+            guard let highestSegment = self.SegmentAt(location: LocStruct(radial: coil, axial: highestSegmentIndex)) else {
+                
+                throw PhaseModelError(info: "", type: .SegmentNotInModel)
+            }
+            
+            let height = highestSegment.z2 - segment.z1
+            
+            let radialShield = try Segment.RadialShield(adjacentSegment: segment, hiloToSegment: hiloToShield, elecHt: height)
+            
+            return radialShield
+            
         }
         catch {
             
@@ -392,7 +485,7 @@ class PhaseModel:Codable {
         
         guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
-            throw PhaseModelError(info: "", type: .CoilDoesNotExist)
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
         
         // I believe that this is in order but it should be tested
@@ -407,7 +500,7 @@ class PhaseModel:Codable {
         
         guard let bottomMostDisc = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
-            throw PhaseModelError(info: "", type: .CoilDoesNotExist)
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
         
         if bottomMostDisc.wdgType != .disc && bottomMostDisc.wdgType != .helical {
@@ -417,7 +510,7 @@ class PhaseModel:Codable {
         
         guard let nextDisc = self.SegmentAt(location: LocStruct(radial: coil, axial: 1)) else {
             
-            throw PhaseModelError(info: "", type: .CoilDoesNotExist)
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
         
         let result = nextDisc.z1 - bottomMostDisc.z2

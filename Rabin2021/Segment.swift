@@ -59,7 +59,7 @@ class Segment: Codable, Equatable {
     let isStaticRing:Bool
     
     /// A Boolean to indicate whether the segment is actually a radial shield
-    let isRadialSheild:Bool
+    let isRadialShield:Bool
     
     /// The type of the coil that owns this segment
     var wdgType:BasicSectionWindingData.WdgType {
@@ -241,7 +241,7 @@ class Segment: Codable, Equatable {
         // if it's a static ring or radial shield, set the serial number to a dummy number, otherwise set it to the next available serial number
         self.serialnumberStore = isStaticRing || isRadialShield ? -1 : Segment.nextSerialNumber
         self.isStaticRing = isStaticRing
-        self.isRadialSheild = isRadialShield
+        self.isRadialShield = isRadialShield
     }
     
     /// Errors for the Segment class
@@ -300,7 +300,7 @@ class Segment: Codable, Equatable {
             throw SegmentError(info: "\(self.location)", type: .StaticRing)
         }
         
-        guard !self.isRadialSheild else {
+        guard !self.isRadialShield else {
             
             throw SegmentError(info: "\(self.location)", type: .RadialShield)
         }

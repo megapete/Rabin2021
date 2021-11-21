@@ -23,6 +23,8 @@
         <customObject id="XWq-sU-B2V" customClass="AppController" customModule="Rabin2021" customModuleProvider="target">
             <connections>
                 <outlet property="mainWindow" destination="QvC-M9-y7g" id="99a-gB-L5N"/>
+                <outlet property="radialShieldInsideMenuItem" destination="qRp-BU-Wrj" id="VHM-yT-lbo"/>
+                <outlet property="removeRadialShieldMenuItem" destination="Aqp-v7-qka" id="87j-O1-4C3"/>
                 <outlet property="removeStaticRingMenuItem" destination="l8X-7O-2J1" id="gcV-RN-SfX"/>
                 <outlet property="staticRingBelowMenuItem" destination="mY3-zG-R2v" id="QVS-gd-XN5"/>
                 <outlet property="staticRingOverMenuItem" destination="fe2-2p-HNJ" id="Qkh-lc-iVv"/>
@@ -696,11 +698,23 @@
                                     <action selector="handleAddStaticRingBelow:" target="XWq-sU-B2V" id="3NU-cD-Axh"/>
                                 </connections>
                             </menuItem>
-                            <menuItem isSeparatorItem="YES" id="O6z-pg-4QE"/>
                             <menuItem title="Remove Static Ring" id="l8X-7O-2J1">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
                                     <action selector="handleRemoveStaticRing:" target="XWq-sU-B2V" id="M4z-1N-1OV"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem isSeparatorItem="YES" id="O6z-pg-4QE"/>
+                            <menuItem title="Add Radial Shield Inside Current Selection" id="qRp-BU-Wrj">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleAddRadialShield:" target="XWq-sU-B2V" id="EsV-EY-edV"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Remove Radial Shield" id="Aqp-v7-qka">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleRemoveRadialShield:" target="XWq-sU-B2V" id="EOi-2g-oBi"/>
                                 </connections>
                             </menuItem>
                         </items>
@@ -799,7 +813,7 @@
             <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" resizable="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
             <rect key="contentRect" x="335" y="390" width="601" height="682"/>
-            <rect key="screenRect" x="0.0" y="0.0" width="2560" height="1415"/>
+            <rect key="screenRect" x="0.0" y="0.0" width="1680" height="1025"/>
             <view key="contentView" id="EiT-Mj-1SZ">
                 <rect key="frame" x="0.0" y="0.0" width="601" height="682"/>
                 <autoresizingMask key="autoresizingMask"/>
@@ -808,11 +822,11 @@
                         <rect key="frame" x="-1" y="-1" width="603" height="684"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <clipView key="contentView" id="SDg-ft-U91">
-                            <rect key="frame" x="1" y="1" width="586" height="667"/>
+                            <rect key="frame" x="1" y="1" width="601" height="682"/>
                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                             <subviews>
                                 <view id="ebn-Op-mWN" customClass="TransformerView" customModule="Rabin2021" customModuleProvider="target">
-                                    <rect key="frame" x="0.0" y="0.0" width="587" height="668"/>
+                                    <rect key="frame" x="0.0" y="0.0" width="602" height="683"/>
                                     <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                     <connections>
                                         <outlet property="scrollView" destination="Yo4-0m-Iub" id="qaZ-Jo-sf3"/>
@@ -821,11 +835,11 @@
                             </subviews>
                         </clipView>
                         <scroller key="horizontalScroller" wantsLayer="YES" verticalHuggingPriority="750" horizontal="YES" id="ZNq-Kw-tyS">
-                            <rect key="frame" x="1" y="668" width="586" height="15"/>
+                            <rect key="frame" x="1" y="667" width="601" height="16"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </scroller>
                         <scroller key="verticalScroller" wantsLayer="YES" verticalHuggingPriority="750" doubleValue="1" horizontal="NO" id="aVc-m1-gzr">
-                            <rect key="frame" x="587" y="1" width="15" height="667"/>
+                            <rect key="frame" x="586" y="1" width="16" height="682"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </scroller>
                     </scrollView>
