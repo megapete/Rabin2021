@@ -455,6 +455,21 @@ class PhaseModel:Codable {
         return staticRingBelow
     }
     
+    /// Function to remove a radial shield
+    func RemoveRadialShield(radialShield:Segment) throws {
+        
+        guard let rsIndex = self.segmentStore.firstIndex(of: radialShield) else {
+            
+            throw PhaseModelError(info: "", type: .SegmentNotInModel)
+        }
+        
+        guard radialShield.isRadialShield else {
+            
+            throw PhaseModelError(info: "Radial Shie;d", type: .NotAShieldingElement)
+        }
+        
+        self.segmentStore.remove(at: rsIndex)
+    }
     
     /// Function to remove a static ring
     func RemoveStaticRing(staticRing:Segment) throws {

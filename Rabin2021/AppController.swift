@@ -55,7 +55,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     var currentWindowMultiplier = 3.0
     
     /// The colors of the different layers (for display purposes only)
-    static let segmentColors:[NSColor] = [.red, .blue, .green, .orange, .purple]
+    static let segmentColors:[NSColor] = [.red, .blue, .orange, .purple, .yellow]
     
     // MARK: Initialization
     override func awakeFromNib() {
@@ -695,13 +695,27 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             return
         }
         
+        let getHiloDlog = GetNumberDialog(descriptiveText: "Gap to shield:", unitsText: "meters", noteText: "Must be less then the hilo under the coil", windowTitle: "Add Radial Shield")
+        
+        if getHiloDlog.runModal() == .cancel {
+            
+            return
+        }
+        
+        let hilo = getHiloDlog.numberValue
+        
+        if hilo <= 0 {
+            
+            return
+        }
+        
         do {
             
-            let hilo = 0.012
+            // let hilo = 0.012
             let newRadialShield = try model.AddRadialShieldInside(coil: currentSegment.segment.location.radial, hiloToShield: hilo)
             
             try model.InsertSegment(newSegment: newRadialShield)
-            self.txfoView.segments.append(SegmentPath(segment: newRadialShield, segmentColor: currentSegment.segmentColor))
+            self.txfoView.segments.append(SegmentPath(segment: newRadialShield, segmentColor: .green))
             self.txfoView.currentSegment = self.txfoView.segments.last!
             
             self.txfoView.needsDisplay = true
@@ -716,6 +730,31 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     
     @IBAction func handleRemoveRadialShield(_ sender: Any) {
+        
+        guard let model = self.currentModel, let currentSegment = self.txfoView.currentSegment else {
+            
+            return
+        }
+        
+        do {
+            
+            try model.RemoveStaticRing(staticRing: currentSegment.segment)
+            
+            if let index = self.txfoView.currentSegmentIndex {
+                
+                self.txfoView.segments.remove(at: index)
+            }
+            
+            self.txfoView.currentSegment = nil
+            self.txfoView.currentSegmentIndex = nil
+            self.txfoView.needsDisplay = true
+        }
+        catch {
+            
+            let alert = NSAlert(error: error)
+            let _ = alert.runModal()
+            return
+        }
     }
     
     
