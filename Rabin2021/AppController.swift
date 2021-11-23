@@ -11,6 +11,8 @@ private let LAST_OPENED_INPUT_FILE_KEY = "PCH_RABIN2021_LastInputFile"
 
 let PCH_RABIN2021_IterationCount = 200
 
+var progressIndicatorWindow:PCH_ProgressIndicatorWindow? = nil
+
 import Cocoa
 
 class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
@@ -48,6 +50,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     /// The current core in memory
     var currentCore:Core? = nil
     
+    /// The original xlFile used to create the current sections (originally, at least, the only way to create the Basic Sections is by importing an XL file.
+    var currentXLfile:PCH_ExcelDesignFile? = nil
+    
     /// The theoretical depth of the tank (used for display and ground capacitance calculations)
     var tankDepth:Double = 0.0
     
@@ -70,29 +75,80 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     // MARK: Transformer update routines
     
-    /// Function to update the model
-    /// - Parameter xFile: The ExcelDesignFile that was inputted
-    /// - Parameter reinitialize: Boolean value set to true if the entire memory should be reinitialized
-    func updateModel(xlFile:PCH_ExcelDesignFile, reinitialize:Bool) {
+    /// Function to update the model. If the 'reinitialize' parameter is 'true', then the 'oldSegments' and 'newSegments' parameters are ignored and a new model is created using the xlFile.
+    /// - Parameter oldSegments: An array of Segments that are to be removed from the model
+    /// - Parameter newSegments: An array of Segments to insert into the model
+    /// - Parameter xFile: The ExcelDesignFile that was inputted. If this is non-nil and 'reinitialize' is set to true, the existing model is overwtitten using the contents of the file.
+    /// - Parameter reinitialize: Boolean value set to true if the entire memory should be reinitialized. If xlFile is non-nil, the it is used to overwrite the exisitng model. Otherwise, the model is reinitialized using the BasicSections in the AppController's currentSections array.
+    func updateModel(oldSegments:[Segment], newSegments:[Segment], xlFile:PCH_ExcelDesignFile?, reinitialize:Bool) {
         
-        self.tankDepth = xlFile.tankDepth
+        if reinitialize {
+            
+            if let file = xlFile {
+                
+                self.tankDepth = file.tankDepth
+                
+                // The idea here is to create the current model as a Core and an array of BasicSections and save it into the class' currentSections property
+                self.currentCore = Core(diameter: file.core.diameter, realWindowHeight: file.core.windowHeight, legCenters: file.core.legCenters)
+                
+                // replace any currently saved basic sections with the new ones
+                self.currentSections = self.createBasicSections(xlFile: file)
+                
+                self.currentXLfile = file
+            }
+            
+            if self.currentSections.count == 0 {
+                
+                PCH_ErrorAlert(message: "There are no basic sections!", info: nil)
+            }
+            
+            // initialize the model so that all the BasicSections are modeled
+            self.currentModel = self.initializeModel(basicSections: self.currentSections)
+            
+            self.initializeViews()
+        }
+        else {
+            
+            guard let model = self.currentModel else {
+                
+                PCH_ErrorAlert(message: "The model does not exist!", info: "Cannot change segments")
+                return
+            }
+            
+            model.RemoveSegments(badSegments: oldSegments)
+            
+            do {
+                
+                try model.AddSegments(newSegments: newSegments)
+            }
+            catch {
+                
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
+                return
+            }
+        }
         
-        // The idea here is to create the current model as a Core and an array of BasicSections and save it into the class' currentSections property
-        self.currentCore = Core(diameter: xlFile.core.diameter, realWindowHeight: xlFile.core.windowHeight, legCenters: xlFile.core.legCenters)
+        guard let model = self.currentModel else {
+            
+            PCH_ErrorAlert(message: "The model does not exist!", info: "Impossible to continue!")
+            return
+        }
         
-        // replace any currently saved basic sections with the new ones
-        self.currentSections = self.createBasicSections(xlFile: xlFile)
-        
-        // initialize the model so that all the BasicSections are modeled
-        self.currentModel = self.initializeModel(basicSections: self.currentSections, xlFile: xlFile)
-        
-        self.initializeViews()
-        
-        print("There are \(self.currentSections.count) sections in the model")
-        
+        do {
+            
+            try model.CalculateInductanceMatrix()
+        }
+        catch {
+            
+            let alert = NSAlert(error: error)
+            let _ = alert.runModal()
+            return
+        }
     }
     
-    func initializeModel(basicSections:[BasicSection], xlFile:PCH_ExcelDesignFile) -> PhaseModel?
+    /// Initialize the model using the xlFile. If there is already a model in memory, it is lost.
+    func initializeModel(basicSections:[BasicSection]) -> PhaseModel?
     {
         var result:[Segment] = []
         
@@ -467,7 +523,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         print("Creating EV Segments...")
         let evSegments = EslamianVahidiSegment.Create_EV_Array(segments: model.segments, core: core)
         print("Done!\n\nCreating inductance matrix...")
-        guard let _ = EslamianVahidiSegment.InductanceMatrix(evSegments: evSegments) else {
+        guard let _ = try? EslamianVahidiSegment.InductanceMatrix(evSegments: evSegments) else {
             
             DLog("SHIT!")
             return
@@ -498,7 +554,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                 
             NSDocumentController.shared.noteNewRecentDocumentURL(fileURL)
             
-            self.updateModel(xlFile: xlFile, reinitialize: true)
+            self.updateModel(oldSegments: [], newSegments: [], xlFile: xlFile, reinitialize: true)
             
             self.mainWindow.title = fileURL.lastPathComponent
                         

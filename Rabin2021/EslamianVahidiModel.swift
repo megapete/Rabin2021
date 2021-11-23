@@ -33,12 +33,12 @@ class EslamianVahidiSegment:Codable {
     /// To avoid long run times recalculating the vector potentials in the window, they are calculated once in the initilalizer and stored as a property
     var A_InWindow:[[Double]] = Array(repeating: Array(repeating: 0.0, count: EslamianVahidiSegment.iterations), count: EslamianVahidiSegment.iterations)
     
-    /// Designated initializer. The routine may return nil if an illegal segment type (such as a static ring) is passed to it.
+    /// Designated initializer. The routine may return nil if an illegal segment type (such as a static ring or radial shield) is passed to it.
     /// - Parameter segment: The defining Segment for the EslamianVahidiSegment. The segment cannot be a static ring or this call will fail.
     /// - Parameter core: The core that this EslamianVahidiSegment lives on
     init?(segment:Segment, core:Core) {
         
-        if segment.isStaticRing {
+        if segment.isStaticRing || segment.isRadialShield {
             
             return nil
         }
@@ -59,15 +59,49 @@ class EslamianVahidiSegment:Codable {
         
     }
     
+    /// Errors that can be thrown by some routines
+    struct EvModelError:LocalizedError
+    {
+        /// The different error types that are available
+        enum errorType
+        {
+            case InductanceMatrixNotPositiveDefinite
+            case EvArrayIsEmpty
+        }
+        
+        /// Specialized information that can be added to the descritpion String (can be the empty string)
+        let info:String
+        /// The error type
+        let type:errorType
+        
+        /// The error string to return with the error
+        var errorDescription: String?
+        {
+            get
+            {
+                if self.type == .InductanceMatrixNotPositiveDefinite
+                {
+                   return "The inductance matrix is not positive definite!"
+                }
+                else if self.type == .EvArrayIsEmpty {
+                    
+                    return "The EV array is empty!"
+                }
+                
+                
+                return "An unknown error occurred."
+            }
+        }
+    }
+    
     /// Convenient class routine to create the inductance matrix  from an array of EslamianVahidiSegments. If successful, the returned matrix is in Cholesky factorization form and it can be used in a call to SolveForDoublePositiveDefinite(::) from PCH_BaseClass_Matrix.
     /// - Parameter evSegments: An array of EslamianVahidiSegments
-    /// - Returns: The inductance matrix (as a Cholesky factorization)  or 'nil' if something went wrong
-    static func InductanceMatrix(evSegments:[EslamianVahidiSegment]) -> PCH_BaseClass_Matrix? {
+    /// - Returns: The inductance matrix (as a Cholesky factorization) 
+    static func InductanceMatrix(evSegments:[EslamianVahidiSegment]) throws -> PCH_BaseClass_Matrix {
         
         guard evSegments.count > 0 else {
             
-            DLog("Empty array")
-            return nil
+            throw EvModelError(info: "", type: .EvArrayIsEmpty)
         }
         
         let dim = evSegments.count
@@ -88,11 +122,8 @@ class EslamianVahidiSegment:Codable {
         
         guard result.TestPositiveDefinite(overwriteExistingMatrix: true) else {
             
-            DLog("Inductance matrix is not Positive-Definite!")
-            return nil
+            throw EvModelError(info: "", type: .InductanceMatrixNotPositiveDefinite)
         }
-        
-        
         
         return result
     }

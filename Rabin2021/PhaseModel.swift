@@ -25,8 +25,11 @@ class PhaseModel:Codable {
     /// An array of arrays where the first index is the segment number and the second index (i) is J[i] for the segment (used for DelVecchio only)
     var J:[[Double]] = []
     
-    /// An array of Eslamian Vahidi segments
+    /// An array of Eslamian Vahidi segments. Ultimately, there will probably be no reason to keep this around and it should be removed from the class.
     var evSegments:[EslamianVahidiSegment] = []
+    
+    /// The inductance matrix for the model
+    var M:PCH_BaseClass_Matrix? = nil
     
     /// The window height to actually use
     var useWindowHeight:Double {
@@ -123,8 +126,7 @@ class PhaseModel:Codable {
     /// Designated initializer. Depending on the value of the 'useEslamianVahidi' parameter either a DelVecchio or EV-tyoe model will be created
     /// - Parameter segments: The segments that make up the basis for the model
     /// - Parameter core: The core (duh)
-    /// - Parameter useEslamianVahidi: A Boolean to indicate whether the inductance model should be per the Eslamian & Vahidi paper (the default), or per the DelVecchio book.
-    init(segments:[Segment], core:Core, useEslamianVahidi:Bool = true) {
+    init(segments:[Segment], core:Core) {
         
         self.segmentStore = segments.sorted(by: { lhs, rhs in
             
@@ -137,19 +139,25 @@ class PhaseModel:Codable {
         })
         
         self.core = core
+    }
+    
+    func CalculateInductanceMatrix(useEVmodel:Bool = true) throws {
         
-        if useEslamianVahidi {
+        guard self.segments.count > 0 else {
             
-            if segments.count > 0 {
+            throw PhaseModelError(info: "", type: .EmptyModel)
+        }
+        if useEVmodel {
+            
+            let evArray = EslamianVahidiSegment.Create_EV_Array(segments: self.segments, core: self.core)
+            
+            do {
                 
-                self.evSegments = EslamianVahidiSegment.Create_EV_Array(segments: segments, core: self.core)
+                self.M = try EslamianVahidiSegment.InductanceMatrix(evSegments: evArray)
             }
-            
-        } else {
-            
-            for nextSegment in segments {
+            catch {
                 
-                self.J.append(nextSegment.CreateFourierJ())
+                throw error
             }
         }
     }
@@ -487,6 +495,38 @@ class PhaseModel:Codable {
         self.segmentStore.remove(at: srIndex)
     }
     
+    /// Function to add a collection of Segments to the store. The array can be in any order - the routine will ensure that the Segments are inserted at the correct place in the store. If a Segment cannot be inserted, an error is thrown. The routine will reset the model to whatever it was before the call was attempted (which may or may not be a stable model).
+    func AddSegments(newSegments:[Segment]) throws {
+        
+        do {
+            
+            for nextSegment in newSegments {
+            
+                try self.InsertSegment(newSegment: nextSegment)
+            }
+        }
+        catch {
+            
+            self.RemoveSegments(badSegments: newSegments)
+            
+            throw error
+        }
+    }
+    
+    /// Function to remove a collection of Segments from the store. Any Segments that are not actually in the store are ignored
+    func RemoveSegments(badSegments:[Segment]) {
+        
+        for nextSegment in badSegments {
+            
+            guard let nsegIndex = self.segmentStore.firstIndex(of: nextSegment) else {
+                
+                continue
+            }
+            
+            self.segmentStore.remove(at: nsegIndex)
+        }
+    }
+    
     
     /// Check if there is a Segment at the specified location and if so, return it (otherwise, return nil)
     func SegmentAt(location:LocStruct) -> Segment? {
@@ -533,28 +573,6 @@ class PhaseModel:Codable {
         if result < 0.0 {
             
             throw PhaseModelError(info: "It is negative", type: .IllegalAxialGap)
-        }
-        
-        return result
-    }
-    
-    /// Calculate the inductance (M) matrix for the model, using the Eslamian & Vahidi method (DelVecchio is not implemented). Always pass 'true' to the parameter (or ignore it and it defaults it to true).
-    func InductanceMatrix(useEslamianVahidi:Bool = true) throws -> PCH_BaseClass_Matrix  {
-        
-        // The DelVecchio method is not implemented so return an error if the useEslamianVahidi parameter is false
-        if !useEslamianVahidi {
-            
-            throw PhaseModelError(info: "", type: .UnimplementedInductanceMethod)
-        }
-        
-        guard self.evSegments.count > 0 else {
-            
-            throw PhaseModelError(info: "", type: .EmptyModel)
-        }
-        
-        guard let result = EslamianVahidiSegment.InductanceMatrix(evSegments: self.evSegments) else {
-            
-            throw PhaseModelError(info: "", type: .IllegalMatrix)
         }
         
         return result
