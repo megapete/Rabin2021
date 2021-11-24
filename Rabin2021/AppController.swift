@@ -137,6 +137,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             return
         }
         
+        // Debug builds run incredibly slow when doing O(n2) stuff, so we exclude that code while we're still debugging UI.
+        #if !DEBUG
+        
         do {
             
             // print("ProgIndicator exists: \(rb2021_progressIndicatorWindow != nil)")
@@ -148,6 +151,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             let _ = alert.runModal()
             return
         }
+        
+        #endif
         
         if !reinitialize {
             
@@ -652,14 +657,16 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             
             newSegPath.toolTipTag = self.txfoView.addToolTip(newSegPath.rect, owner: self.txfoView as Any, userData: nil)
             
+            /*
             // update the currently-selected segment in the TransformerView
-            if let currentSegment = self.txfoView.currentSegment
+            if let currentSegment = self.txfoView.currentSegments
             {
                 if currentSegment.segment.serialNumber == nextSegment.serialNumber
                 {
-                    self.txfoView.currentSegment = newSegPath
+                    self.txfoView.currentSegments = newSegPath
                 }
             }
+            */
             
             self.txfoView.segments.append(newSegPath)
         }
@@ -673,10 +680,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     // For now, this routine adds a "standard" static ring at the "standard" gap
     @IBAction func handleAddStaticRingOver(_ sender: Any) {
         
-        guard let model = self.currentModel, let currentSegment = self.txfoView.currentSegment else {
+        guard let model = self.currentModel, self.txfoView.currentSegments.count > 0 else {
             
             return
         }
+        
+        let currentSegment = self.txfoView.currentSegments[0]
         
         do {
             
@@ -684,7 +693,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             
             try model.InsertSegment(newSegment: newStaticRing)
             self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segmentColor: currentSegment.segmentColor))
-            self.txfoView.currentSegment = self.txfoView.segments.last!
+            self.txfoView.currentSegments = [self.txfoView.segments.last!]
             
             self.txfoView.needsDisplay = true
         }
@@ -699,10 +708,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     @IBAction func handleAddStaticRingBelow(_ sender: Any) {
         
-        guard let model = self.currentModel, let currentSegment = self.txfoView.currentSegment else {
+        guard let model = self.currentModel, self.txfoView.currentSegments.count > 0 else {
             
             return
         }
+        
+        let currentSegment = self.txfoView.currentSegments[0]
         
         do {
             
@@ -710,7 +721,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             
             try model.InsertSegment(newSegment: newStaticRing)
             self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segmentColor: currentSegment.segmentColor))
-            self.txfoView.currentSegment = self.txfoView.segments.last!
+            self.txfoView.currentSegments = [self.txfoView.segments.last!]
             
             self.txfoView.needsDisplay = true
         }
@@ -725,22 +736,21 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     @IBAction func handleRemoveStaticRing(_ sender: Any) {
         
-        guard let model = self.currentModel, let currentSegment = self.txfoView.currentSegment else {
+        guard let model = self.currentModel, self.txfoView.currentSegments.count > 0 else {
             
             return
         }
+        
+        let currentSegment = self.txfoView.currentSegments[0]
         
         do {
             
             try model.RemoveStaticRing(staticRing: currentSegment.segment)
             
-            if let index = self.txfoView.currentSegmentIndex {
-                
-                self.txfoView.segments.remove(at: index)
-            }
+            self.txfoView.segments.remove(at: self.txfoView.currentSegmentIndices[0])
             
-            self.txfoView.currentSegment = nil
-            self.txfoView.currentSegmentIndex = nil
+            
+            self.txfoView.currentSegments = []
             self.txfoView.needsDisplay = true
         }
         catch {
@@ -754,10 +764,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     @IBAction func handleAddRadialShield(_ sender: Any) {
         
-        guard let model = self.currentModel, let currentSegment = self.txfoView.currentSegment else {
+        guard let model = self.currentModel, self.txfoView.currentSegments.count > 0 else {
             
             return
         }
+        
+        let currentSegment = self.txfoView.currentSegments[0]
         
         let getHiloDlog = GetNumberDialog(descriptiveText: "Gap to shield:", unitsText: "meters", noteText: "Must be less then the hilo under the coil", windowTitle: "Add Radial Shield")
         
@@ -780,7 +792,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             
             try model.InsertSegment(newSegment: newRadialShield)
             self.txfoView.segments.append(SegmentPath(segment: newRadialShield, segmentColor: .green))
-            self.txfoView.currentSegment = self.txfoView.segments.last!
+            self.txfoView.currentSegments = [self.txfoView.segments.last!]
             
             self.txfoView.needsDisplay = true
         }
@@ -795,22 +807,20 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     @IBAction func handleRemoveRadialShield(_ sender: Any) {
         
-        guard let model = self.currentModel, let currentSegment = self.txfoView.currentSegment else {
+        guard let model = self.currentModel, self.txfoView.currentSegments.count > 0 else {
             
             return
         }
+        
+        let currentSegment = self.txfoView.currentSegments[0]
         
         do {
             
             try model.RemoveRadialShield(radialShield: currentSegment.segment)
             
-            if let index = self.txfoView.currentSegmentIndex {
-                
-                self.txfoView.segments.remove(at: index)
-            }
+            self.txfoView.segments.remove(at: self.txfoView.currentSegmentIndices[0])
             
-            self.txfoView.currentSegment = nil
-            self.txfoView.currentSegmentIndex = nil
+            self.txfoView.currentSegments = []
             self.txfoView.needsDisplay = true
         }
         catch {
@@ -875,17 +885,17 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         if menuItem == self.staticRingOverMenuItem || menuItem == self.staticRingBelowMenuItem || menuItem == self.radialShieldInsideMenuItem {
             
-            return self.currentModel != nil && self.txfoView.currentSegment != nil && !self.txfoView.currentSegment!.segment.isStaticRing && !self.txfoView.currentSegment!.segment.isRadialShield
+            return self.currentModel != nil && self.txfoView.currentSegments.count == 1 && !self.txfoView.currentSegments[0].segment.isStaticRing && !self.txfoView.currentSegments[0].segment.isRadialShield
         }
         
         if menuItem == self.removeStaticRingMenuItem {
             
-            return self.currentModel != nil && self.txfoView.currentSegment != nil && self.txfoView.currentSegment!.segment.isStaticRing
+            return self.currentModel != nil && self.txfoView.currentSegments.count == 1 && self.txfoView.currentSegments[0].segment.isStaticRing
         }
         
         if menuItem == self.removeRadialShieldMenuItem {
             
-            return self.currentModel != nil && self.txfoView.currentSegment != nil && self.txfoView.currentSegment!.segment.isRadialShield
+            return self.currentModel != nil && self.txfoView.currentSegments.count == 1 && self.txfoView.currentSegments[0].segment.isRadialShield
         }
         
         // default to true

@@ -57,7 +57,7 @@ fileprivate extension NSRect {
     }
 }
 
-struct SegmentPath {
+struct SegmentPath:Equatable {
     
     let segment:Segment
     
@@ -168,6 +168,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     enum Mode {
         
         case selectSegment
+        case selectRect
         case zoomRect
     }
     
@@ -202,8 +203,27 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     var zoomRect:NSRect? = nil
     let zoomRectLineDash:[CGFloat] = [15.0, 8.0]
     
-    var currentSegment:SegmentPath? = nil
-    var currentSegmentIndex:Int? = nil
+    var selectRect:NSRect? = nil
+    let selectRectLineDash:[CGFloat] = [10.0, 5.0]
+    
+    var currentSegments:[SegmentPath] = []
+    var currentSegmentIndices:[Int] {
+        
+        get {
+            
+            var result:[Int] = []
+            
+            for i in 0..<self.segments.count {
+                
+                if self.currentSegments.contains(self.segments[i]) {
+                    
+                    result.append(i)
+                }
+            }
+            
+            return result
+        }
+    }
     
     // var fluxlines:[NSBezierPath] = []
     
@@ -245,22 +265,10 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             nextSegment.show()
         }
         
-        if let currSeg = self.currentSegment
+        for nextSegment in self.currentSegments
         {
-            self.ShowHandles(segment: currSeg)
+            self.ShowHandles(segment: nextSegment)
         }
-        
-        /*
-        if !fluxlines.isEmpty
-        {
-            NSColor.black.set()
-            
-            for nextPath in fluxlines
-            {
-                nextPath.stroke()
-            }
-        }
-         */
         
         if self.mode == .zoomRect
         {
@@ -271,6 +279,16 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 let zoomPath = NSBezierPath(rect: rect)
                 zoomPath.setLineDash(self.zoomRectLineDash, count: 2, phase: 0.0)
                 zoomPath.stroke()
+            }
+        }
+        else if self.mode == .selectRect {
+            
+            if let rect = self.selectRect {
+                
+                NSColor.gray.set()
+                let selectPath = NSBezierPath(rect: rect)
+                selectPath.setLineDash(self.selectRectLineDash, count: 2, phase: 0.0)
+                selectPath.stroke()
             }
         }
         
@@ -323,7 +341,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
 
     @IBAction func handleReverseCurrent(_ sender: Any) {
         
-        guard let appCtrl = self.appController, let currSeg = self.currentSegment else
+        guard let appCtrl = self.appController else
         {
             return
         }
@@ -337,7 +355,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     @IBAction func handleMoveWdgRadially(_ sender: Any) {
         
-        guard let appCtrl = self.appController, self.currentSegment != nil else
+        guard let appCtrl = self.appController else
         {
             return
         }
@@ -347,7 +365,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     @IBAction func handleMoveWdgAxially(_ sender: Any) {
         
-        guard let appCtrl = self.appController, self.currentSegment != nil else
+        guard let appCtrl = self.appController else
         {
             return
         }
@@ -357,7 +375,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     @IBAction func handleToggleActivation(_ sender: Any) {
         
-        guard let appCtrl = self.appController, let currSeg = self.currentSegment else
+        guard let appCtrl = self.appController else
         {
             return
         }
@@ -367,7 +385,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     @IBAction func handleActivateAllWindingTurns(_ sender: Any) {
         
-        guard let appCtrl = self.appController, let currSeg = self.currentSegment else
+        guard let appCtrl = self.appController else
         {
             return
         }
@@ -377,7 +395,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     @IBAction func handleDeactivateAllWindingTurns(_ sender: Any) {
         
-        guard let appCtrl = self.appController, let currSeg = self.currentSegment else
+        guard let appCtrl = self.appController else
         {
             return
         }
@@ -388,7 +406,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     @IBAction func handleSplitSegment(_ sender: Any) {
         
-        guard let appCtrl = self.appController, self.currentSegment != nil else
+        guard let appCtrl = self.appController else
         {
             return
         }
@@ -403,73 +421,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         {
             return false
         }
-        /*
-        if menuItem == self.reverseCurrentDirectionMenuItem
-        {
-            guard let currSeg = self.currentSegment else
-            {
-                return false
-            }
-            
-            let terminal = currSeg.segment.inLayer!.parentTerminal
-            let termNum = terminal.andersenNumber
-            
-            if let refTerm = txfo.niRefTerm
-            {
-                if refTerm != termNum
-                {
-                    // DLog("Fraction: \(txfo.FractionOfTerminal(terminal: terminal, andersenNum: termNum))")
-                    if txfo.FractionOfTerminal(terminal: terminal, andersenNum: termNum) >= 0.5
-                    {
-                        // DLog("Returning false because this would cause a reversal of a non-ref terminal")
-                        return false
-                    }
-                }
-            }
-            
-            return currSeg.segment.inLayer!.parentTerminal.winding!.CurrentCarryingTurns() != 0.0
-        }
-        else if menuItem == self.toggleActivationMenuItem
-        {
-            guard let segPath = self.currentSegment else
-            {
-                return false
-            }
-            
-            if segPath.isActive
-            {
-                let winding = segPath.segment.inLayer!.parentTerminal.winding!
-                let totalTerminalTurns = txfo.CurrentCarryingTurns(terminal: winding.terminal.andersenNumber)
-                let wdgTurns = winding.CurrentCarryingTurns()
-                let segTurns = segPath.segment.activeTurns
-                
-                if wdgTurns == segTurns && fabs(totalTerminalTurns - wdgTurns) < 0.5
-                {
-                    return false
-                }
-            }
-        }
-        else if menuItem == self.activateAllWdgTurnsMenuItem || menuItem == self.moveWdgAxiallyMenuItem || menuItem == self.moveWdgRadiallyMenuItem || menuItem == self.splitSegmentMenuItem
-        {
-            return self.currentSegment != nil
-        }
-        else if menuItem == self.deactivateAllWdgTurnsMenuItem
-        {
-            guard let segPath = self.currentSegment else
-            {
-                return false
-            }
-            
-            let winding = segPath.segment.inLayer!.parentTerminal.winding!
-            let totalTerminalTurns = txfo.CurrentCarryingTurns(terminal: winding.terminal.andersenNumber)
-            let wdgTurns = winding.CurrentCarryingTurns()
-            
-            if fabs(totalTerminalTurns - wdgTurns) < 0.5
-            {
-                return false
-            }
-        }
-         */
+        
         
         return true
     }
@@ -548,34 +500,37 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     {
         let clickPoint = self.convert(event.locationInWindow, from: nil)
         // print("Point:\(clickPoint)")
-        let clipBounds = self.convert(self.superview!.bounds, from: self.superview!)
+        // let clipBounds = self.convert(self.superview!.bounds, from: self.superview!)
         // print("Clip view: Bounds: \(clipBounds)")
         
-        self.currentSegment = nil
-        self.currentSegmentIndex = nil
+        if !event.modifierFlags.contains(.shift) {
         
-        for (index, nextSegment) in self.segments.enumerated()
+            self.currentSegments = []
+        }
+        
+        for nextSegment in self.segments
         {
             if nextSegment.contains(point: clickPoint)
             {
-                self.currentSegment = nextSegment
-                self.currentSegmentIndex = index
-                // self.appController!.UpdateToggleActivationMenu(deactivate: nextSegment.isActive)
+                self.currentSegments.append(nextSegment)
+                
                 break
             }
         }
         
-        if self.currentSegment == nil {
-            return
+        if self.currentSegments == [] {
+            
+            let eventLocation = event.locationInWindow
+            let localLocation = self.convert(eventLocation, from: nil)
+            
+            self.selectRect = NSRect(origin: localLocation, size: NSSize())
+            self.needsDisplay = true
         }
         
         // check if it was actually a double-click
         if event.clickCount == 2
         {
-            if let segmentPath = self.currentSegment
-            {
-                // self.appController!.doToggleSegmentActivation(segment: segmentPath.segment)
-            }
+            DLog("Do nothing")
         }
         
         self.needsDisplay = true
@@ -603,8 +558,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         {
             if nextPath.contains(point: clickPoint)
             {
-                self.currentSegment = nextPath
-                self.currentSegmentIndex = index
+                // self.currentSegments = nextPath
+                // self.currentSegmentIndex = index
                 // self.UpdateToggleActivationMenu(deactivate: nextPath.segment.IsActive())
                 self.needsDisplay = true
                 NSMenu.popUpContextMenu(self.contextualMenu, with: event, for: self)
