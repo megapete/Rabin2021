@@ -107,7 +107,26 @@ class EslamianVahidiSegment:Codable {
         let dim = evSegments.count
         let result = PCH_BaseClass_Matrix(matrixType: .general, numType: .Double, rows: UInt(dim), columns: UInt(dim))
         
-        for i in 0..<dim {
+        if let progIndicator = rb2021_progressIndicatorWindow {
+            
+            DispatchQueue.main.async {
+                progIndicator.UpdateIndicator(value: progIndicator.currentValue, minValue: nil, maxValue: nil, text: "Computing Inductances")
+            }
+        }
+        
+        
+        // for i in 0..<dim {
+        
+        DispatchQueue.concurrentPerform(iterations: dim) { (i:Int) -> Void in
+            
+            if let progIndicator = rb2021_progressIndicatorWindow {
+                
+                DispatchQueue.main.async {
+                    progIndicator.Increment(by: 1.0)
+                }
+                
+                // print(i)
+            }
             
             result[i, i] = evSegments[i].M(otherSegment: nil, useWeighting: true, adjustForSkinEffect: false)
             
@@ -135,8 +154,18 @@ class EslamianVahidiSegment:Codable {
     static func Create_EV_Array(segments:[Segment], core:Core) -> [EslamianVahidiSegment]
     {
         var result:[EslamianVahidiSegment] = []
-        
-        for nextSegment in segments {
+                
+        // for nextSegment in segments {
+        DispatchQueue.concurrentPerform(iterations: segments.count) { (i:Int) -> Void in
+            
+            let nextSegment = segments[i]
+            
+            if let progIndicator = rb2021_progressIndicatorWindow {
+                
+                DispatchQueue.main.async {
+                    progIndicator.Increment(by: 1.0)
+                }
+            }
             
             // the initializer will return nil if a static ring is passed to the routine
             if let newEvSegment = EslamianVahidiSegment(segment: nextSegment, core: core) {

@@ -42,6 +42,16 @@ class PCH_ProgressIndicatorWindow: NSWindowController {
         }
     }
     
+    func Increment(by incVal:Double) {
+        
+        self.currentValue += incVal
+        
+        if self.isWindowLoaded
+        {
+            self.indicator.doubleValue = self.currentValue
+        }
+    }
+    
     func UpdateIndicator(value:Double, minValue:Double? = nil, maxValue:Double? = nil, text:String? = nil)
     {
         self.currentValue = value

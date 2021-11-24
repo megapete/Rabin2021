@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import AppKit
 
 class PhaseModel:Codable {
     
@@ -147,17 +148,40 @@ class PhaseModel:Codable {
             
             throw PhaseModelError(info: "", type: .EmptyModel)
         }
+        
         if useEVmodel {
             
-            let evArray = EslamianVahidiSegment.Create_EV_Array(segments: self.segments, core: self.core)
+            // We need to grab the main window pointer here, while we're still in the main loop
+            let theMainWindow = NSApplication.shared.mainWindow
             
-            do {
+            if let progIndicator = rb2021_progressIndicatorWindow, let mainWindow = theMainWindow {
                 
-                self.M = try EslamianVahidiSegment.InductanceMatrix(evSegments: evArray)
+                progIndicator.UpdateIndicator(value: 0.0, minValue: 0.0, maxValue: Double(self.segments.count * 2), text: "Calculating current densities & vector potentials")
+                
+                mainWindow.beginSheet(progIndicator.window!, completionHandler: {responseCode in
+                    DLog("Ended sheet")
+                })
             }
-            catch {
+            
+            let mutIndQueue = DispatchQueue(label: "com.huberistech.rb2021_mutual_inductance_calculation")
+            
+            mutIndQueue.async {
+                    
+                    let evArray = EslamianVahidiSegment.Create_EV_Array(segments: self.segments, core: self.core)
+                    
+                    guard let indArray = try? EslamianVahidiSegment.InductanceMatrix(evSegments: evArray) else {
+                        
+                        PCH_ErrorAlert(message: "Error while creating Inductance Matrix!", info: "You are well and truly fucked!")
+                        return
+                    }
                 
-                throw error
+                    self.M = indArray
+                
+            
+                if let progIndicator = rb2021_progressIndicatorWindow, let mainWindow = theMainWindow {
+                    
+                    DispatchQueue.main.sync { mainWindow.endSheet(progIndicator.window!) }
+                }
             }
         }
     }

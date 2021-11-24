@@ -11,7 +11,7 @@ private let LAST_OPENED_INPUT_FILE_KEY = "PCH_RABIN2021_LastInputFile"
 
 let PCH_RABIN2021_IterationCount = 200
 
-var progressIndicatorWindow:PCH_ProgressIndicatorWindow? = nil
+var rb2021_progressIndicatorWindow:PCH_ProgressIndicatorWindow? = nil
 
 import Cocoa
 
@@ -66,6 +66,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     override func awakeFromNib() {
         
         txfoView.appController = self
+        
+        rb2021_progressIndicatorWindow = PCH_ProgressIndicatorWindow()
     }
     
     func InitializeController()
@@ -137,6 +139,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         do {
             
+            // print("ProgIndicator exists: \(rb2021_progressIndicatorWindow != nil)")
             try model.CalculateInductanceMatrix()
         }
         catch {
@@ -144,6 +147,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             let alert = NSAlert(error: error)
             let _ = alert.runModal()
             return
+        }
+        
+        if !reinitialize {
+            
+            self.updateViews()
         }
     }
     
@@ -794,7 +802,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         do {
             
-            try model.RemoveStaticRing(staticRing: currentSegment.segment)
+            try model.RemoveRadialShield(radialShield: currentSegment.segment)
             
             if let index = self.txfoView.currentSegmentIndex {
                 
