@@ -29,6 +29,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     @IBOutlet weak var zoomOutMenuItem: NSMenuItem!
     @IBOutlet weak var zoomRectMenuItem: NSMenuItem!
     @IBOutlet weak var zoomAllMenuItem: NSMenuItem!
+    /// Winding / Segment menus
+    @IBOutlet weak var showWdgAsSingleSegmentMenuItem: NSMenuItem!
+    @IBOutlet weak var combineSegmentsIntoSingleSegmentMenuItem: NSMenuItem!
+    @IBOutlet weak var interleaveSelectionMenuItem: NSMenuItem!
     /// Static RIngs
     @IBOutlet weak var staticRingOverMenuItem: NSMenuItem!
     @IBOutlet weak var staticRingBelowMenuItem: NSMenuItem!
@@ -151,6 +155,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             let _ = alert.runModal()
             return
         }
+        
+        #else
+        
+        print("Pretending to be recalculating Inductance & Capacitance matrices")
         
         #endif
         
@@ -677,13 +685,48 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     // MARK: Menu routines
     
-    // For now, this routine adds a "standard" static ring at the "standard" gap
+    @IBAction func handleWdgAsSingleSegment(_ sender: Any) {
+        
+        self.doWdgAsSingleSegment()
+    }
+    
+    func doWdgAsSingleSegment() {
+        
+    }
+    
+    @IBAction func handleCombineSelectionIntoSingleSegment(_ sender: Any) {
+        
+        self.doCombineSelectionIntoSingleSegment()
+    }
+    
+    func doCombineSelectionIntoSingleSegment() {
+        
+        
+    }
+    
+    @IBAction func handleInterleaveSelection(_ sender: Any) {
+        
+        self.doInterleaveSelection()
+    }
+    
+    func doInterleaveSelection() {
+        
+    }
+    
+    // next two functions for adding a static ring over the selection
     @IBAction func handleAddStaticRingOver(_ sender: Any) {
+        
+        self.doAddStaticRingOver()
+    }
+    
+    func doAddStaticRingOver() {
         
         guard let model = self.currentModel, self.txfoView.currentSegments.count > 0 else {
             
             return
         }
+        
+        
         
         let currentSegment = self.txfoView.currentSegments[0]
         
@@ -705,8 +748,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
     }
     
-    
+    // next two functions for adding a static ring under the selection
     @IBAction func handleAddStaticRingBelow(_ sender: Any) {
+        
+        self.doAddStaticRingBelow()
+    }
+    
+    func doAddStaticRingBelow() {
         
         guard let model = self.currentModel, self.txfoView.currentSegments.count > 0 else {
             
@@ -733,8 +781,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
     }
     
-    
+    // next two functions for removing a static ring
     @IBAction func handleRemoveStaticRing(_ sender: Any) {
+        
+        self.doRemoveStaticRing()
+    }
+    
+    func doRemoveStaticRing() {
         
         guard let model = self.currentModel, self.txfoView.currentSegments.count > 0 else {
             
@@ -761,8 +814,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
     }
     
-    
+    // next two functions for adding a radial shield
     @IBAction func handleAddRadialShield(_ sender: Any) {
+        
+        self.doAddRadialShield()
+    }
+    
+    func doAddRadialShield() {
         
         guard let model = self.currentModel, self.txfoView.currentSegments.count > 0 else {
             
@@ -804,8 +862,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
     }
     
-    
+    // next two functions for removing a radial shield
     @IBAction func handleRemoveRadialShield(_ sender: Any) {
+        
+        self.doRemoveRadialShield()
+    }
+    
+    func doRemoveRadialShield() {
         
         guard let model = self.currentModel, self.txfoView.currentSegments.count > 0 else {
             
@@ -830,7 +893,6 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             return
         }
     }
-    
     
     @IBAction func handleShowGraph(_ sender: Any) {
         
@@ -896,6 +958,16 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         if menuItem == self.removeRadialShieldMenuItem {
             
             return self.currentModel != nil && self.txfoView.currentSegments.count == 1 && self.txfoView.currentSegments[0].segment.isRadialShield
+        }
+        
+        if menuItem == self.combineSegmentsIntoSingleSegmentMenuItem || menuItem == self.interleaveSelectionMenuItem {
+            
+            return self.currentModel != nil && self.txfoView.currentSegments.count > 1 && !self.txfoView.currentSegmentsContainMoreThanOneWinding && !self.txfoView.currentSegments.contains(where: {$0.segment.isStaticRing}) && !self.txfoView.currentSegments.contains(where: {$0.segment.isRadialShield})
+        }
+        
+        if menuItem == self.showWdgAsSingleSegmentMenuItem {
+            
+            return self.currentModel != nil && self.txfoView.currentSegments.count > 0 && !self.txfoView.currentSegmentsContainMoreThanOneWinding
         }
         
         // default to true

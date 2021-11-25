@@ -225,6 +225,27 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
     }
     
+    var currentSegmentsContainMoreThanOneWinding:Bool {
+        
+        get {
+            
+            if self.currentSegments.count > 1 {
+                
+                let radialPosToCheck = self.currentSegments[0].segment.radialPos
+                
+                for nextSegment in self.currentSegments {
+                    
+                    if nextSegment.segment.radialPos != radialPosToCheck {
+                        
+                        return true
+                    }
+                }
+            }
+            
+            return false
+        }
+    }
+    
     // var fluxlines:[NSBezierPath] = []
     
     @IBOutlet weak var contextualMenu:NSMenu!
@@ -468,9 +489,15 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             return
         }
         
+        // testing has revealed that fast clicking can sometimes make the program think there should be a selection rectangle when there actually is not, so we check for it before proceeding
+        guard self.selectRect != nil else {
+            
+            return
+        }
+        
         // must be dragging with selection rectangle
         let endPoint = self.convert(event.locationInWindow, from: nil)
-        let newSize = NSSize(width: endPoint.x - self.selectRect!.origin.x, height: endPoint.y - self.selectRect!.origin.y)
+        let newSize = NSSize(width: endPoint.x - selectRect!.origin.x, height: endPoint.y - selectRect!.origin.y)
         self.selectRect!.size = newSize
         self.needsDisplay = true
     }
@@ -496,7 +523,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             
             for nextSegment in self.segments {
                 
-                print("Select rect: \(self.selectRect!); Segment rect: \(nextSegment.rect)")
+                // print("Select rect: \(self.selectRect!); Segment rect: \(nextSegment.rect)")
                 if NSContainsRect(self.selectRect!, nextSegment.rect) {
                     
                     self.currentSegments.append(nextSegment)
@@ -534,7 +561,14 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         {
             if nextSegment.contains(point: clickPoint)
             {
-                self.currentSegments.append(nextSegment)
+                if let selectedSegmentIndex = self.currentSegments.firstIndex(of: nextSegment) {
+                    
+                    self.currentSegments.remove(at: selectedSegmentIndex)
+                }
+                else {
+                
+                    self.currentSegments.append(nextSegment)
+                }
                 
                 break
             }
@@ -576,7 +610,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         let eventLocation = event.locationInWindow
         let clickPoint = self.convert(eventLocation, from: nil)
         
-        for (index, nextPath) in self.segments.enumerated()
+        for nextPath in self.segments
         {
             if nextPath.contains(point: clickPoint)
             {
