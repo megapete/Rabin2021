@@ -719,16 +719,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.doAddStaticRingOver()
     }
     
-    func doAddStaticRingOver() {
+    func doAddStaticRingOver(segmentPath:SegmentPath? = nil) {
         
         guard let model = self.currentModel, self.txfoView.currentSegments.count > 0 else {
             
             return
         }
         
-        
-        
-        let currentSegment = self.txfoView.currentSegments[0]
+        let currentSegment = segmentPath == nil ? self.txfoView.currentSegments[0] : segmentPath!
         
         do {
             
@@ -754,14 +752,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.doAddStaticRingBelow()
     }
     
-    func doAddStaticRingBelow() {
+    func doAddStaticRingBelow(segmentPath:SegmentPath? = nil) {
         
         guard let model = self.currentModel, self.txfoView.currentSegments.count > 0 else {
             
             return
         }
         
-        let currentSegment = self.txfoView.currentSegments[0]
+        let currentSegment = segmentPath == nil ? self.txfoView.currentSegments[0] : segmentPath!
         
         do {
             
@@ -787,14 +785,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.doRemoveStaticRing()
     }
     
-    func doRemoveStaticRing() {
+    func doRemoveStaticRing(segmentPath:SegmentPath? = nil) {
         
         guard let model = self.currentModel, self.txfoView.currentSegments.count > 0 else {
             
             return
         }
         
-        let currentSegment = self.txfoView.currentSegments[0]
+        let currentSegment = segmentPath == nil ? self.txfoView.currentSegments[0] : segmentPath!
         
         do {
             
@@ -820,14 +818,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.doAddRadialShield()
     }
     
-    func doAddRadialShield() {
+    func doAddRadialShield(segmentPath:SegmentPath? = nil) {
         
         guard let model = self.currentModel, self.txfoView.currentSegments.count > 0 else {
             
             return
         }
         
-        let currentSegment = self.txfoView.currentSegments[0]
+        let currentSegment = segmentPath == nil ? self.txfoView.currentSegments[0] : segmentPath!
         
         let getHiloDlog = GetNumberDialog(descriptiveText: "Gap to shield:", unitsText: "meters", noteText: "Must be less then the hilo under the coil", windowTitle: "Add Radial Shield")
         
@@ -868,14 +866,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.doRemoveRadialShield()
     }
     
-    func doRemoveRadialShield() {
+    func doRemoveRadialShield(segmentPath:SegmentPath? = nil) {
         
         guard let model = self.currentModel, self.txfoView.currentSegments.count > 0 else {
             
             return
         }
         
-        let currentSegment = self.txfoView.currentSegments[0]
+        let currentSegment = segmentPath == nil ? self.txfoView.currentSegments[0] : segmentPath!
         
         do {
             

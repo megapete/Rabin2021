@@ -246,16 +246,12 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
     }
     
-    // var fluxlines:[NSBezierPath] = []
+    var rightClickSelection:SegmentPath? = nil
     
     @IBOutlet weak var contextualMenu:NSMenu!
-    @IBOutlet weak var reverseCurrentDirectionMenuItem:NSMenuItem!
-    @IBOutlet weak var toggleActivationMenuItem:NSMenuItem!
-    @IBOutlet weak var activateAllWdgTurnsMenuItem:NSMenuItem!
-    @IBOutlet weak var deactivateAllWdgTurnsMenuItem:NSMenuItem!
-    @IBOutlet weak var moveWdgRadiallyMenuItem:NSMenuItem!
-    @IBOutlet weak var moveWdgAxiallyMenuItem:NSMenuItem!
-    @IBOutlet weak var splitSegmentMenuItem:NSMenuItem!
+    @IBOutlet weak var addStaticRingAboveMenuItem:NSMenuItem!
+    @IBOutlet weak var addStaticRingBelowMenuItem:NSMenuItem!
+    @IBOutlet weak var removeStaticRingMenuItem:NSMenuItem!
     
     // The scrollview that this view is in
     @IBOutlet weak var scrollView:NSScrollView!
@@ -360,18 +356,35 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     // MARK: Contextual Menu Handlers
 
-    @IBAction func handleReverseCurrent(_ sender: Any) {
+    
+    @IBAction func handleAddStaticRingAbove(_ sender: Any) {
         
-        guard let appCtrl = self.appController else
-        {
+        guard let appCtrl = self.appController, let segment = self.rightClickSelection else {
+            
             return
         }
         
-        /*
-        let winding = currSeg.segment.inLayer!.parentTerminal.winding!
+        appCtrl.doAddStaticRingOver(segmentPath: segment)
+    }
+    
+    @IBAction func handleAddStaticRingBelow(_ sender: Any) {
         
-        appCtrl.doReverseCurrentDirection(winding: winding)
-         */
+        guard let appCtrl = self.appController, let segment = self.rightClickSelection else {
+            
+            return
+        }
+        
+        appCtrl.doAddStaticRingBelow(segmentPath: segment)
+    }
+    
+    @IBAction func handleRemoveStaticRing(_ sender: Any) {
+        
+        guard let appCtrl = self.appController, let segment = self.rightClickSelection else {
+            
+            return
+        }
+        
+        appCtrl.doRemoveStaticRing(segmentPath: segment)
     }
     
     @IBAction func handleMoveWdgRadially(_ sender: Any) {
@@ -444,19 +457,13 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
         
         
+        
         return true
     }
     
     func UpdateToggleActivationMenu(deactivate:Bool)
     {
-        if deactivate
-        {
-            self.toggleActivationMenuItem.title = "Deactivate segment"
-        }
-        else
-        {
-            self.toggleActivationMenuItem.title = "Activate segment"
-        }
+        
         
         guard let appCtrl = self.appController else
         {
@@ -523,10 +530,12 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             
             for nextSegment in self.segments {
                 
-                // print("Select rect: \(self.selectRect!); Segment rect: \(nextSegment.rect)")
                 if NSContainsRect(self.selectRect!, nextSegment.rect) {
                     
-                    self.currentSegments.append(nextSegment)
+                    if self.currentSegments.firstIndex(of: nextSegment) == nil {
+                    
+                        self.currentSegments.append(nextSegment)
+                    }
                 }
             }
         }
@@ -614,14 +623,19 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         {
             if nextPath.contains(point: clickPoint)
             {
-                // self.currentSegments = nextPath
-                // self.currentSegmentIndex = index
-                // self.UpdateToggleActivationMenu(deactivate: nextPath.segment.IsActive())
+                self.rightClickSelection = nextPath
+                if self.currentSegments.firstIndex(of: nextPath) == nil {
+                
+                    self.currentSegments = [nextPath]
+                }
                 self.needsDisplay = true
                 NSMenu.popUpContextMenu(self.contextualMenu, with: event, for: self)
-                return
+                
+                break
             }
         }
+        
+        self.rightClickSelection = nil
     }
     
     // MARK: Zoom Functions

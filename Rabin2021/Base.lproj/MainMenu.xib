@@ -596,6 +596,10 @@
                                     <rect key="frame" x="0.0" y="0.0" width="587" height="668"/>
                                     <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                     <connections>
+                                        <outlet property="addStaticRingAboveMenuItem" destination="Tfv-hK-FPK" id="ftn-3r-jF9"/>
+                                        <outlet property="addStaticRingBelowMenuItem" destination="O5X-tg-CTF" id="Dig-VT-E3G"/>
+                                        <outlet property="contextualMenu" destination="vYc-df-mG1" id="Zif-rp-tSR"/>
+                                        <outlet property="removeStaticRingMenuItem" destination="9lT-ox-QYR" id="4Pl-9t-zZ0"/>
                                         <outlet property="scrollView" destination="Yo4-0m-Iub" id="qaZ-Jo-sf3"/>
                                     </connections>
                                 </view>
@@ -882,5 +886,28 @@
                 </items>
             </menu>
         </menuItem>
+        <menu id="vYc-df-mG1">
+            <items>
+                <menuItem title="Add Static Ring Above" id="Tfv-hK-FPK">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                    <connections>
+                        <action selector="handleAddStaticRingAbove:" target="-1" id="tm0-Fp-6s6"/>
+                    </connections>
+                </menuItem>
+                <menuItem title="Add Static Ring Below" id="O5X-tg-CTF">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                    <connections>
+                        <action selector="handleAddStaticRingBelow:" target="-1" id="v9B-YZ-vEC"/>
+                    </connections>
+                </menuItem>
+                <menuItem title="Remove Static Ring" id="9lT-ox-QYR">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                    <connections>
+                        <action selector="handleRemoveStaticRing:" target="-1" id="68O-qK-lO4"/>
+                    </connections>
+                </menuItem>
+            </items>
+            <point key="canvasLocation" x="897" y="389"/>
+        </menu>
     </objects>
 </document>
