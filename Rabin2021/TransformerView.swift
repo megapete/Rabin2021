@@ -467,6 +467,12 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             self.mouseDraggedWithZoomRect(event: event)
             return
         }
+        
+        // must be dragging with selection rectangle
+        let endPoint = self.convert(event.locationInWindow, from: nil)
+        let newSize = NSSize(width: endPoint.x - self.selectRect!.origin.x, height: endPoint.y - self.selectRect!.origin.y)
+        self.selectRect!.size = newSize
+        self.needsDisplay = true
     }
     
     override func mouseUp(with event: NSEvent) {
@@ -478,8 +484,24 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             self.zoomRect!.size = newSize
             self.handleZoomRect(zRect: self.zoomRect!)
         }
-        else {
-            return
+        else if self.mode == .selectRect {
+            
+            let endPoint = self.convert(event.locationInWindow, from: nil)
+            let newSize = NSSize(width: endPoint.x - self.selectRect!.origin.x, height: endPoint.y - self.selectRect!.origin.y)
+            self.selectRect!.size = newSize
+            
+            self.selectRect = NormalizeRect(srcRect: self.selectRect!)
+            
+            self.currentSegments = []
+            
+            for nextSegment in self.segments {
+                
+                print("Select rect: \(self.selectRect!); Segment rect: \(nextSegment.rect)")
+                if NSContainsRect(self.selectRect!, nextSegment.rect) {
+                    
+                    self.currentSegments.append(nextSegment)
+                }
+            }
         }
         
         self.mode = .selectSegment
@@ -522,7 +544,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             
             let eventLocation = event.locationInWindow
             let localLocation = self.convert(eventLocation, from: nil)
-            
+            self.mode = .selectRect
             self.selectRect = NSRect(origin: localLocation, size: NSSize())
             self.needsDisplay = true
         }
