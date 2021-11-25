@@ -389,6 +389,10 @@
                                     <action selector="handleInterleaveSelection:" target="XWq-sU-B2V" id="bDJ-Sf-C3d"/>
                                 </connections>
                             </menuItem>
+                            <menuItem isSeparatorItem="YES" id="9V9-ZD-x3G"/>
+                            <menuItem title="Split segment into basic sections" id="hmW-Yq-C8J">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                            </menuItem>
                         </items>
                     </menu>
                 </menuItem>
@@ -580,7 +584,7 @@
             <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" resizable="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
             <rect key="contentRect" x="335" y="390" width="601" height="682"/>
-            <rect key="screenRect" x="0.0" y="0.0" width="2560" height="1415"/>
+            <rect key="screenRect" x="0.0" y="0.0" width="1680" height="1025"/>
             <view key="contentView" id="EiT-Mj-1SZ">
                 <rect key="frame" x="0.0" y="0.0" width="601" height="682"/>
                 <autoresizingMask key="autoresizingMask"/>
@@ -589,16 +593,18 @@
                         <rect key="frame" x="-1" y="-1" width="603" height="684"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <clipView key="contentView" id="SDg-ft-U91">
-                            <rect key="frame" x="1" y="1" width="586" height="667"/>
+                            <rect key="frame" x="1" y="1" width="601" height="682"/>
                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                             <subviews>
                                 <view id="ebn-Op-mWN" customClass="TransformerView" customModule="Rabin2021" customModuleProvider="target">
-                                    <rect key="frame" x="0.0" y="0.0" width="587" height="668"/>
+                                    <rect key="frame" x="0.0" y="0.0" width="602" height="683"/>
                                     <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                     <connections>
+                                        <outlet property="addRadialShieldMenuItem" destination="kmi-xS-wRk" id="JqN-Ra-ha9"/>
                                         <outlet property="addStaticRingAboveMenuItem" destination="Tfv-hK-FPK" id="ftn-3r-jF9"/>
                                         <outlet property="addStaticRingBelowMenuItem" destination="O5X-tg-CTF" id="Dig-VT-E3G"/>
                                         <outlet property="contextualMenu" destination="vYc-df-mG1" id="Zif-rp-tSR"/>
+                                        <outlet property="removeRadialShieldMenuItem" destination="gNG-69-f6d" id="7lX-hO-cCv"/>
                                         <outlet property="removeStaticRingMenuItem" destination="9lT-ox-QYR" id="4Pl-9t-zZ0"/>
                                         <outlet property="scrollView" destination="Yo4-0m-Iub" id="qaZ-Jo-sf3"/>
                                     </connections>
@@ -606,11 +612,11 @@
                             </subviews>
                         </clipView>
                         <scroller key="horizontalScroller" wantsLayer="YES" verticalHuggingPriority="750" horizontal="YES" id="ZNq-Kw-tyS">
-                            <rect key="frame" x="1" y="668" width="586" height="15"/>
+                            <rect key="frame" x="1" y="667" width="601" height="16"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </scroller>
                         <scroller key="verticalScroller" wantsLayer="YES" verticalHuggingPriority="750" doubleValue="1" horizontal="NO" id="aVc-m1-gzr">
-                            <rect key="frame" x="587" y="1" width="15" height="667"/>
+                            <rect key="frame" x="586" y="1" width="16" height="682"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </scroller>
                     </scrollView>
@@ -905,6 +911,29 @@
                     <connections>
                         <action selector="handleRemoveStaticRing:" target="-1" id="68O-qK-lO4"/>
                     </connections>
+                </menuItem>
+                <menuItem isSeparatorItem="YES" id="q8C-HG-dww"/>
+                <menuItem title="Add Radial Shield Inside" id="kmi-xS-wRk">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                    <connections>
+                        <action selector="handleAddRadialShield:" target="-1" id="2yY-KP-kdc"/>
+                    </connections>
+                </menuItem>
+                <menuItem title="Remove Radial Shield" id="gNG-69-f6d">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                    <connections>
+                        <action selector="handleRemoveRadialShield:" target="-1" id="9KF-yg-AbW"/>
+                    </connections>
+                </menuItem>
+                <menuItem isSeparatorItem="YES" id="RNH-pZ-fdE"/>
+                <menuItem title="Combine into single segment" id="adz-pq-wQr">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                </menuItem>
+                <menuItem title="Interleave" id="4bJ-Am-dqw">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                </menuItem>
+                <menuItem title="Split into basic sections" id="1w8-y3-uAZ">
+                    <modifierMask key="keyEquivalentModifierMask"/>
                 </menuItem>
             </items>
             <point key="canvasLocation" x="897" y="389"/>

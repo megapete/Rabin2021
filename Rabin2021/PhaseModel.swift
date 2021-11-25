@@ -124,7 +124,7 @@ class PhaseModel:Codable {
         }
     }
     
-    /// Designated initializer. Depending on the value of the 'useEslamianVahidi' parameter either a DelVecchio or EV-tyoe model will be created
+    /// Designated initializer.
     /// - Parameter segments: The segments that make up the basis for the model
     /// - Parameter core: The core (duh)
     init(segments:[Segment], core:Core) {
@@ -140,6 +140,53 @@ class PhaseModel:Codable {
         })
         
         self.core = core
+    }
+    
+    // Routine to check whether an array of Segments is contiguous. It is not necessary for the 'segments' array to be sorted.
+    func SegmentsAreContiguous(segments:[Segment]) -> Bool {
+        
+        let sortedSegments = segments.sorted(by: { lhs, rhs in
+            
+            if lhs.radialPos != rhs.radialPos {
+                
+                return lhs.radialPos < rhs.radialPos
+            }
+            
+            return lhs.axialPos < rhs.axialPos
+        })
+        
+        if sortedSegments.count == 0 {
+            
+            return false
+        }
+        
+        if sortedSegments.count == 1 {
+            
+            return true
+        }
+        
+        // find the index of the first entry in the model
+        if let firstIndex = self.segmentStore.firstIndex(of: sortedSegments[0]) {
+            
+            for i in 1..<sortedSegments.count {
+                
+                if firstIndex + i >= self.segmentStore.count {
+                    
+                    return false
+                }
+                
+                if self.segmentStore[firstIndex + i] != sortedSegments[i] {
+                    
+                    return false
+                }
+            }
+        }
+        else {
+            
+            return false
+        }
+        
+        return true
     }
     
     func CalculateInductanceMatrix(useEVmodel:Bool = true) throws {

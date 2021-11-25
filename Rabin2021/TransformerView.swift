@@ -187,7 +187,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             {
                 NSCursor.arrow.set()
             }
-            else if newValue == .zoomRect
+            else if newValue == .zoomRect || newValue == .selectRect
             {
                 NSCursor.crosshair.set()
             }
@@ -248,10 +248,13 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     var rightClickSelection:SegmentPath? = nil
     
+    // contextual (right-click) menus
     @IBOutlet weak var contextualMenu:NSMenu!
     @IBOutlet weak var addStaticRingAboveMenuItem:NSMenuItem!
     @IBOutlet weak var addStaticRingBelowMenuItem:NSMenuItem!
     @IBOutlet weak var removeStaticRingMenuItem:NSMenuItem!
+    @IBOutlet weak var addRadialShieldMenuItem:NSMenuItem!
+    @IBOutlet weak var removeRadialShieldMenuItem:NSMenuItem!
     
     // The scrollview that this view is in
     @IBOutlet weak var scrollView:NSScrollView!
@@ -356,6 +359,25 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     // MARK: Contextual Menu Handlers
 
+    @IBAction func handleAddRadialShield(_ sender: Any) {
+        
+        guard let appCtrl = self.appController, let segment = self.rightClickSelection else {
+            
+            return
+        }
+        
+        appCtrl.doAddRadialShield(segmentPath: segment)
+    }
+    
+    @IBAction func handleRemoveRadialShield(_ sender: Any) {
+        
+        guard let appCtrl = self.appController, let segment = self.rightClickSelection else {
+            
+            return
+        }
+        
+        appCtrl.doRemoveRadialShield(segmentPath: segment)
+    }
     
     @IBAction func handleAddStaticRingAbove(_ sender: Any) {
         
@@ -448,15 +470,29 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         // appCtrl.handleSplitSegment(self)
     }
     
+    // MARK: Menu validation
     
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         
-        guard let appCtrl = self.appController /*, let txfo = appCtrl.currentTxfo */ else
+        guard let appCtrl = self.appController, appCtrl.currentModel != nil else
         {
             return false
         }
         
+        if menuItem == addStaticRingAboveMenuItem || menuItem == addStaticRingBelowMenuItem || menuItem == addRadialShieldMenuItem {
+            
+            return self.currentSegments.count == 1 && !self.currentSegments[0].segment.isStaticRing && !self.currentSegments[0].segment.isRadialShield
+        }
         
+        if menuItem == removeStaticRingMenuItem {
+            
+            return self.currentSegments.count == 1 && self.currentSegments[0].segment.isStaticRing
+        }
+        
+        if menuItem == removeRadialShieldMenuItem {
+            
+            return self.currentSegments.count == 1 && self.currentSegments[0].segment.isRadialShield
+        }
         
         return true
     }

@@ -690,7 +690,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.doWdgAsSingleSegment()
     }
     
-    func doWdgAsSingleSegment() {
+    func doWdgAsSingleSegment(segmentPath:SegmentPath? = nil) {
         
     }
     
@@ -699,7 +699,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.doCombineSelectionIntoSingleSegment()
     }
     
-    func doCombineSelectionIntoSingleSegment() {
+    func doCombineSelectionIntoSingleSegment(segmentPath:SegmentPath? = nil) {
         
         
     }
@@ -709,7 +709,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.doInterleaveSelection()
     }
     
-    func doInterleaveSelection() {
+    func doInterleaveSelection(segmentPath:SegmentPath? = nil) {
         
     }
     
