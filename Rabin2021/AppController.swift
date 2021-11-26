@@ -742,11 +742,75 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     @IBAction func handleInterleaveSelection(_ sender: Any) {
         
-        self.doInterleaveSelection()
+        self.doInterleaveSelection(segmentPaths: self.txfoView.currentSegments)
     }
     
-    func doInterleaveSelection(segmentPath:SegmentPath? = nil) {
+    func doInterleaveSelection(segmentPaths:[SegmentPath]) {
         
+        guard let model = self.currentModel, segmentPaths.count > 0 else {
+            
+            return
+        }
+        
+        guard !segmentPaths.contains(where: {$0.segment.interleaved}) else {
+            
+            PCH_ErrorAlert(message: "The selection contains at least one interleaved segment!", info: "Cannot 'double-interleave'")
+            return
+        }
+        
+        var segments:[Segment] = []
+        for nextPath in segmentPaths {
+            
+            segments.append(nextPath.segment)
+        }
+        
+        segments.sort(by: { lhs, rhs in
+            
+            if lhs.radialPos != rhs.radialPos {
+                
+                return lhs.radialPos < rhs.radialPos
+            }
+            
+            return lhs.axialPos < rhs.axialPos
+        })
+        
+        if model.SegmentsAreContiguous(segments: segments) {
+            
+            var basicSections:[BasicSection] = []
+            for nextSegment in segments {
+                
+                basicSections.append(contentsOf: nextSegment.basicSections)
+            }
+            
+            guard basicSections.count % 2 == 0 else {
+                
+                PCH_ErrorAlert(message: "There must be an even number of Basic Sections to create an iterleaved segment!", info: nil)
+                return
+            }
+            
+            do {
+                
+                var interleavedSegments:[Segment] = []
+                
+                for i in stride(from: 0, to: basicSections.count, by: 2) {
+                    
+                    interleavedSegments.append(try Segment(basicSections: [basicSections[i], basicSections[i+1]], interleaved: true, realWindowHeight: model.core.realWindowHeight, useWindowHeight: model.core.adjustedWindHt))
+                }
+                
+                self.updateModel(oldSegments: segments, newSegments: interleavedSegments, xlFile: nil, reinitialize: false)
+            }
+            catch {
+                
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
+                return
+            }
+            
+        }
+        else {
+            
+            PCH_ErrorAlert(message: "Segments must be from the same coil and be contiguous to interleave them!", info: nil)
+        }
     }
     
     // next two functions for adding a static ring over the selection
@@ -979,29 +1043,44 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             return self.currentModel != nil
         }
         
+        // get local copies of variables that we access often
+        let currentSegs = self.txfoView.currentSegments
+        let currentSegsCount = currentSegs.count
+        
         if menuItem == self.staticRingOverMenuItem || menuItem == self.staticRingBelowMenuItem || menuItem == self.radialShieldInsideMenuItem {
             
-            return self.currentModel != nil && self.txfoView.currentSegments.count == 1 && !self.txfoView.currentSegments[0].segment.isStaticRing && !self.txfoView.currentSegments[0].segment.isRadialShield
+            return self.currentModel != nil && currentSegsCount == 1 && !currentSegs[0].segment.isStaticRing && !currentSegs[0].segment.isRadialShield
         }
         
         if menuItem == self.removeStaticRingMenuItem {
             
-            return self.currentModel != nil && self.txfoView.currentSegments.count == 1 && self.txfoView.currentSegments[0].segment.isStaticRing
+            return self.currentModel != nil && currentSegsCount == 1 && currentSegs[0].segment.isStaticRing
         }
         
         if menuItem == self.removeRadialShieldMenuItem {
             
-            return self.currentModel != nil && self.txfoView.currentSegments.count == 1 && self.txfoView.currentSegments[0].segment.isRadialShield
+            return self.currentModel != nil && currentSegsCount == 1 && currentSegs[0].segment.isRadialShield
         }
         
-        if menuItem == self.combineSegmentsIntoSingleSegmentMenuItem || menuItem == self.interleaveSelectionMenuItem {
+        if menuItem == self.combineSegmentsIntoSingleSegmentMenuItem {
             
-            return self.currentModel != nil && self.txfoView.currentSegments.count > 1 && !self.txfoView.currentSegmentsContainMoreThanOneWinding && !self.txfoView.currentSegments.contains(where: {$0.segment.isStaticRing}) && !self.txfoView.currentSegments.contains(where: {$0.segment.isRadialShield})
+            return self.currentModel != nil && currentSegsCount > 1 && !self.txfoView.currentSegmentsContainMoreThanOneWinding && !currentSegs.contains(where: {$0.segment.isStaticRing}) && !currentSegs.contains(where: {$0.segment.isRadialShield})
+        }
+        
+        if menuItem == self.interleaveSelectionMenuItem {
+            
+            var totalBasicSections = 0
+            for nextSegment in currentSegs {
+                
+                totalBasicSections += nextSegment.segment.basicSections.count
+            }
+            
+            return self.currentModel != nil && totalBasicSections > 1 && totalBasicSections % 2 == 0 && !self.txfoView.currentSegmentsContainMoreThanOneWinding && currentSegs[0].segment.basicSections[0].wdgData.type == .disc && !currentSegs.contains(where: {$0.segment.interleaved}) && !currentSegs.contains(where: {$0.segment.isStaticRing}) && !currentSegs.contains(where: {$0.segment.isRadialShield})
         }
         
         if menuItem == self.showWdgAsSingleSegmentMenuItem {
             
-            return self.currentModel != nil && self.txfoView.currentSegments.count > 0 && !self.txfoView.currentSegmentsContainMoreThanOneWinding
+            return self.currentModel != nil && currentSegsCount > 0 && !self.txfoView.currentSegmentsContainMoreThanOneWinding
         }
         
         // default to true
