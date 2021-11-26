@@ -29,6 +29,7 @@
                 <outlet property="removeRadialShieldMenuItem" destination="xXj-L6-RCw" id="PQm-pG-7IL"/>
                 <outlet property="removeStaticRingMenuItem" destination="4HP-v0-HBk" id="Y4d-TJ-nm9"/>
                 <outlet property="showWdgAsSingleSegmentMenuItem" destination="Aqp-v7-qka" id="wWQ-tl-Wef"/>
+                <outlet property="splitSegmentToBasicSectionsMenuItem" destination="hmW-Yq-C8J" id="aNg-xP-L1a"/>
                 <outlet property="staticRingBelowMenuItem" destination="yYJ-bL-mnq" id="u77-aA-iGG"/>
                 <outlet property="staticRingOverMenuItem" destination="Qy0-6N-UAU" id="Sxy-Fa-RGp"/>
                 <outlet property="txfoView" destination="ebn-Op-mWN" id="ioC-u5-We5"/>
@@ -392,6 +393,9 @@
                             <menuItem isSeparatorItem="YES" id="9V9-ZD-x3G"/>
                             <menuItem title="Split segment into basic sections" id="hmW-Yq-C8J">
                                 <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleSplitSegmentIntoBasicSections:" target="XWq-sU-B2V" id="JYg-dp-pPe"/>
+                                </connections>
                             </menuItem>
                         </items>
                     </menu>

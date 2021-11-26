@@ -33,6 +33,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     @IBOutlet weak var showWdgAsSingleSegmentMenuItem: NSMenuItem!
     @IBOutlet weak var combineSegmentsIntoSingleSegmentMenuItem: NSMenuItem!
     @IBOutlet weak var interleaveSelectionMenuItem: NSMenuItem!
+    @IBOutlet weak var splitSegmentToBasicSectionsMenuItem: NSMenuItem!
+    
     /// Static RIngs
     @IBOutlet weak var staticRingOverMenuItem: NSMenuItem!
     @IBOutlet weak var staticRingBelowMenuItem: NSMenuItem!
@@ -682,6 +684,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     func doWdgAsSingleSegment(segmentPath:SegmentPath? = nil) {
         
+        
     }
     
     @IBAction func handleCombineSelectionIntoSingleSegment(_ sender: Any) {
@@ -784,7 +787,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             
             guard basicSections.count % 2 == 0 else {
                 
-                PCH_ErrorAlert(message: "There must be an even number of Basic Sections to create an iterleaved segment!", info: nil)
+                PCH_ErrorAlert(message: "There must be an even number of total discs to create interleaved segments!", info: nil)
                 return
             }
             
@@ -812,6 +815,44 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             PCH_ErrorAlert(message: "Segments must be from the same coil and be contiguous to interleave them!", info: nil)
         }
     }
+    
+    @IBAction func handleSplitSegmentIntoBasicSections(_ sender: Any) {
+        
+        guard self.currentModel != nil, self.txfoView.currentSegments.count == 1 else {
+            
+            return
+        }
+        
+        self.doSplitSegmentIntoBasicSections(segmentPath: self.txfoView.currentSegments[0])
+    }
+    
+    func doSplitSegmentIntoBasicSections(segmentPath:SegmentPath) {
+        
+        guard let model = self.currentModel, segmentPath.segment.basicSections.count > 1 else {
+            
+            return
+        }
+        
+        let segment = segmentPath.segment
+        var newSegments:[Segment] = []
+        
+        do {
+            
+            for nextBasicSection in segment.basicSections {
+                
+                newSegments.append(try Segment(basicSections: [nextBasicSection], interleaved: false, isStaticRing: false, isRadialShield: false, realWindowHeight: model.core.realWindowHeight, useWindowHeight: model.core.adjustedWindHt))
+            }
+            
+            self.updateModel(oldSegments: [segment], newSegments: newSegments, xlFile: nil, reinitialize: false)
+        }
+        catch {
+            
+            let alert = NSAlert(error: error)
+            let _ = alert.runModal()
+            return
+        }
+    }
+    
     
     // next two functions for adding a static ring over the selection
     @IBAction func handleAddStaticRingOver(_ sender: Any) {
@@ -1081,6 +1122,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         if menuItem == self.showWdgAsSingleSegmentMenuItem {
             
             return self.currentModel != nil && currentSegsCount > 0 && !self.txfoView.currentSegmentsContainMoreThanOneWinding
+        }
+        
+        if menuItem == self.splitSegmentToBasicSectionsMenuItem {
+            
+            return self.currentModel != nil && currentSegsCount == 1 && currentSegs[0].segment.basicSections.count > 1 && !currentSegs.contains(where: {$0.segment.isStaticRing}) && !currentSegs.contains(where: {$0.segment.isRadialShield})
         }
         
         // default to true

@@ -496,18 +496,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         return true
     }
-    
-    func UpdateToggleActivationMenu(deactivate:Bool)
-    {
-        
-        
-        guard let appCtrl = self.appController else
-        {
-            return
-        }
-        
-        // appCtrl.UpdateToggleActivationMenu(deactivate: deactivate)
-    }
+
     
     // MARK: Mouse Events
     override func mouseDown(with event: NSEvent) {
