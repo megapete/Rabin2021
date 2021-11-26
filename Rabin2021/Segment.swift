@@ -47,7 +47,7 @@ class Segment: Codable, Equatable {
     }
     
     /// The first (index = 0) entry  has the lowest Z and the last entry has the highest.
-    private var basicSectionStore:[BasicSection] = []
+    let basicSections:[BasicSection]
         
     /// A Boolean to indicate whether the segment is interleaved
     var interleaved:Bool
@@ -64,7 +64,7 @@ class Segment: Codable, Equatable {
     /// The type of the coil that owns this segment
     var wdgType:BasicSectionWindingData.WdgType {
         
-        return self.basicSectionStore[0].wdgData.type
+        return self.basicSections[0].wdgData.type
     }
     
     /// The series current through a single turn in the segment
@@ -73,7 +73,7 @@ class Segment: Codable, Equatable {
     /// The radial position of the segment (0 = closest to core)
     var radialPos:Int {
         get {
-            return self.basicSectionStore[0].location.radial
+            return self.basicSections[0].location.radial
         }
     }
     
@@ -81,7 +81,7 @@ class Segment: Codable, Equatable {
     var axialPos:Int {
         
         get {
-            return self.basicSectionStore[0].location.axial
+            return self.basicSections[0].location.axial
         }
     }
     
@@ -156,7 +156,7 @@ class Segment: Codable, Equatable {
         get {
             var result = 0.0
             
-            for nextSection in self.basicSectionStore {
+            for nextSection in self.basicSections {
                 
                 result += nextSection.N
             }
@@ -233,7 +233,7 @@ class Segment: Codable, Equatable {
         }
         
         // if we get here, we can save the array and set the properties
-        self.basicSectionStore = basicSections
+        self.basicSections = basicSections
         self.interleaved = interleaved
         
         self.rect = NSRect(x: first.r1, y: first.z1, width: first.width, height: last.z2 - first.z1)
@@ -312,12 +312,12 @@ class Segment: Codable, Equatable {
         
         // For disc coils, this corresponds to Ctt in the DelVeccio book. For layer windings, it is the turn-turn capacitance in the axial direction (my own invention).
         
-        let tau = 2.0 * self.basicSectionStore[0].wdgData.turn.turnInsulation
+        let tau = 2.0 * self.basicSections[0].wdgData.turn.turnInsulation
         
         if self.wdgType == .disc || self.wdgType == .layer {
             
             // the calculation of the turn thickness of laye windings does not account for ducts in the winding
-            let h = self.wdgType == .disc ? self.basicSectionStore[0].height - tau : self.basicSectionStore[0].width / Double(self.basicSectionStore[0].wdgData.layers.numLayers)
+            let h = self.wdgType == .disc ? self.basicSections[0].height - tau : self.basicSections[0].width / Double(self.basicSections[0].wdgData.layers.numLayers)
             
             var Ctt:Double = ε0 * εPaper
             Ctt *= π * (self.r1 + self.r2)

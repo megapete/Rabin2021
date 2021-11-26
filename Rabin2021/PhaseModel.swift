@@ -145,6 +145,17 @@ class PhaseModel:Codable {
     // Routine to check whether an array of Segments is contiguous. It is not necessary for the 'segments' array to be sorted.
     func SegmentsAreContiguous(segments:[Segment]) -> Bool {
         
+        if segments.count == 0 {
+            
+            return false
+        }
+        
+        if segments.count == 1 {
+            
+            return true
+        }
+        
+        // sort the array the same way that the segmentStore property is sorted
         let sortedSegments = segments.sorted(by: { lhs, rhs in
             
             if lhs.radialPos != rhs.radialPos {
@@ -154,16 +165,6 @@ class PhaseModel:Codable {
             
             return lhs.axialPos < rhs.axialPos
         })
-        
-        if sortedSegments.count == 0 {
-            
-            return false
-        }
-        
-        if sortedSegments.count == 1 {
-            
-            return true
-        }
         
         // find the index of the first entry in the model
         if let firstIndex = self.segmentStore.firstIndex(of: sortedSegments[0]) {
@@ -186,6 +187,7 @@ class PhaseModel:Codable {
             return false
         }
         
+        // we've run the gauntlet, return true
         return true
     }
     

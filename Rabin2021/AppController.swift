@@ -654,6 +654,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
         
         self.txfoView.segments = []
+        self.txfoView.currentSegments = []
         
         self.txfoView.removeAllToolTips()
         
@@ -664,17 +665,6 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             var newSegPath = SegmentPath(segment: nextSegment, segmentColor: pathColor)
             
             newSegPath.toolTipTag = self.txfoView.addToolTip(newSegPath.rect, owner: self.txfoView as Any, userData: nil)
-            
-            /*
-            // update the currently-selected segment in the TransformerView
-            if let currentSegment = self.txfoView.currentSegments
-            {
-                if currentSegment.segment.serialNumber == nextSegment.serialNumber
-                {
-                    self.txfoView.currentSegments = newSegPath
-                }
-            }
-            */
             
             self.txfoView.segments.append(newSegPath)
         }
@@ -696,12 +686,58 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     @IBAction func handleCombineSelectionIntoSingleSegment(_ sender: Any) {
         
-        self.doCombineSelectionIntoSingleSegment()
+        self.doCombineSelectionIntoSingleSegment(segmentPaths: self.txfoView.currentSegments)
     }
     
-    func doCombineSelectionIntoSingleSegment(segmentPath:SegmentPath? = nil) {
+    func doCombineSelectionIntoSingleSegment(segmentPaths:[SegmentPath]) {
         
+        guard let model = self.currentModel, segmentPaths.count > 1 else {
+            
+            return
+        }
         
+        var segments:[Segment] = []
+        for nextPath in segmentPaths {
+            
+            segments.append(nextPath.segment)
+        }
+        
+        segments.sort(by: { lhs, rhs in
+            
+            if lhs.radialPos != rhs.radialPos {
+                
+                return lhs.radialPos < rhs.radialPos
+            }
+            
+            return lhs.axialPos < rhs.axialPos
+        })
+        
+        if model.SegmentsAreContiguous(segments: segments) {
+            
+            var newBasicSectionArray:[BasicSection] = []
+            for nextSegment in segments {
+                
+                newBasicSectionArray.append(contentsOf: nextSegment.basicSections)
+            }
+            
+            do {
+                
+                let combinedSegment = try Segment(basicSections: newBasicSectionArray, realWindowHeight: model.core.realWindowHeight, useWindowHeight: model.core.adjustedWindHt)
+                
+                self.updateModel(oldSegments: segments, newSegments: [combinedSegment], xlFile: nil, reinitialize: false)
+            }
+            catch {
+                
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
+                return
+            }
+
+        }
+        else {
+            
+            PCH_ErrorAlert(message: "Segments must be from the same coil and be contiguous to combine them!", info: nil)
+        }
     }
     
     @IBAction func handleInterleaveSelection(_ sender: Any) {
