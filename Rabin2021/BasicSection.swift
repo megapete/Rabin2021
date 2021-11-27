@@ -175,5 +175,51 @@ struct BasicSection:Codable {
         }
     }
     
+    // MARK: Convenience routines for arrays of BasicSections
+    
+    /// Routine to find the number of coils (radial positions) in the given array of BasicSections. It is assumed that the array is in the order of the locations of the BasicSections.
+    static func NumberOfCoils(basicSections:[BasicSection]) -> Int {
+        
+        guard basicSections.count > 0 else {
+            
+            return 0
+        }
+        
+        let finalSection = basicSections.last!
+        
+        return finalSection.location.radial + 1
+    }
+    
+    /// Function to return the indices of the first and last BasicSection of a given coil from the given array of BasicSections. It is assumed that the array is in the order of the locations of the BasicSections.
+    static func CoilEnds(coil:Int, basicSections:[BasicSection]) -> (first:Int, last:Int) {
+        
+        guard basicSections.count > 0 else {
+            
+            return (-1, -1)
+        }
+        
+        let firstBasicSection = basicSections.firstIndex(where: { $0.location.radial == coil })
+        let lastBasicSection = basicSections.lastIndex(where: {$0.location.radial == coil})
+        
+        guard firstBasicSection != nil, lastBasicSection != nil else {
+            
+            return (-1, -1)
+        }
+        
+        return (firstBasicSection!, lastBasicSection!)
+    }
+    
+    /// Function to return the number of axial sections in the given coil, from the given array of BasicSections. It is assumed that the array is in the order of the locations of the BasicSections.
+    static func NumAxialSections(coil:Int, basicSections:[BasicSection]) -> Int {
+        
+        let coilEnds = BasicSection.CoilEnds(coil: coil, basicSections: basicSections)
+        
+        guard coilEnds.first >= 0, coilEnds.last >= 0 else {
+            
+            return 0
+        }
+        
+        return coilEnds.last - coilEnds.first + 1
+    }
     
 }
