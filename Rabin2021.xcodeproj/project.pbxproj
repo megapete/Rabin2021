@@ -23,6 +23,7 @@
 		D3BE820127330E9600EF964D /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D3BE820027330E9600EF964D /* Accelerate.framework */; platformFilter = maccatalyst; };
 		D3C0AE83274D864800B45F9A /* PCH_ProgressIndicatorWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3C0AE81274D864800B45F9A /* PCH_ProgressIndicatorWindow.swift */; };
 		D3C0AE84274D864800B45F9A /* PCH_ProgressIndicatorWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = D3C0AE82274D864800B45F9A /* PCH_ProgressIndicatorWindow.xib */; };
+		D3FB7D6A2752B7A3009ACCB4 /* Connector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FB7D692752B7A3009ACCB4 /* Connector.swift */; };
 		F5BA813F2719B94100717C67 /* PCH_GraphingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5BA813D2719B94100717C67 /* PCH_GraphingWindow.swift */; };
 		F5BA81402719B94100717C67 /* PCH_GraphingWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = F5BA813E2719B94100717C67 /* PCH_GraphingWindow.xib */; };
 		F5BA81422719B9C800717C67 /* PCH_GraphingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5BA81412719B9C800717C67 /* PCH_GraphingView.swift */; };
@@ -33,7 +34,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		D30D3AD4270E2F2C00A39051 /* Rabin2021.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Rabin2021.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D30D3AD4270E2F2C00A39051 /* ImpulseDistribution.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ImpulseDistribution.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D30D3AD7270E2F2C00A39051 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		D30D3AD9270E2F2D00A39051 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D30D3ADC270E2F2D00A39051 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
@@ -51,6 +52,7 @@
 		D3BE820027330E9600EF964D /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		D3C0AE81274D864800B45F9A /* PCH_ProgressIndicatorWindow.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PCH_ProgressIndicatorWindow.swift; sourceTree = "<group>"; };
 		D3C0AE82274D864800B45F9A /* PCH_ProgressIndicatorWindow.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = PCH_ProgressIndicatorWindow.xib; sourceTree = "<group>"; };
+		D3FB7D692752B7A3009ACCB4 /* Connector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Connector.swift; sourceTree = "<group>"; };
 		F5BA813D2719B94100717C67 /* PCH_GraphingWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PCH_GraphingWindow.swift; sourceTree = "<group>"; };
 		F5BA813E2719B94100717C67 /* PCH_GraphingWindow.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = PCH_GraphingWindow.xib; sourceTree = "<group>"; };
 		F5BA81412719B9C800717C67 /* PCH_GraphingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PCH_GraphingView.swift; sourceTree = "<group>"; };
@@ -84,7 +86,7 @@
 		D30D3AD5270E2F2C00A39051 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				D30D3AD4270E2F2C00A39051 /* Rabin2021.app */,
+				D30D3AD4270E2F2C00A39051 /* ImpulseDistribution.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -109,6 +111,7 @@
 				F5D778FB272468FF00B976AF /* PCH_BaseClass_Matrix.swift */,
 				F5ED29EE271709B0003E84CB /* PhaseModel.swift */,
 				D3926C07270F3D3C00D2D17C /* Core.swift */,
+				D3FB7D692752B7A3009ACCB4 /* Connector.swift */,
 				F5ED29EC270F1F9C003E84CB /* Segment.swift */,
 				D3B7FF21270E320E002537D3 /* BasicSection.swift */,
 				D39311BB2710C44200A29D65 /* TransformerView.swift */,
@@ -130,9 +133,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		D30D3AD3270E2F2C00A39051 /* Rabin2021 */ = {
+		D30D3AD3270E2F2C00A39051 /* ImpulseDistribution */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = D30D3AE1270E2F2D00A39051 /* Build configuration list for PBXNativeTarget "Rabin2021" */;
+			buildConfigurationList = D30D3AE1270E2F2D00A39051 /* Build configuration list for PBXNativeTarget "ImpulseDistribution" */;
 			buildPhases = (
 				D30D3AD0270E2F2C00A39051 /* Sources */,
 				D30D3AD1270E2F2C00A39051 /* Frameworks */,
@@ -142,9 +145,9 @@
 			);
 			dependencies = (
 			);
-			name = Rabin2021;
+			name = ImpulseDistribution;
 			productName = Rabin2021;
-			productReference = D30D3AD4270E2F2C00A39051 /* Rabin2021.app */;
+			productReference = D30D3AD4270E2F2C00A39051 /* ImpulseDistribution.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -175,7 +178,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				D30D3AD3270E2F2C00A39051 /* Rabin2021 */,
+				D30D3AD3270E2F2C00A39051 /* ImpulseDistribution */,
 			);
 		};
 /* End PBXProject section */
@@ -209,6 +212,7 @@
 				D3C0AE83274D864800B45F9A /* PCH_ProgressIndicatorWindow.swift in Sources */,
 				D3B7FF28270E3769002537D3 /* GlobalDefs.swift in Sources */,
 				D3B7FF22270E320E002537D3 /* BasicSection.swift in Sources */,
+				D3FB7D6A2752B7A3009ACCB4 /* Connector.swift in Sources */,
 				F5D778FA2722FB2100B976AF /* EslamianVahidiModel.swift in Sources */,
 				D39311BC2710C44200A29D65 /* TransformerView.swift in Sources */,
 				D3573254270E5DAE000CCCF9 /* AppController.swift in Sources */,
@@ -356,6 +360,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Rabin2021/Rabin2021.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
@@ -384,6 +389,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Rabin2021/Rabin2021.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
@@ -419,7 +425,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		D30D3AE1270E2F2D00A39051 /* Build configuration list for PBXNativeTarget "Rabin2021" */ = {
+		D30D3AE1270E2F2D00A39051 /* Build configuration list for PBXNativeTarget "ImpulseDistribution" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				D30D3AE2270E2F2D00A39051 /* Debug */,

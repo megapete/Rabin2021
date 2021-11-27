@@ -9,8 +9,6 @@
 
 import Foundation
 
-
-
 /// A Segment is, at its most basic, a collection of BasicSections. The collection MUST be from the same Winding and it must represent an axially contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (for disc coils, only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed). Static rings and radial shields are special Segments - creation routines (class functions) are provided for each.
 class Segment: Codable, Equatable {
     
@@ -99,6 +97,16 @@ class Segment: Codable, Equatable {
     
     /// The rectangle that the segment occupies in the core window, with the origin at (LegCenter, BottomYoke)
     var rect:NSRect
+    
+    /// Simple struct for connections
+    struct Connection:Codable {
+        
+        var segment:Segment?
+        let connector:Connector
+    }
+    
+    /// The connections to the Segment
+    var connections:[Connection] = []
     
     /// The inner radius of the segment (from the core center)
     var r1:Double {

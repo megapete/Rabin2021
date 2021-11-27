@@ -13,14 +13,14 @@
         </customObject>
         <customObject id="-1" userLabel="First Responder" customClass="FirstResponder"/>
         <customObject id="-3" userLabel="Application" customClass="NSObject"/>
-        <customObject id="Voe-Tx-rLC" customClass="AppDelegate" customModule="Rabin2021" customModuleProvider="target">
+        <customObject id="Voe-Tx-rLC" customClass="AppDelegate" customModule="ImpulseDistribution" customModuleProvider="target">
             <connections>
                 <outlet property="appController" destination="XWq-sU-B2V" id="b6v-50-J4o"/>
                 <outlet property="window" destination="QvC-M9-y7g" id="gIp-Ho-8D9"/>
             </connections>
         </customObject>
         <customObject id="YLy-65-1bz" customClass="NSFontManager"/>
-        <customObject id="XWq-sU-B2V" customClass="AppController" customModule="Rabin2021" customModuleProvider="target">
+        <customObject id="XWq-sU-B2V" customClass="AppController" customModule="ImpulseDistribution" customModuleProvider="target">
             <connections>
                 <outlet property="combineSegmentsIntoSingleSegmentMenuItem" destination="bwi-RW-boG" id="dY2-kP-Zy8"/>
                 <outlet property="interleaveSelectionMenuItem" destination="Msd-Z1-NJO" id="iTF-13-8vY"/>
@@ -377,6 +377,12 @@
                                     <action selector="handleWdgAsSingleSegment:" target="XWq-sU-B2V" id="GBl-VA-BMY"/>
                                 </connections>
                             </menuItem>
+                            <menuItem title="Split winding into basic sections" id="iw5-Hp-yGO">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                            </menuItem>
+                            <menuItem title="Split winding into equal segments..." id="Rv6-zQ-N5U">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                            </menuItem>
                             <menuItem isSeparatorItem="YES" id="SgI-9x-QJd"/>
                             <menuItem title="Combine selection into single segment" id="bwi-RW-boG">
                                 <modifierMask key="keyEquivalentModifierMask"/>
@@ -600,7 +606,7 @@
                             <rect key="frame" x="1" y="1" width="601" height="682"/>
                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                             <subviews>
-                                <view id="ebn-Op-mWN" customClass="TransformerView" customModule="Rabin2021" customModuleProvider="target">
+                                <view id="ebn-Op-mWN" customClass="TransformerView" customModule="ImpulseDistribution" customModuleProvider="target">
                                     <rect key="frame" x="0.0" y="0.0" width="602" height="683"/>
                                     <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                     <connections>
