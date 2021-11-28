@@ -173,17 +173,80 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     /// Initialize the model using the xlFile. If there is already a model in memory, it is lost.
     func initializeModel(basicSections:[BasicSection]) -> PhaseModel?
     {
+        // a transformer needs at least two basic sections, so...
+        guard basicSections.count > 1 else {
+            
+            return nil
+        }
+        
         var result:[Segment] = []
         
         Segment.resetSerialNumber()
         
-        for nextSection in basicSections {
+        let numCoils = BasicSection.NumberOfCoils(basicSections: basicSections)
+        
+        guard numCoils > 0 else {
+            
+            return nil
+        }
+        
+        for coil in 0..<numCoils {
+            
+            let axialIndices = BasicSection.CoilEnds(coil: coil, basicSections: basicSections)
+            
+            guard axialIndices.first >= 0, axialIndices.last >= 0 else {
+                
+                return nil
+            }
+            
+            // Initialize the first connector as though the coil type is a layer/sheet
+            var nextConnector = Connector(fromLocation: .inside_lower, toLocation: .floating)
+            // Change the connector for the different coil types
+            let wdgType = basicSections[axialIndices.first].wdgData.type
+            if wdgType == .helical {
+                
+                nextConnector = Connector(fromLocation: .center_lower, toLocation: .floating)
+            }
+            else if wdgType == .disc {
+                
+                let numDiscs = BasicSection.NumAxialSections(coil: coil, basicSections: basicSections)
+                if numDiscs % 2 == 0 {
+                    
+                    nextConnector = Connector(fromLocation: .outside_lower, toLocation: .floating)
+                }
+                else {
+                    
+                    nextConnector = Connector(fromLocation: .inside_lower, toLocation: .floating)
+                }
+            }
+            
+            var lastSegment:Segment? = nil
             
             do {
                 
-                let newSegment = try Segment(basicSections: [nextSection],  realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentWindowMultiplier * self.currentCore!.realWindowHeight)
+                for nextSectionIndex in axialIndices.first...axialIndices.last {
+                    
+                    let nextSection = basicSections[nextSectionIndex]
+                    
+                    let newSegment = try Segment(basicSections: [nextSection],  realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentWindowMultiplier * self.currentCore!.realWindowHeight)
+                    
+                    // the "incoming" connection
+                    newSegment.connections.append(Segment.Connection(segment: lastSegment, connector: nextConnector))
+                    
+                    // the "outgoing" connection
+                    if wdgType == .helical {
+                        
+                        let fromConnection = Connector.AlternatingLocation(lastLocation: nextConnector.fromLocation)
+                        let toConnection = Connector.StandardToLocation(fromLocation: fromConnection)
+                        
+                    }
+                    
+                    
+                    lastSegment = newSegment
+                    
+                    result.append(newSegment)
+                }
                 
-                result.append(newSegment)
             }
             catch {
                 
@@ -191,7 +254,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                 let _ = alert.runModal()
                 return nil
             }
+            
         }
+
         
         return PhaseModel(segments: result, core: self.currentCore!)
     }
