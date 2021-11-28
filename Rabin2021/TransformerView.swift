@@ -55,6 +55,46 @@ fileprivate extension NSRect {
         
         left = left * right
     }
+    
+    func BottomLeft() -> NSPoint {
+        
+        return self.origin
+    }
+    
+    func TopRight() -> NSPoint {
+        
+        return self.origin + self.size
+    }
+    
+    func TopLeft() -> NSPoint {
+        
+        return self.origin + NSSize(width: 0.0, height: self.size.height)
+    }
+    
+    func BottomRight() -> NSPoint {
+        
+        return self.origin + NSSize(width: self.size.width, height: 0.0)
+    }
+    
+    func BottomCenter() -> NSPoint {
+        
+        return self.origin + NSSize(width: self.size.width / 2.0, height: 0.0)
+    }
+    
+    func TopCenter() -> NSPoint {
+        
+        return self.origin + NSSize(width: self.size.width / 2.0, height: self.size.height)
+    }
+    
+    func LeftCenter() -> NSPoint {
+        
+        return self.origin + NSSize(width: 0.0, height: self.size.height / 2.0)
+    }
+    
+    func RightCenter() -> NSPoint {
+        
+        return self.origin + NSSize(width: self.size.width, height: self.size.height / 2.0)
+    }
 }
 
 struct SegmentPath:Equatable {
@@ -157,6 +197,130 @@ struct SegmentPath:Equatable {
         path.fill()
         self.segmentColor.set()
         path.stroke()
+    }
+    
+    // show all connectors for this SegmentPath EXCEPT any that end at a Segment in 'maskSegments'. This allows us to avoid redrawing paths
+    func showConnectors(maskSegments:[Segment]) {
+        
+        for nextConnection in self.segment.connections {
+            
+            if let otherSegment = nextConnection.segment {
+                
+                if maskSegments.contains(otherSegment) {
+                    
+                    continue
+                }
+            }
+            
+            let connectorPath = NSBezierPath()
+            
+            var fromPoint = NSPoint()
+            let segRect = self.segment.rect
+            
+            switch nextConnection.connector.fromLocation {
+            
+            case .outside_upper:
+                fromPoint = segRect.TopRight()
+            
+            case .center_upper:
+                fromPoint = segRect.TopCenter()
+            
+            case .inside_upper:
+                fromPoint = segRect.TopLeft()
+            
+            case .outside_center:
+                fromPoint = segRect.RightCenter()
+            
+            case .inside_center:
+                fromPoint = segRect.LeftCenter()
+            
+            case .outside_lower:
+                fromPoint = segRect.BottomRight()
+            
+            case .center_lower:
+                fromPoint = segRect.BottomCenter()
+            
+            case .inside_lower:
+                fromPoint = segRect.BottomLeft()
+            
+            default:
+                fromPoint = NSPoint()
+            }
+            
+            // now for the end point of the path
+            var toPoint = NSPoint()
+            
+            if let otherSeg = nextConnection.segment {
+                
+                // check if same coil
+                if otherSeg.location.radial == self.segment.location.radial {
+                    
+                    // check if adjacent section
+                    if abs(otherSeg.location.axial - self.segment.location.axial) == 1 {
+                        
+                        let segRect = otherSeg.rect
+                        switch nextConnection.connector.toLocation {
+                            
+                        case .outside_upper:
+                            toPoint = segRect.TopRight()
+                        
+                        case .center_upper:
+                            toPoint = segRect.TopCenter()
+                        
+                        case .inside_upper:
+                            toPoint = segRect.TopLeft()
+                        
+                        case .outside_center:
+                            toPoint = segRect.RightCenter()
+                        
+                        case .inside_center:
+                            toPoint = segRect.LeftCenter()
+                        
+                        case .outside_lower:
+                            toPoint = segRect.BottomRight()
+                        
+                        case .center_lower:
+                            toPoint = segRect.BottomCenter()
+                        
+                        case .inside_lower:
+                            toPoint = segRect.BottomLeft()
+                        
+                        default:
+                            
+                            toPoint = NSPoint()
+                        }
+                        
+                        connectorPath.move(to: fromPoint * dimensionMultiplier)
+                        connectorPath.line(to: toPoint * dimensionMultiplier)
+                    }
+                    else {
+                        // non-adjacent section, complicated!
+                    }
+                }
+                else {
+                    // other coil, complicated!
+                }
+            }
+            else {
+                
+                // must be a termination
+                let fromLoc = nextConnection.connector.fromLocation
+                if fromLoc == .center_lower || fromLoc == .inside_lower || fromLoc == .outside_lower {
+                    
+                    toPoint = fromPoint + NSSize(width: 0.0, height: -0.025)
+                }
+                else if fromLoc == .center_upper || fromLoc == .inside_upper || fromLoc == .outside_upper {
+                    
+                    toPoint = fromPoint + NSSize(width: 0.0, height: 0.025)
+                }
+                
+                connectorPath.move(to: fromPoint * dimensionMultiplier)
+                connectorPath.line(to: toPoint * dimensionMultiplier)
+            }
+            
+            self.segmentColor.set()
+            connectorPath.stroke()
+        }
     }
 }
 
@@ -280,9 +444,13 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             boundaryPath.stroke()
         }
         
+        var maskSegments:[Segment] = []
         for nextSegment in self.segments
         {
             nextSegment.show()
+            nextSegment.showConnectors(maskSegments: maskSegments)
+            
+            maskSegments.append(nextSegment.segment)
         }
         
         for nextSegment in self.currentSegments

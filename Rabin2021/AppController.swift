@@ -192,6 +192,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         for coil in 0..<numCoils {
             
+            print("Doing connectors for coil \(coil)")
+            
             let axialIndices = BasicSection.CoilEnds(coil: coil, basicSections: basicSections)
             
             guard axialIndices.first >= 0, axialIndices.last >= 0 else {
@@ -200,27 +202,28 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             }
             
             // Initialize the first connector as though the coil type is a layer/sheet
-            var nextConnector = Connector(fromLocation: .inside_lower, toLocation: .floating)
+            var incomingConnector = Connector(fromLocation: .inside_lower, toLocation: .floating)
             // Change the connector for the different coil types
             let wdgType = basicSections[axialIndices.first].wdgData.type
             if wdgType == .helical {
                 
-                nextConnector = Connector(fromLocation: .center_lower, toLocation: .floating)
+                incomingConnector = Connector(fromLocation: .center_lower, toLocation: .floating)
             }
             else if wdgType == .disc {
                 
                 let numDiscs = BasicSection.NumAxialSections(coil: coil, basicSections: basicSections)
                 if numDiscs % 2 == 0 {
                     
-                    nextConnector = Connector(fromLocation: .outside_lower, toLocation: .floating)
+                    incomingConnector = Connector(fromLocation: .outside_lower, toLocation: .floating)
                 }
                 else {
                     
-                    nextConnector = Connector(fromLocation: .inside_lower, toLocation: .floating)
+                    incomingConnector = Connector(fromLocation: .inside_lower, toLocation: .floating)
                 }
             }
             
             var lastSegment:Segment? = nil
+            var outgoingConnector = incomingConnector
             
             do {
                 
@@ -230,17 +233,27 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                     
                     let newSegment = try Segment(basicSections: [nextSection],  realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentWindowMultiplier * self.currentCore!.realWindowHeight)
                     
-                    // the "incoming" connection
-                    newSegment.connections.append(Segment.Connection(segment: lastSegment, connector: nextConnector))
+                    // The "incoming" connection
+                    newSegment.connections.append(Segment.Connection(segment: lastSegment, connector: incomingConnector))
                     
-                    // the "outgoing" connection
-                    if wdgType == .helical {
+                    // The "outgoing" connection for the previous Segment
+                    if let prevSegment = lastSegment {
                         
-                        let fromConnection = Connector.AlternatingLocation(lastLocation: nextConnector.fromLocation)
-                        let toConnection = Connector.StandardToLocation(fromLocation: fromConnection)
-                        
+                        prevSegment.connections.append(Segment.Connection(segment: newSegment, connector: outgoingConnector))
                     }
                     
+                    // set up the connector for the outgoing connection next time through the loop
+                    let fromConnection = Connector.AlternatingLocation(lastLocation: incomingConnector.fromLocation)
+                    let toConnection = Connector.StandardToLocation(fromLocation: fromConnection)
+                    outgoingConnector = Connector(fromLocation: fromConnection, toLocation: toConnection)
+                    incomingConnector = Connector(fromLocation: toConnection, toLocation: fromConnection)
+                    
+                    // we need to add the final outgoing connector for the last axial section
+                    if nextSectionIndex == axialIndices.last {
+                        
+                        outgoingConnector = Connector(fromLocation: fromConnection, toLocation: .floating)
+                        newSegment.connections.append(Segment.Connection(segment: nil, connector: outgoingConnector))
+                    }
                     
                     lastSegment = newSegment
                     
