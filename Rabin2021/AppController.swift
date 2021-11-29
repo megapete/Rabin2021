@@ -83,9 +83,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     // MARK: Transformer update routines
     
-    /// Function to update the model. If the 'reinitialize' parameter is 'true', then the 'oldSegments' and 'newSegments' parameters are ignored and a new model is created using the xlFile.
-    /// - Parameter oldSegments: An array of Segments that are to be removed from the model
-    /// - Parameter newSegments: An array of Segments to insert into the model
+    /// Function to update the model. If the 'reinitialize' parameter is 'true', then the 'oldSegments' and 'newSegments' parameters are ignored and a new model is created using the xlFile. _It is assumed that oldSegments and newSegments are contiguous and in correct order_. In general, it is assumed that one of either oldSegments or newSegments has only a single member in it.
+    /// - Parameter oldSegments: An array of Segments that are to be removed from the model. Must be contiguous and in order.
+    /// - Parameter newSegments: An array of Segments to insert into the model. Must be contiguous and in order.
     /// - Parameter xFile: The ExcelDesignFile that was inputted. If this is non-nil and 'reinitialize' is set to true, the existing model is overwtitten using the contents of the file.
     /// - Parameter reinitialize: Boolean value set to true if the entire memory should be reinitialized. If xlFile is non-nil, the it is used to overwrite the exisitng model. Otherwise, the model is reinitialized using the BasicSections in the AppController's currentSections array.
     func updateModel(oldSegments:[Segment], newSegments:[Segment], xlFile:PCH_ExcelDesignFile?, reinitialize:Bool) {
@@ -126,6 +126,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             model.RemoveSegments(badSegments: oldSegments)
             
             do {
+                
+                if oldSegments.count == 1 || newSegments.count == 1 {
+                
+                    try model.updateConnectors(oldSegments: oldSegments, newSegments: newSegments)
+                }
                 
                 try model.AddSegments(newSegments: newSegments)
             }
@@ -800,7 +805,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                 
                 newBasicSectionArray.append(contentsOf: nextSegment.basicSections)
             }
-            
+                        
             do {
                 
                 let combinedSegment = try Segment(basicSections: newBasicSectionArray, realWindowHeight: model.core.realWindowHeight, useWindowHeight: model.core.adjustedWindHt)
@@ -820,6 +825,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             PCH_ErrorAlert(message: "Segments must be from the same coil and be contiguous to combine them!", info: nil)
         }
     }
+
     
     @IBAction func handleInterleaveSelection(_ sender: Any) {
         

@@ -61,6 +61,8 @@ class PhaseModel:Codable {
             case ShieldingElementExists
             case NoRoomForShieldingElement
             case NotAShieldingElement
+            case BothArgumentsAreMultipleCount
+            case ArgumentIsZeroCount
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -117,6 +119,14 @@ class PhaseModel:Codable {
                     
                     return "The selected segment is not a \(info)"
                 }
+                else if self.type == .BothArgumentsAreMultipleCount {
+                    
+                    return "Both of the arrays passed to the routine have a count greater than one."
+                }
+                else if self.type == .ArgumentIsZeroCount {
+                    
+                    return "At least one of the arrays passed to the routine have a count equal to zero."
+                }
                 
                 
                 return "An unknown error occurred."
@@ -142,7 +152,69 @@ class PhaseModel:Codable {
         self.core = core
     }
     
-    // Routine to check whether an array of Segments is contiguous. It is not necessary for the 'segments' array to be sorted.
+    /// A routine to change the connectors in the model when newSegment(s) take(s) the place of oldSegment(s). It is assumed that the Segment arrays are contiguous and in order. Either oldSegments or newSegments MUST consist of a single Segment. That is, either a single Segment will replace an array of Segments, or an array of Segments will replace a single Segment. If the count of _both_ arrays is greater than one, an error is thrown. If both arguments only have a single Segment, it is assumed that the one in newSegment replaces the one in oldSegment. It is further assumed that the new Segments have _NOT_ been added to the model yet, but will be soon after calling this function. Any connector references to oldSegments that should be set to newSegments will be replaced in the model - however, the model itself (ie: the array of Segments in segmentStore) will not be changed.
+    func updateConnectors(oldSegments:[Segment], newSegments:[Segment]) throws {
+        
+        guard oldSegments.count > 0 && newSegments.count > 0 else {
+            
+            throw PhaseModelError(info: "", type: .ArgumentIsZeroCount)
+        }
+        
+        guard oldSegments.count == 1 || newSegments.count == 1 else {
+            
+            throw PhaseModelError(info: "", type: .BothArgumentsAreMultipleCount)
+        }
+        
+        
+        if newSegments.count == 1 {
+            
+            let firstOldSeg = oldSegments.first!
+            let lastOldSeg = oldSegments.last!
+            
+            let newSeg = newSegments[0]
+            
+            newSeg.connections = firstOldSeg.connections
+            newSeg.connections.append(contentsOf: lastOldSeg.connections)
+            
+            // there may be old-segment references in the newSeg.connections array, get rid of them
+            for nextOldSegment in oldSegments {
+                
+                newSeg.connections.removeAll(where: {$0.segment == nextOldSegment})
+            }
+            
+            for nextSegment in self.segments {
+                
+                for i in 0..<nextSegment.connections.count {
+                    
+                    if nextSegment.connections[i].segment != nil && (nextSegment.connections[i].segment == firstOldSeg || nextSegment.connections[i].segment == lastOldSeg) {
+                        
+                        nextSegment.connections[i].segment = newSeg
+                    }
+                }
+                
+                nextSegment.connections.removeAll(where: { connection in
+                    
+                    guard let connSeg = connection.segment else {
+                        
+                        return false
+                    }
+                    
+                    return oldSegments.contains(connSeg)
+                })
+            }
+        }
+        else {
+            
+            DLog("Unimplemented branch!")
+        }
+    }
+    
+    // Function add standard connectors to an array of Segments. It is assumed that the first element in the array has its "incoming" connector correctly set and that the final element in the array has its "outgoing" connector correctly set, and that the two are correct...
+    func AddStandardConnectors(segments:[Segment]) {
+        
+    }
+    
+    /// Routine to check whether an array of Segments is contiguous. It is not necessary for the 'segments' array to be sorted.
     func SegmentsAreContiguous(segments:[Segment]) -> Bool {
         
         if segments.count == 0 {
