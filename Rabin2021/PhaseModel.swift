@@ -61,7 +61,7 @@ class PhaseModel:Codable {
             case ShieldingElementExists
             case NoRoomForShieldingElement
             case NotAShieldingElement
-            case BothArgumentsAreMultipleCount
+            case ArgAIsNotAMultipleOfArgB
             case ArgumentIsZeroCount
         }
         
@@ -119,9 +119,9 @@ class PhaseModel:Codable {
                     
                     return "The selected segment is not a \(info)"
                 }
-                else if self.type == .BothArgumentsAreMultipleCount {
+                else if self.type == .ArgAIsNotAMultipleOfArgB {
                     
-                    return "Both of the arrays passed to the routine have a count greater than one."
+                    return "The count of the larger of the arrays must be a multiple of the count of the other!"
                 }
                 else if self.type == .ArgumentIsZeroCount {
                     
@@ -152,7 +152,23 @@ class PhaseModel:Codable {
         self.core = core
     }
     
-    /// A routine to change the connectors in the model when newSegment(s) take(s) the place of oldSegment(s). It is assumed that the Segment arrays are contiguous and in order. Either oldSegments or newSegments MUST consist of a single Segment. That is, either a single Segment will replace an array of Segments, or an array of Segments will replace a single Segment. If the count of _both_ arrays is greater than one, an error is thrown. If both arguments only have a single Segment, it is assumed that the one in newSegment replaces the one in oldSegment. It is further assumed that the new Segments have _NOT_ been added to the model yet, but will be soon after calling this function. Any connector references to oldSegments that should be set to newSegments will be replaced in the model - however, the model itself (ie: the array of Segments in segmentStore) will not be changed.
+    /// Function to check if two Segments are adjacent in the current model. This function assumes that the segmentStore is sorted according to location.
+    func SegmentsAreAdjacent(segment1:Segment, segment2:Segment) -> Bool {
+        
+        guard segment1.radialPos == segment2.radialPos else {
+            
+            return false
+        }
+        
+        guard let seg1index = self.segments.firstIndex(of: segment1), let seg2index = self.segments.firstIndex(of: segment2) else {
+            
+            return false
+        }
+        
+        return abs(seg1index - seg2index) == 1
+    }
+    
+    /// A routine to change the connectors in the model when newSegment(s) take(s) the place of oldSegment(s). It is assumed that the Segment arrays are contiguous and in order. The count of oldSegments must be a multiple of newSegments or the count of newSegmenst must be a multiple of oldSegments.  If both arguments only have a single Segment, it is assumed that the one in newSegment replaces the one in oldSegment. It is further assumed that the new Segments have _NOT_ been added to the model yet, but will be soon after calling this function. Any connector references to oldSegments that should be set to newSegments will be replaced in the model - however, the model itself (ie: the array of Segments in segmentStore) will not be changed.
     func updateConnectors(oldSegments:[Segment], newSegments:[Segment]) throws {
         
         guard oldSegments.count > 0 && newSegments.count > 0 else {
@@ -160,53 +176,73 @@ class PhaseModel:Codable {
             throw PhaseModelError(info: "", type: .ArgumentIsZeroCount)
         }
         
-        guard oldSegments.count == 1 || newSegments.count == 1 else {
-            
-            throw PhaseModelError(info: "", type: .BothArgumentsAreMultipleCount)
-        }
+        var segmentMap:[Int:Segment] = [:]
         
-        
-        if newSegments.count == 1 {
+        if newSegments.count <= oldSegments.count {
             
-            let firstOldSeg = oldSegments.first!
-            let lastOldSeg = oldSegments.last!
-            
-            let newSeg = newSegments[0]
-            
-            newSeg.connections = firstOldSeg.connections
-            newSeg.connections.append(contentsOf: lastOldSeg.connections)
-            
-            // there may be old-segment references in the newSeg.connections array, get rid of them
-            for nextOldSegment in oldSegments {
+            if oldSegments.count % newSegments.count != 0 {
                 
-                newSeg.connections.removeAll(where: {$0.segment == nextOldSegment})
+                throw PhaseModelError(info: "", type: .ArgAIsNotAMultipleOfArgB)
             }
             
-            for nextSegment in self.segments {
+            let oldSectionsPerNew = oldSegments.count / newSegments.count
+            
+            for newIndex in 0..<newSegments.count {
                 
-                for i in 0..<nextSegment.connections.count {
+                let currentOldSegments = oldSegments[newIndex * oldSectionsPerNew..<newIndex * oldSectionsPerNew + oldSectionsPerNew]
+                let firstOldSeg = currentOldSegments.first!
+                let lastOldSeg = currentOldSegments.last!
+                
+                let newSeg = newSegments[newIndex]
+                
+                segmentMap[firstOldSeg.serialNumber] = newSeg
+                segmentMap[lastOldSeg.serialNumber] = newSeg
+                
+                newSeg.connections = firstOldSeg.connections
+                newSeg.connections.append(contentsOf: lastOldSeg.connections)
+                
+                // there may be old-segment references in the newSeg.connections array, get rid of them
+                for nextOldSegment in currentOldSegments {
                     
-                    if nextSegment.connections[i].segment != nil && (nextSegment.connections[i].segment == firstOldSeg || nextSegment.connections[i].segment == lastOldSeg) {
+                    newSeg.connections.removeAll(where: {$0.segment == nextOldSegment})
+                }
+            }
+        }
+        else { // oldSegments.count > newSegments.count
+            
+        }
+        
+        for nextSegment in newSegments {
+            
+            for i in 0..<nextSegment.connections.count {
+                
+                if let refSeg = nextSegment.connections[i].segment {
+                    
+                    if let mappedSegment = segmentMap[refSeg.serialNumber] {
                         
-                        nextSegment.connections[i].segment = newSeg
+                        nextSegment.connections[i].segment = mappedSegment
                     }
                 }
-                
-                nextSegment.connections.removeAll(where: { connection in
-                    
-                    guard let connSeg = connection.segment else {
-                        
-                        return false
-                    }
-                    
-                    return oldSegments.contains(connSeg)
-                })
             }
         }
-        else {
+        
+        for nextSegment in self.segments {
             
-            DLog("Unimplemented branch!")
+            for i in 0..<nextSegment.connections.count {
+                
+                if let refSeg = nextSegment.connections[i].segment {
+                    
+                    if let mappedSegment = segmentMap[refSeg.serialNumber] {
+                        
+                        nextSegment.connections[i].segment = mappedSegment
+                    }
+                }
+            }
         }
+        
+        
+        
+        print("New segment has \(newSegments[0].connections.count) connections")
     }
     
     // Function add standard connectors to an array of Segments. It is assumed that the first element in the array has its "incoming" connector correctly set and that the final element in the array has its "outgoing" connector correctly set, and that the two are correct...

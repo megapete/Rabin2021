@@ -12,6 +12,9 @@ import Foundation
 /// A Segment is, at its most basic, a collection of BasicSections. The collection MUST be from the same Winding and it must represent an axially contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (for disc coils, only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed). Static rings and radial shields are special Segments - creation routines (class functions) are provided for each.
 class Segment: Codable, Equatable {
     
+    /// flag used during debugging to identify a Segment for a breakpoint
+    var debugFlag = false
+    
     /// Function required to make Segment be Equatable. Basically, we use the serial number to decide if two Segments are equal. This allows us to use Segment as a struct instead of a class, but it means that we must be very careful about setting those serial numbers.
     static func == (lhs: Segment, rhs: Segment) -> Bool {
         

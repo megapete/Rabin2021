@@ -99,6 +99,8 @@ fileprivate extension NSRect {
 
 struct SegmentPath:Equatable {
     
+    static var txfoView:TransformerView? = nil
+    
     let segment:Segment
     
     var toolTipTag:NSView.ToolTipTag = 0
@@ -202,6 +204,15 @@ struct SegmentPath:Equatable {
     // show all connectors for this SegmentPath EXCEPT any that end at a Segment in 'maskSegments'. This allows us to avoid redrawing paths
     func showConnectors(maskSegments:[Segment]) {
         
+        /*
+        if self.segment.debugFlag {
+            
+            print("Stop here")
+        }
+        */
+        
+        let model = SegmentPath.txfoView!.appController!.currentModel!
+        
         for nextConnection in self.segment.connections {
             
             if let otherSegment = nextConnection.segment {
@@ -256,7 +267,7 @@ struct SegmentPath:Equatable {
                 if otherSeg.location.radial == self.segment.location.radial {
                     
                     // check if adjacent section
-                    if abs(otherSeg.location.axial - self.segment.location.axial) == 1 {
+                    if model.SegmentsAreAdjacent(segment1: self.segment, segment2: otherSeg) {
                         
                         let segRect = otherSeg.rect
                         switch nextConnection.connector.toLocation {
@@ -422,6 +433,11 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     // The scrollview that this view is in
     @IBOutlet weak var scrollView:NSScrollView!
+    
+    override func awakeFromNib() {
+        
+        SegmentPath.txfoView = self
+    }
     
     // MARK: Draw function override
     override func draw(_ dirtyRect: NSRect) {
