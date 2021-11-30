@@ -129,7 +129,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                 
                 
                 
-                try model.updateConnectors(oldSegments: oldSegments, newSegments: newSegments)
+                try model.UpdateConnectors(oldSegments: oldSegments, newSegments: newSegments)
                 
                 
                 try model.AddSegments(newSegments: newSegments)

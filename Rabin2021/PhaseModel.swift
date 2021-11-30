@@ -62,6 +62,7 @@ class PhaseModel:Codable {
             case NoRoomForShieldingElement
             case NotAShieldingElement
             case ArgAIsNotAMultipleOfArgB
+            case OldSegmentCountIsNotOne
             case ArgumentIsZeroCount
         }
         
@@ -127,6 +128,10 @@ class PhaseModel:Codable {
                     
                     return "At least one of the arrays passed to the routine have a count equal to zero."
                 }
+                else if self.type == .OldSegmentCountIsNotOne {
+                    
+                    return "Can only split one segment at a time"
+                }
                 
                 
                 return "An unknown error occurred."
@@ -169,7 +174,7 @@ class PhaseModel:Codable {
     }
     
     /// A routine to change the connectors in the model when newSegment(s) take(s) the place of oldSegment(s). It is assumed that the Segment arrays are contiguous and in order. The count of oldSegments must be a multiple of newSegments or the count of newSegmenst must be a multiple of oldSegments.  If both arguments only have a single Segment, it is assumed that the one in newSegment replaces the one in oldSegment. It is further assumed that the new Segments have _NOT_ been added to the model yet, but will be soon after calling this function. Any connector references to oldSegments that should be set to newSegments will be replaced in the model - however, the model itself (ie: the array of Segments in segmentStore) will not be changed.
-    func updateConnectors(oldSegments:[Segment], newSegments:[Segment]) throws {
+    func UpdateConnectors(oldSegments:[Segment], newSegments:[Segment]) throws {
         
         guard oldSegments.count > 0 && newSegments.count > 0 else {
             
@@ -222,16 +227,16 @@ class PhaseModel:Codable {
                 }
             }
         }
+        else if oldSegments.count == 1 {
+            
+            self.InitializeConnectionsForCoil(coil: oldSegments[0].location.radial)
+            return
+        }
         else { // oldSegments.count < newSegments.count
             
-            if newSegments.count % oldSegments.count != 0 {
-                
-                throw PhaseModelError(info: "", type: .ArgAIsNotAMultipleOfArgB)
-            }
-            
+            throw PhaseModelError(info: "", type: .OldSegmentCountIsNotOne)
             
         }
-        
         
         
         for nextSegment in self.segments {
@@ -253,10 +258,13 @@ class PhaseModel:Codable {
         print("New segment has \(newSegments[0].connections.count) connections")
     }
     
-    // Function add standard connectors to an array of Segments. It is assumed that the first element in the array has its "incoming" connector correctly set and that the final element in the array has its "outgoing" connector correctly set, and that the two are correct...
-    func AddStandardConnectors(segments:[Segment]) {
+    /// Initialize the connectors for the given coil. It is assumed that the 
+    func InitializeConnectionsForCoil(coil:Int)  {
+        
         
     }
+    
+    
     
     /// Routine to check whether an array of Segments is contiguous. It is not necessary for the 'segments' array to be sorted.
     func SegmentsAreContiguous(segments:[Segment]) -> Bool {
