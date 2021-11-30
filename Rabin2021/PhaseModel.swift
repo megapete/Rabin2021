@@ -207,24 +207,32 @@ class PhaseModel:Codable {
                     newSeg.connections.removeAll(where: {$0.segment == nextOldSegment})
                 }
             }
-        }
-        else { // oldSegments.count > newSegments.count
             
-        }
-        
-        for nextSegment in newSegments {
-            
-            for i in 0..<nextSegment.connections.count {
+            for nextSegment in newSegments {
                 
-                if let refSeg = nextSegment.connections[i].segment {
+                for i in 0..<nextSegment.connections.count {
                     
-                    if let mappedSegment = segmentMap[refSeg.serialNumber] {
+                    if let refSeg = nextSegment.connections[i].segment {
                         
-                        nextSegment.connections[i].segment = mappedSegment
+                        if let mappedSegment = segmentMap[refSeg.serialNumber] {
+                            
+                            nextSegment.connections[i].segment = mappedSegment
+                        }
                     }
                 }
             }
         }
+        else { // oldSegments.count < newSegments.count
+            
+            if newSegments.count % oldSegments.count != 0 {
+                
+                throw PhaseModelError(info: "", type: .ArgAIsNotAMultipleOfArgB)
+            }
+            
+            
+        }
+        
+        
         
         for nextSegment in self.segments {
             
