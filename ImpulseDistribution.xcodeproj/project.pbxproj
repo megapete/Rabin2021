@@ -165,7 +165,7 @@
 					};
 				};
 			};
-			buildConfigurationList = D30D3ACF270E2F2C00A39051 /* Build configuration list for PBXProject "Rabin2021" */;
+			buildConfigurationList = D30D3ACF270E2F2C00A39051 /* Build configuration list for PBXProject "ImpulseDistribution" */;
 			compatibilityVersion = "Xcode 13.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -416,7 +416,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		D30D3ACF270E2F2C00A39051 /* Build configuration list for PBXProject "Rabin2021" */ = {
+		D30D3ACF270E2F2C00A39051 /* Build configuration list for PBXProject "ImpulseDistribution" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				D30D3ADF270E2F2D00A39051 /* Debug */,
