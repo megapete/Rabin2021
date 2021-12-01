@@ -15,6 +15,22 @@ class Segment: Codable, Equatable {
     /// flag used during debugging to identify a Segment for a breakpoint
     var debugFlag = false
     
+    /// Enum to define the comparative position(s) of 2 or more Segments
+    enum ComparativePosition {
+        
+        case inner
+        case outer
+        
+        case innerAdjacent
+        case outerAdjacent
+        
+        case above
+        case below
+        
+        case adjacentAbove
+        case adjacentBelow
+    }
+    
     /// Function required to make Segment be Equatable. Basically, we use the serial number to decide if two Segments are equal. This allows us to use Segment as a struct instead of a class, but it means that we must be very careful about setting those serial numbers.
     static func == (lhs: Segment, rhs: Segment) -> Bool {
         
@@ -406,27 +422,6 @@ class Segment: Codable, Equatable {
     static func resetSerialNumber()
     {
         Segment.nextSerialNumberStore = 0
-    }
-    
-    enum ComparativePosition {
-        
-        case inner
-        case outer
-        
-        case innerAdjacent
-        case outerAdjacent
-        
-        case above
-        case below
-        
-        case adjacentAbove
-        case adjacentBelow
-    }
-    
-    /// Function to find the position of another Segment with respect to this one (self) in the given model
-    func ComparitivePositionTo(otherSegment:Segment, model:[Segment]) -> ComparativePosition {
-        
-        let selfCoil = self.location.radial
     }
     
     /// Create the Fourier series representation of the current density for the segment. Note that the "useWindowHeight" property of the segment is used to create the series. This is used by DelVecchio.

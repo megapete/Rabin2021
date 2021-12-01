@@ -66,6 +66,7 @@ class PhaseModel:Codable {
             case OldSegmentCountIsNotOne
             case UnequalBasicSectionsPerSet
             case ArgumentIsZeroCount
+            case IllegalLocation
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -138,6 +139,10 @@ class PhaseModel:Codable {
                     
                     return "The number of basic sections in each segment must be the same!"
                 }
+                else if self.type == .IllegalLocation {
+                    
+                    return "The new segment is at an illegal location: \(info)"
+                }
                 
                 
                 return "An unknown error occurred."
@@ -180,7 +185,7 @@ class PhaseModel:Codable {
     }
     
     /// A routine to change the connectors in the model when newSegment(s) take(s) the place of oldSegment(s). It is assumed that the Segment arrays are contiguous and in order. The count of oldSegments must be a multiple of newSegments or the count of newSegmenst must be a multiple of oldSegments.  If both arguments only have a single Segment, it is assumed that the one in newSegment replaces the one in oldSegment. It is further assumed that the new Segments have _NOT_ been added to the model yet, but will be soon after calling this function. Any connector references to oldSegments that should be set to newSegments will be replaced in the model - however, the model itself (ie: the array of Segments in segmentStore) will not be changed.
-    ///  - Note: If there is only a single oldSegment, only adjacent-segment connections are retained.
+    ///  - Note: If there is only a single oldSegment, only adjacent-segment connections are retained, and connections to non-Segments (like ground, etc) are trashed.
     func UpdateConnectors(oldSegments:[Segment], newSegments:[Segment]) throws {
         
         guard oldSegments.count > 0 && newSegments.count > 0 else {
@@ -255,16 +260,58 @@ class PhaseModel:Codable {
                 throw PhaseModelError(info: "", type: .UnequalBasicSectionsPerSet)
             }
             
-            let oldSegment = oldSegments[0]
-            // get the connections to the old segment
-            var connSegs = oldSegment.connections
-            
-            
-            
             let firstNewSegment = newSegments.first!
             let lastNewSegment = newSegments.last!
             
+            // now we worry about replacing the old segment connections
+            var connectionsWithSegments = oldSegments[0].connections.drop(while: { $0.segment == nil })
             
+            do {
+                
+                for nextConnection in connectionsWithSegments {
+                    
+                    let compPos = try self.ComparativePosition(fromSegment: oldSegments[0], toSegment: nextConnection.segment!)
+                    if compPos == .adjacentBelow {
+                        
+                        let prevSegment = nextConnection.segment!
+                        for i in 0..<prevSegment.connections.count {
+                            
+                            if let nextPrevConnSeg = prevSegment.connections[i].segment {
+                                
+                                if nextPrevConnSeg == oldSegments[0] {
+                                    
+                                    prevSegment.connections[i].segment = firstNewSegment
+                                    firstNewSegment.connections.append(nextConnection)
+                                }
+                            }
+                        }
+                    }
+                    else if compPos == .adjacentAbove {
+                        
+                        let nextSegment = nextConnection.segment!
+                        for i in 0..<nextSegment.connections.count {
+                            
+                            if let nextNextConnSeg = nextSegment.connections[i].segment {
+                                
+                                if nextNextConnSeg == oldSegments[0] {
+                                    
+                                    nextSegment.connections[i].segment = lastNewSegment
+                                    lastNewSegment.connections.append(nextConnection)
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // At this point, the first and last of the new segments should be properly connected to the rest of the model, but the internal connections won't be made yet, so we make them here. The logic closely follows the initialization routine in AppController
+                
+                
+                
+            }
+            catch {
+                
+                throw error
+            }
             
         }
         else { // oldSegments.count < newSegments.count
@@ -281,7 +328,98 @@ class PhaseModel:Codable {
         print("New segment has \(newSegments[0].connections.count) connections")
     }
     
-    
+    /// Function to check the comparative position of 'toSegment' with respect to 'fromSegment'. For instance, if 'fromSegment;' is in coil position 2, and toSegment is in coil position 1, the function will return 'adjacentInner'. The 'toSegment' parameter must exit in the current model or an error is thrown. It is not necessary that the fromSegment exists in the model, but it must have the correct location (with repsect to the current model) set in it.
+    func ComparativePosition(fromSegment:Segment, toSegment:Segment) throws -> Segment.ComparativePosition {
+        
+        guard self.segments.contains(toSegment) else {
+            
+            throw PhaseModelError(info: "", type: .SegmentNotInModel)
+            
+        }
+        
+        guard fromSegment.location != toSegment.location else {
+            
+            throw PhaseModelError(info: "There is already a Segment at that axial location.", type: .IllegalLocation)
+        }
+        
+        let fromRadial = fromSegment.location.radial
+        let toRadial = fromSegment.location.radial
+        let radialDiff = fromRadial - toRadial
+        
+        let fromAxial = fromSegment.location.axial
+        let toAxial = fromSegment.location.axial
+        
+        if radialDiff > 0 {
+            
+            if radialDiff == 1 {
+                
+                return .innerAdjacent
+            }
+            else {
+                
+                return .inner
+            }
+        }
+        else if radialDiff < 0 {
+            
+            if radialDiff == -1 {
+                
+                return .outerAdjacent
+            }
+            else {
+                
+                return .outer
+            }
+        }
+        else {
+            
+            let toIndex = self.segments.firstIndex(of: toSegment)!
+            let prevIndex:Int? = toIndex > 0 && self.segments[toIndex - 1].location.radial == toRadial ? toIndex - 1 : nil
+            let nextIndex:Int? = toIndex < self.segments.endIndex - 1 && self.segments[toIndex + 1].location.radial == toRadial ? toIndex + 1 : nil
+            
+            let axialDiff = fromAxial - toAxial
+            
+            if axialDiff > 0 {
+                
+                // 'toSegment' is below
+                if let next = nextIndex {
+                    
+                    if self.segments[next].location.axial > fromAxial {
+                        
+                        return .adjacentBelow
+                    }
+                    else if self.segments[next].location.axial == fromAxial {
+                        
+                        throw PhaseModelError(info: "There is already a Segment at that axial location.", type: .IllegalLocation)
+                    }
+                }
+                
+                return .below
+            }
+            else if axialDiff < 0 {
+                
+                // toSegment is above
+                if let prev = prevIndex {
+                    
+                    if self.segments[prev].location.axial < fromAxial {
+                        
+                        return .adjacentAbove
+                    }
+                    else if self.segments[prev].location.axial == fromAxial {
+                        
+                        throw PhaseModelError(info: "There is already a Segment at that axial location.", type: .IllegalLocation)
+                    }
+                }
+                
+                return .above
+                
+            }
+            else {
+                
+                throw PhaseModelError(info: "There is already a Segment at that axial location.", type: .IllegalLocation)
+            }
+        }
+    }
     
     
     /// Routine to check whether an array of Segments is contiguous. It is not necessary for the 'segments' array to be sorted.
