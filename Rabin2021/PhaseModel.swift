@@ -7,6 +7,7 @@
 
 import Foundation
 import AppKit
+import Accelerate
 
 class PhaseModel:Codable {
     
@@ -63,6 +64,7 @@ class PhaseModel:Codable {
             case NotAShieldingElement
             case ArgAIsNotAMultipleOfArgB
             case OldSegmentCountIsNotOne
+            case UnequalBasicSectionsPerSet
             case ArgumentIsZeroCount
         }
         
@@ -132,6 +134,10 @@ class PhaseModel:Codable {
                     
                     return "Can only split one segment at a time"
                 }
+                else if self.type == .UnequalBasicSectionsPerSet {
+                    
+                    return "The number of basic sections in each segment must be the same!"
+                }
                 
                 
                 return "An unknown error occurred."
@@ -174,6 +180,7 @@ class PhaseModel:Codable {
     }
     
     /// A routine to change the connectors in the model when newSegment(s) take(s) the place of oldSegment(s). It is assumed that the Segment arrays are contiguous and in order. The count of oldSegments must be a multiple of newSegments or the count of newSegmenst must be a multiple of oldSegments.  If both arguments only have a single Segment, it is assumed that the one in newSegment replaces the one in oldSegment. It is further assumed that the new Segments have _NOT_ been added to the model yet, but will be soon after calling this function. Any connector references to oldSegments that should be set to newSegments will be replaced in the model - however, the model itself (ie: the array of Segments in segmentStore) will not be changed.
+    ///  - Note: If there is only a single oldSegment, only adjacent-segment connections are retained.
     func UpdateConnectors(oldSegments:[Segment], newSegments:[Segment]) throws {
         
         guard oldSegments.count > 0 && newSegments.count > 0 else {
@@ -226,11 +233,39 @@ class PhaseModel:Codable {
                     }
                 }
             }
+            
+            for nextSegment in self.segments {
+                
+                for i in 0..<nextSegment.connections.count {
+                    
+                    if let refSeg = nextSegment.connections[i].segment {
+                        
+                        if let mappedSegment = segmentMap[refSeg.serialNumber] {
+                            
+                            nextSegment.connections[i].segment = mappedSegment
+                        }
+                    }
+                }
+            }
         }
         else if oldSegments.count == 1 {
             
-            self.InitializeConnectionsForCoil(coil: oldSegments[0].location.radial)
-            return
+            guard oldSegments[0].basicSections.count % newSegments.count == 0 else {
+                
+                throw PhaseModelError(info: "", type: .UnequalBasicSectionsPerSet)
+            }
+            
+            let oldSegment = oldSegments[0]
+            // get the connections to the old segment
+            var connSegs = oldSegment.connections
+            
+            
+            
+            let firstNewSegment = newSegments.first!
+            let lastNewSegment = newSegments.last!
+            
+            
+            
         }
         else { // oldSegments.count < newSegments.count
             
@@ -239,30 +274,13 @@ class PhaseModel:Codable {
         }
         
         
-        for nextSegment in self.segments {
-            
-            for i in 0..<nextSegment.connections.count {
-                
-                if let refSeg = nextSegment.connections[i].segment {
-                    
-                    if let mappedSegment = segmentMap[refSeg.serialNumber] {
-                        
-                        nextSegment.connections[i].segment = mappedSegment
-                    }
-                }
-            }
-        }
+        
         
         
         
         print("New segment has \(newSegments[0].connections.count) connections")
     }
     
-    /// Initialize the connectors for the given coil. It is assumed that the 
-    func InitializeConnectionsForCoil(coil:Int)  {
-        
-        
-    }
     
     
     

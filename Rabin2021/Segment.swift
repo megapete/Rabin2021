@@ -408,6 +408,27 @@ class Segment: Codable, Equatable {
         Segment.nextSerialNumberStore = 0
     }
     
+    enum ComparativePosition {
+        
+        case inner
+        case outer
+        
+        case innerAdjacent
+        case outerAdjacent
+        
+        case above
+        case below
+        
+        case adjacentAbove
+        case adjacentBelow
+    }
+    
+    /// Function to find the position of another Segment with respect to this one (self) in the given model
+    func ComparitivePositionTo(otherSegment:Segment, model:[Segment]) -> ComparativePosition {
+        
+        let selfCoil = self.location.radial
+    }
+    
     /// Create the Fourier series representation of the current density for the segment. Note that the "useWindowHeight" property of the segment is used to create the series. This is used by DelVecchio.
     func CreateFourierJ() -> [Double]
     {
