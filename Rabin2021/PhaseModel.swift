@@ -67,6 +67,7 @@ class PhaseModel:Codable {
             case UnequalBasicSectionsPerSet
             case ArgumentIsZeroCount
             case IllegalLocation
+            case IllegalConnector
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -303,7 +304,8 @@ class PhaseModel:Codable {
                     }
                 }
                 
-                // At this point, the first and last of the new segments should be properly connected to the rest of the model, but the internal connections won't be made yet, so we make them here. The logic closely follows the initialization routine in AppController
+                // At this point, there are a few possibilities:
+                // firstNewSegment either has no connections or exactly one. If it has one, we can go on. Otherwise, it means that it needs a floating 'toLocation' (it is the lowest of the axial sections for the coil). The actual location depends on whether lastNewSegment has a toLocation in it. If so (it may ALSO have no connections), the toLocation for firstNewSegment can be calculated depending on the coil type and (in the case of a disc coil), whether there are an even or odd number of new segments being added to the model. Similarly, if firstNewSegmnent has a connection, then its location can be used to determine lastNewSegments' toLocation connection.
                 
                 
                 

@@ -117,7 +117,7 @@ class Segment: Codable, Equatable {
     /// The rectangle that the segment occupies in the core window, with the origin at (LegCenter, BottomYoke)
     var rect:NSRect
     
-    /// Simple struct for connections
+    /// Simple struct for connections. These work as follows: if the 'segment' property is nil, the connector property should have a 'fromLocation' at the actual location on self, and a 'toConnector' of one of the special connectors (floating, shot, or ground). If, on the other hand, 'segment' is non-nil, then the fromLocation is still at the actual location on self, and toLocation is the actual location on 'segment'.
     struct Connection:Codable {
         
         var segment:Segment?

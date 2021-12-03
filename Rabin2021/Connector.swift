@@ -7,6 +7,7 @@
 
 import Foundation
 
+// A connector is usually the little line that connects two adjacent axial coil segments. To see how this is actually used, see the comment for Segment.Connection
 
 struct Connector:Codable {
     
