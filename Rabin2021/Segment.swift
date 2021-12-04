@@ -29,6 +29,9 @@ class Segment: Codable, Equatable {
         
         case adjacentAbove
         case adjacentBelow
+        
+        case bottom
+        case top
     }
     
     /// Function required to make Segment be Equatable. Basically, we use the serial number to decide if two Segments are equal. This allows us to use Segment as a struct instead of a class, but it means that we must be very careful about setting those serial numbers.
