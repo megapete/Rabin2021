@@ -256,7 +256,7 @@ class PhaseModel:Codable {
         }
         else if oldSegments.count == 1 {
             
-            guard oldSegments[0].basicSections.count % newSegments.count == 0 else {
+            guard  newSegments.count % oldSegments[0].basicSections.count == 0 else {
                 
                 throw PhaseModelError(info: "", type: .UnequalBasicSectionsPerSet)
             }
@@ -304,9 +304,76 @@ class PhaseModel:Codable {
                     }
                 }
                 
-                // At this point, there are a few possibilities:
-                // firstNewSegment either has no connections or exactly one. If it has one, we can go on. Otherwise, it means that it needs a floating 'toLocation' (it is the lowest of the axial sections for the coil). The actual location depends on whether lastNewSegment has a toLocation in it. If so (it may ALSO have no connections), the toLocation for firstNewSegment can be calculated depending on the coil type and (in the case of a disc coil), whether there are an even or odd number of new segments being added to the model. Similarly, if firstNewSegmnent has a connection, then its location can be used to determine lastNewSegments' toLocation connection.
+                if firstNewSegment.connections.count > 1 || lastNewSegment.connections.count > 1 {
+                    
+                    ALog("Fuckin' shit!")
+                }
                 
+                // At this point, there are a few possibilities:
+                // firstNewSegment either has no connections or exactly one. If it has one, we can go on. Otherwise, it means that it needs a floating 'toLocation' (it is the lowest of the axial sections for the coil). The fromLocation depends on whether lastNewSegment has a fromLocation in it. If so (it may ALSO have no connections), the fromLocation for firstNewSegment can be calculated depending on the coil type and (in the case of a disc coil), whether there are an even or odd number of new segments being added to the model. Similarly, if firstNewSegmnent has a connection, then its lower fromLocation can be used to determine lastNewSegments' fromLocation connection.
+                
+                var incomingConnector:Connector? = firstNewSegment.connections.count > 0 ? firstNewSegment.connections[0].connector : nil
+                var outgoingConnector:Connector? = lastNewSegment.connections.count > 0 ? lastNewSegment.connections[0].connector : nil
+                
+                // get all the basic sections in the newSegments array
+                var newBasicSections:[BasicSection] = []
+                for nextSegment in newSegments {
+                    
+                    newBasicSections.append(contentsOf: nextSegment.basicSections)
+                }
+                
+                let wdgType = newSegments[0].basicSections[0].wdgData.type
+                if incomingConnector == nil {
+                    
+                    if outgoingConnector == nil {
+                        
+                        if wdgType == .helical {
+                            
+                            incomingConnector = Connector(fromLocation: .center_lower, toLocation: .floating)
+                        }
+                        else if wdgType == .disc {
+                            
+                            let numDiscs = newBasicSections.count
+                            if numDiscs % 2 == 0 {
+                                
+                                incomingConnector = Connector(fromLocation: .outside_lower, toLocation: .floating)
+                            }
+                            else {
+                                
+                                incomingConnector = Connector(fromLocation: .inside_lower, toLocation: .floating)
+                            }
+                        }
+                        else {
+                            
+                            incomingConnector = Connector(fromLocation: .inside_lower, toLocation: .floating)
+                        }
+                    }
+                    else { // use outGoingConnector to decide
+                        
+                        if wdgType == .helical {
+                            
+                            incomingConnector = Connector(fromLocation: .center_lower, toLocation: .floating)
+                        }
+                        else if wdgType == .disc {
+                            
+                            let numDiscs = newBasicSections.count
+                            if numDiscs % 2 == 0 {
+                                
+                                incomingConnector = Connector(fromLocation: Connector.StandardToLocation(fromLocation: outgoingConnector!.fromLocation), toLocation: .floating)
+                            }
+                            else {
+                                
+                                incomingConnector = Connector(fromLocation: Connector.AlternatingLocation(lastLocation: outgoingConnector!.fromLocation), toLocation: .floating)
+                            }
+                        }
+                        else {
+                            
+                            incomingConnector = Connector(fromLocation: .inside_lower, toLocation: .floating)
+                        }
+                    }
+                }
+                
+                // at this point, incomingConnector is guaranteed to exist
                 
                 
             }
@@ -345,11 +412,11 @@ class PhaseModel:Codable {
         }
         
         let fromRadial = fromSegment.location.radial
-        let toRadial = fromSegment.location.radial
+        let toRadial = toSegment.location.radial
         let radialDiff = fromRadial - toRadial
         
         let fromAxial = fromSegment.location.axial
-        let toAxial = fromSegment.location.axial
+        let toAxial = toSegment.location.axial
         
         if radialDiff > 0 {
             
