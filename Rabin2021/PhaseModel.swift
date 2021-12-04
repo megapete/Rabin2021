@@ -273,7 +273,7 @@ class PhaseModel:Codable {
                 for nextConnection in connectionsWithSegments {
                     
                     let compPos = try self.ComparativePosition(fromSegment: oldSegments[0], toSegment: nextConnection.segment!)
-                    if compPos == .adjacentBelow || compPos == .top {
+                    if compPos == .adjacentBelow || compPos == Segment.ComparativePosition.top {
                         
                         let prevSegment = nextConnection.segment!
                         for i in 0..<prevSegment.connections.count {
@@ -288,7 +288,7 @@ class PhaseModel:Codable {
                             }
                         }
                     }
-                    else if compPos == .adjacentAbove || compPos == .bottom {
+                    else if compPos == .adjacentAbove || compPos == Segment.ComparativePosition.bottom {
                         
                         let nextSegment = nextConnection.segment!
                         for i in 0..<nextSegment.connections.count {
@@ -410,7 +410,7 @@ class PhaseModel:Codable {
                         nextSegment.connections.append(Segment.Connection(segment: lastSegment, connector: incomingConnector))
                     }
                     
-                    if let prevSegment = lastSegment {
+                    if nextSegment != firstNewSegment, let prevSegment = lastSegment {
                         
                         prevSegment.connections.append(Segment.Connection(segment: nextSegment, connector: outgoingConnector))
                     }
@@ -429,7 +429,14 @@ class PhaseModel:Codable {
                     lastSegment = nextSegment
                 }
                 
-                
+                // do a quick check
+                for nextNewSegment in newSegments {
+                    
+                    if nextNewSegment.connections.count > 2 {
+                        
+                        print("Got one!")
+                    }
+                }
                 
             }
             catch {
