@@ -36,6 +36,14 @@ fileprivate extension NSPoint {
         
         left = left + right
     }
+    
+    func Rotate(theta:CGFloat) -> NSPoint {
+        
+        let newX = self.x * cos(theta) - self.y * sin(theta)
+        let newY = self.x * sin(theta) + self.y * cos(theta)
+        
+        return NSPoint(x: newX, y: newY)
+    }
 }
 
 fileprivate extension NSRect {
@@ -347,7 +355,7 @@ struct SegmentPath:Equatable {
     }
 }
 
-/// Definition and drawing routines for Ground, Impulse, and connections between non-adjacent coil segments. Note that dimensions are all in parent (ScrollView) coordinates
+/// Definition and drawing routines for Ground, Impulse, and connections between non-adjacent coil segments. Note that dimensions passed in to routines in the struct are expected to be in the model's coordiantes.
 struct SpecialConnector {
     
     enum type {
@@ -362,7 +370,13 @@ struct SpecialConnector {
         case variable
         case up
         case down
+        case left
+        case right
     }
+    
+    static let connectorCircleRadius = 3.0
+    
+    let color:NSColor
     
     let connectorType:SpecialConnector.type
     
@@ -370,8 +384,34 @@ struct SpecialConnector {
     
     let path:NSBezierPath
     
-    func GroundConnection(connectionPoint:NSPoint, connectorDirection:SpecialConnector.direction) -> SpecialConnector {
+    func GroundConnection(connectionPoint:NSPoint, owner:TransformerView, connectorDirection:SpecialConnector.direction) -> SpecialConnector {
         
+        // set theta according to the direction that was passed into the routine - this value will be used to calculate the rotation matrix
+        var theta = 0.0
+        if connectorDirection == .up {
+            theta = π / 2.0
+        }
+        else if connectorDirection == .left {
+            theta = π
+        }
+        else if connectorDirection == .down {
+            theta = 1.5 * π
+        }
+        
+        // set up the grounding arrow as if it is pointing to the right (theta = 0)
+        let leadEndPoint = owner.convert(NSPoint(x: 10.0, y: 0.0), from: owner.scrollView)
+        let toFirstLine = owner.convert(NSPoint(x: 0.0, y: -8.5), from: owner.scrollView)
+        let toEndFirstLine = owner.convert(NSPoint(x: 0.0, y: 17.0), from: owner.scrollView)
+        
+        let path = Circle(center: connectionPoint, radius: SpecialConnector.connectorCircleRadius).path
+        path.move(to: connectionPoint)
+        
+        // apply the rotation matrix to the points on the grounding symbol before adding it to the path
+        path.relativeLine(to: leadEndPoint.Rotate(theta: theta))
+        path.relativeMove(to: toFirstLine.Rotate(theta: theta))
+        path.relativeLine(to: toEndFirstLine.Rotate(theta: theta))
+        
+        return SpecialConnector(color:.green, connectorType: .ground, connectorDirection: connectorDirection, path: path)
     }
 }
 
@@ -412,6 +452,9 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     }
     
     var segments:[SegmentPath] = []
+    
+    var specialConnectors:[SpecialConnector] = []
+    
     var boundary:NSRect = NSRect(x: 0, y: 0, width: 0, height: 0)
     let boundaryColor:NSColor = .gray
     
