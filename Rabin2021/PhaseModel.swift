@@ -68,6 +68,7 @@ class PhaseModel:Codable {
             case ArgumentIsZeroCount
             case IllegalLocation
             case IllegalConnector
+            case TooManyConnectors
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -143,6 +144,10 @@ class PhaseModel:Codable {
                 else if self.type == .IllegalLocation {
                     
                     return "The new segment is at an illegal location: \(info)"
+                }
+                else if self.type == .TooManyConnectors {
+                    
+                    return "The segment at \(info) has too many connectors associated with it!"
                 }
                 
                 
@@ -429,15 +434,14 @@ class PhaseModel:Codable {
                     lastSegment = nextSegment
                 }
                 
-                // do a quick check
+                // do a quick check - this should never happen and should be treated as a programming error
                 for nextNewSegment in newSegments {
                     
                     if nextNewSegment.connections.count > 2 {
                         
-                        print("Got one!")
+                        throw PhaseModelError(info: "\(nextNewSegment.location)", type: .TooManyConnectors)
                     }
                 }
-                
             }
             catch {
                 
