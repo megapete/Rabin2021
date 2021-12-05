@@ -410,7 +410,13 @@
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <menu key="submenu" title="Connections" id="JqH-9Q-AbS">
                         <items>
-                            <menuItem title="Add Connection..." id="i9N-bc-tbw">
+                            <menuItem title="Add Impulse..." id="i9N-bc-tbw">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                            </menuItem>
+                            <menuItem title="Add Ground..." id="v78-OQ-6tN">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                            </menuItem>
+                            <menuItem title="Add Connection..." id="wyt-nn-lsB">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                             </menuItem>
                             <menuItem isSeparatorItem="YES" id="vnb-iu-z3T"/>
@@ -608,7 +614,7 @@
             <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" resizable="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
             <rect key="contentRect" x="335" y="390" width="601" height="682"/>
-            <rect key="screenRect" x="0.0" y="0.0" width="1680" height="1025"/>
+            <rect key="screenRect" x="0.0" y="0.0" width="2560" height="1415"/>
             <view key="contentView" id="EiT-Mj-1SZ">
                 <rect key="frame" x="0.0" y="0.0" width="601" height="682"/>
                 <autoresizingMask key="autoresizingMask"/>
@@ -617,11 +623,11 @@
                         <rect key="frame" x="-1" y="-1" width="603" height="684"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <clipView key="contentView" id="SDg-ft-U91">
-                            <rect key="frame" x="1" y="1" width="601" height="682"/>
+                            <rect key="frame" x="1" y="1" width="586" height="667"/>
                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                             <subviews>
                                 <view id="ebn-Op-mWN" customClass="TransformerView" customModule="ImpulseDistribution" customModuleProvider="target">
-                                    <rect key="frame" x="0.0" y="0.0" width="602" height="683"/>
+                                    <rect key="frame" x="0.0" y="0.0" width="587" height="668"/>
                                     <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                     <connections>
                                         <outlet property="addRadialShieldMenuItem" destination="kmi-xS-wRk" id="JqN-Ra-ha9"/>
@@ -636,11 +642,11 @@
                             </subviews>
                         </clipView>
                         <scroller key="horizontalScroller" wantsLayer="YES" verticalHuggingPriority="750" horizontal="YES" id="ZNq-Kw-tyS">
-                            <rect key="frame" x="1" y="667" width="601" height="16"/>
+                            <rect key="frame" x="1" y="668" width="586" height="15"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </scroller>
                         <scroller key="verticalScroller" wantsLayer="YES" verticalHuggingPriority="750" doubleValue="1" horizontal="NO" id="aVc-m1-gzr">
-                            <rect key="frame" x="586" y="1" width="16" height="682"/>
+                            <rect key="frame" x="587" y="1" width="15" height="667"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </scroller>
                     </scrollView>

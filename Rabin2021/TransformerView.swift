@@ -97,6 +97,18 @@ fileprivate extension NSRect {
     }
 }
 
+struct Circle {
+    
+    let center:NSPoint
+    let radius:CGFloat
+    
+    var path:NSBezierPath {
+        
+        let encRect = NSRect(x: center.x - radius, y: center.y - radius, width: 2.0 * radius, height: 2.0 * radius)
+        return NSBezierPath(roundedRect: encRect * dimensionMultiplier, xRadius: self.radius * dimensionMultiplier, yRadius: self.radius * dimensionMultiplier)
+    }
+}
+
 struct SegmentPath:Equatable {
     
     static var txfoView:TransformerView? = nil
@@ -335,6 +347,34 @@ struct SegmentPath:Equatable {
     }
 }
 
+/// Definition and drawing routines for Ground, Impulse, and connections between non-adjacent coil segments. Note that dimensions are all in parent (ScrollView) coordinates
+struct SpecialConnector {
+    
+    enum type {
+        
+        case ground
+        case impulse
+        case general
+    }
+    
+    enum direction {
+        
+        case variable
+        case up
+        case down
+    }
+    
+    let connectorType:SpecialConnector.type
+    
+    let connectorDirection:SpecialConnector.direction
+    
+    let path:NSBezierPath
+    
+    func GroundConnection(connectionPoint:NSPoint, connectorDirection:SpecialConnector.direction) -> SpecialConnector {
+        
+    }
+}
+
 class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     // I suppose that I could get fancy and create a TransformerViewDelegate protocol but since the calls are so specific, I'm unable to justify the extra complexity, so I'll just save a weak reference to the AppController here
@@ -376,10 +416,12 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     let boundaryColor:NSColor = .gray
     
     var zoomRect:NSRect? = nil
-    let zoomRectLineDash:[CGFloat] = [15.0, 8.0]
+    let zoomRectLineDash = NSSize(width: 15.0, height: 8.0)
     
     var selectRect:NSRect? = nil
-    let selectRectLineDash:[CGFloat] = [10.0, 5.0]
+    let selectRectLineDash = NSSize(width: 10.0, height: 5.0)
+    
+    let defaultLineWidth = 1.0
     
     var currentSegments:[SegmentPath] = []
     var currentSegmentIndices:[Int] {
@@ -446,10 +488,10 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         let oldLineWidth = NSBezierPath.defaultLineWidth
         
         // Set the line width to 1mm (as defined by the original ZoomAll)
-        NSBezierPath.defaultLineWidth = 1.0 / scrollView.magnification
-        //let scrollView = self.superview!.superview! as! NSScrollView
-        // print("Magnification: \(scrollView.magnification)")
+        // NSBezierPath.defaultLineWidth = 1.0 / scrollView.magnification
         
+        let fixedLineWidthSize = self.convert(NSSize(width: self.defaultLineWidth, height: self.defaultLineWidth), from: self.scrollView)
+        NSBezierPath.defaultLineWidth = fixedLineWidthSize.width
         // Drawing code here.
         
         if self.needsToDraw(self.boundary) {
@@ -481,7 +523,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 // print(rect)
                 NSColor.gray.set()
                 let zoomPath = NSBezierPath(rect: rect)
-                zoomPath.setLineDash(self.zoomRectLineDash, count: 2, phase: 0.0)
+                let lineDashSize = self.convert(self.zoomRectLineDash, from: self.scrollView)
+                zoomPath.setLineDash([lineDashSize.width, lineDashSize.height], count: 2, phase: 0.0)
                 zoomPath.stroke()
             }
         }
@@ -491,7 +534,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 
                 NSColor.gray.set()
                 let selectPath = NSBezierPath(rect: rect)
-                selectPath.setLineDash(self.selectRectLineDash, count: 2, phase: 0.0)
+                let lineDashSize = self.convert(self.selectRectLineDash, from: self.scrollView)
+                selectPath.setLineDash([lineDashSize.width, lineDashSize.height], count: 2, phase: 0.0)
                 selectPath.stroke()
             }
         }
