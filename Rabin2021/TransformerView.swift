@@ -374,6 +374,20 @@ struct SpecialConnector {
         case right
     }
     
+    static let GroundCursor:NSCursor = SpecialConnector.LoadGroundCursor()
+    
+    static func LoadGroundCursor() -> NSCursor {
+        
+        if let groundImage = NSImage(named: "Ground") {
+            
+            let groundCursor = NSCursor(image: groundImage, hotSpot: NSPoint(x: 8, y: 1))
+            
+            return groundCursor
+        }
+    
+        return NSCursor.arrow
+    }
+    
     static let connectorCircleRadius = 3.0
     
     let color:NSColor
@@ -425,6 +439,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         case selectSegment
         case selectRect
         case zoomRect
+        case addGround
     }
     
     private var modeStore:Mode = .selectSegment
@@ -445,6 +460,10 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             else if newValue == .zoomRect || newValue == .selectRect
             {
                 NSCursor.crosshair.set()
+            }
+            else if newValue == .addGround {
+                
+                SpecialConnector.GroundCursor.set()
             }
             
             self.modeStore = newValue
