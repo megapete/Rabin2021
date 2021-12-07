@@ -444,6 +444,37 @@ struct SpecialConnector {
     }
 }
 
+struct ClickableConnectorZone {
+    
+    // the one-D path that the actual connector follows
+    let path:NSBezierPath
+    
+    let fromSegment:Segment
+    let toSegment:Segment? = nil
+    
+    enum Destinations {
+        
+        case toGround
+        case toImpulse
+        case toFloating
+        case toSegment
+    }
+    
+    var zone:NSBezierPath {
+        get {
+            
+            var result:NSBezierPath
+            
+            for i in 0..<self.path.elementCount {
+                
+                
+            }
+            
+            return result
+        }
+    }
+}
+
 class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     // I suppose that I could get fancy and create a TransformerViewDelegate protocol but since the calls are so specific, I'm unable to justify the extra complexity, so I'll just save a weak reference to the AppController here
@@ -491,7 +522,6 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     var segments:[SegmentPath] = []
     
     var specialConnectors:[SpecialConnector] = []
-    var floatingLocations:[NSRect] = []
     
     var boundary:NSRect = NSRect(x: 0, y: 0, width: 0, height: 0)
     let boundaryColor:NSColor = .gray

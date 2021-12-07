@@ -204,7 +204,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         for coil in 0..<numCoils {
             
-            print("Doing connectors for coil \(coil)")
+            // print("Doing connectors for coil \(coil)")
             
             let axialIndices = BasicSection.CoilEnds(coil: coil, basicSections: basicSections)
             
