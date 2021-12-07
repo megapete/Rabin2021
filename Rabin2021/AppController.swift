@@ -43,6 +43,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     @IBOutlet weak var radialShieldInsideMenuItem: NSMenuItem!
     @IBOutlet weak var removeRadialShieldMenuItem: NSMenuItem!
     
+    /// Connections
+    @IBOutlet weak var addImpulseMenuItem: NSMenuItem!
+    @IBOutlet weak var addGroundMenuItem: NSMenuItem!
+    @IBOutlet weak var addConnectionMenuItem: NSMenuItem!
+    @IBOutlet weak var removeConnectionMenuItem: NSMenuItem!
+    
+    
     
     /// Window controller to display graphs
     var graphWindowCtrl:PCH_GraphingWindow? = nil
@@ -937,6 +944,20 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
     }
     
+    @IBAction func handleAddGround(_ sender: Any) {
+        
+        self.doAddGround()
+    }
+    
+    func doAddGround() {
+        
+        guard self.currentModel != nil else {
+            
+            return
+        }
+        
+        self.txfoView.mode = .addGround
+    }
     
     // next two functions for adding a static ring over the selection
     @IBAction func handleAddStaticRingOver(_ sender: Any) {
@@ -1163,7 +1184,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     // MARK: Menu Validation
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         
-        if menuItem == self.zoomInMenuItem || menuItem == self.zoomOutMenuItem || menuItem == self.zoomRectMenuItem || menuItem == self.zoomRectMenuItem {
+        if menuItem == self.zoomInMenuItem || menuItem == self.zoomOutMenuItem || menuItem == self.zoomRectMenuItem || menuItem == self.zoomRectMenuItem || menuItem == self.addGroundMenuItem || menuItem == self.addImpulseMenuItem || menuItem == self.addConnectionMenuItem || menuItem == self.removeConnectionMenuItem {
             
             return self.currentModel != nil
         }

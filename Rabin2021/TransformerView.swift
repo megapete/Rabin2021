@@ -10,7 +10,7 @@
 
 import Cocoa
 
-let dimensionMultiplier = 1000.0
+fileprivate let dimensionMultiplier = 1000.0
 
 fileprivate extension NSPoint {
     
@@ -224,14 +224,8 @@ struct SegmentPath:Equatable {
     // show all connectors for this SegmentPath EXCEPT any that end at a Segment in 'maskSegments'. This allows us to avoid redrawing paths
     func showConnectors(maskSegments:[Segment]) {
         
-        /*
-        if self.segment.debugFlag {
-            
-            print("Stop here")
-        }
-        */
-        
         let model = SegmentPath.txfoView!.appController!.currentModel!
+        SegmentPath.txfoView!.floatingLocations = []
         
         for nextConnection in self.segment.connections {
             
@@ -336,6 +330,7 @@ struct SegmentPath:Equatable {
                 
                 // must be a termination
                 let fromLoc = nextConnection.connector.fromLocation
+                var specialDirection = SpecialConnector.direction.down
                 if fromLoc == .center_lower || fromLoc == .inside_lower || fromLoc == .outside_lower {
                     
                     toPoint = fromPoint + NSSize(width: 0.0, height: -0.025)
@@ -343,10 +338,30 @@ struct SegmentPath:Equatable {
                 else if fromLoc == .center_upper || fromLoc == .inside_upper || fromLoc == .outside_upper {
                     
                     toPoint = fromPoint + NSSize(width: 0.0, height: 0.025)
+                    specialDirection = .up
+                }
+                else if fromLoc == .outside_center {
+                    
+                    toPoint = fromPoint + NSSize(width: 0.25, height: 0.0)
+                    specialDirection = .right
                 }
                 
                 connectorPath.move(to: fromPoint * dimensionMultiplier)
                 connectorPath.line(to: toPoint * dimensionMultiplier)
+                
+                let toLoc = nextConnection.connector.toLocation
+                if toLoc == .ground {
+                    
+                    let gndConnector = SpecialConnector.GroundConnection(connectionPoint: toPoint * dimensionMultiplier, owner: SegmentPath.txfoView!, connectorDirection: specialDirection)
+                    
+                    gndConnector.color.set()
+                    gndConnector.path.stroke()
+                }
+                else if toLoc == .floating {
+                    
+                    let tolerance = TransformerView.connectorDistanceTolerance
+                    
+                }
             }
             
             self.segmentColor.set()
@@ -398,7 +413,7 @@ struct SpecialConnector {
     
     let path:NSBezierPath
     
-    func GroundConnection(connectionPoint:NSPoint, owner:TransformerView, connectorDirection:SpecialConnector.direction) -> SpecialConnector {
+    static func GroundConnection(connectionPoint:NSPoint, owner:TransformerView, connectorDirection:SpecialConnector.direction) -> SpecialConnector {
         
         // set theta according to the direction that was passed into the routine - this value will be used to calculate the rotation matrix
         var theta = 0.0
@@ -434,6 +449,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     // I suppose that I could get fancy and create a TransformerViewDelegate protocol but since the calls are so specific, I'm unable to justify the extra complexity, so I'll just save a weak reference to the AppController here
     weak var appController:AppController? = nil
     
+    static let connectorDistanceTolerance = 0.003 // meters
+    
     enum Mode {
         
         case selectSegment
@@ -463,6 +480,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             }
             else if newValue == .addGround {
                 
+                print("setting cursor to ground")
                 SpecialConnector.GroundCursor.set()
             }
             
@@ -473,6 +491,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     var segments:[SegmentPath] = []
     
     var specialConnectors:[SpecialConnector] = []
+    var floatingLocations:[NSRect] = []
     
     var boundary:NSRect = NSRect(x: 0, y: 0, width: 0, height: 0)
     let boundaryColor:NSColor = .gray
@@ -801,6 +820,11 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             self.mouseDownWithSelectSegment(event: event)
             return
         }
+        else if self.mode == .addGround {
+            
+            self.mouseDownWithAddGround(event: event)
+            return
+        }
     }
     
     override func mouseDragged(with event: NSEvent) {
@@ -867,6 +891,11 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         let newSize = NSSize(width: endPoint.x - self.zoomRect!.origin.x, height: endPoint.y - self.zoomRect!.origin.y)
         self.zoomRect!.size = newSize
         self.needsDisplay = true
+    }
+    
+    func mouseDownWithAddGround(event:NSEvent) {
+        
+        let clickPoint = self.convert(event.locationInWindow, from: nil)
     }
     
     func mouseDownWithSelectSegment(event:NSEvent)

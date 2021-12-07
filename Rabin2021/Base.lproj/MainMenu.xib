@@ -22,10 +22,14 @@
         <customObject id="YLy-65-1bz" customClass="NSFontManager"/>
         <customObject id="XWq-sU-B2V" customClass="AppController" customModule="ImpulseDistribution" customModuleProvider="target">
             <connections>
+                <outlet property="addConnectionMenuItem" destination="wyt-nn-lsB" id="hUT-dj-hJ4"/>
+                <outlet property="addGroundMenuItem" destination="v78-OQ-6tN" id="ILk-Wy-dG5"/>
+                <outlet property="addImpulseMenuItem" destination="i9N-bc-tbw" id="TJU-Oo-SB8"/>
                 <outlet property="combineSegmentsIntoSingleSegmentMenuItem" destination="bwi-RW-boG" id="dY2-kP-Zy8"/>
                 <outlet property="interleaveSelectionMenuItem" destination="Msd-Z1-NJO" id="iTF-13-8vY"/>
                 <outlet property="mainWindow" destination="QvC-M9-y7g" id="99a-gB-L5N"/>
                 <outlet property="radialShieldInsideMenuItem" destination="BEG-M4-Kp7" id="3uR-Go-Bnw"/>
+                <outlet property="removeConnectionMenuItem" destination="VZ8-kL-Dja" id="in8-h8-Gl3"/>
                 <outlet property="removeRadialShieldMenuItem" destination="xXj-L6-RCw" id="PQm-pG-7IL"/>
                 <outlet property="removeStaticRingMenuItem" destination="4HP-v0-HBk" id="Y4d-TJ-nm9"/>
                 <outlet property="showWdgAsSingleSegmentMenuItem" destination="Aqp-v7-qka" id="wWQ-tl-Wef"/>
@@ -415,6 +419,9 @@
                             </menuItem>
                             <menuItem title="Add Ground..." id="v78-OQ-6tN">
                                 <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleAddGround:" target="XWq-sU-B2V" id="CDX-5r-AKW"/>
+                                </connections>
                             </menuItem>
                             <menuItem title="Add Connection..." id="wyt-nn-lsB">
                                 <modifierMask key="keyEquivalentModifierMask"/>
