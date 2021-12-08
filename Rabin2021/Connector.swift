@@ -27,7 +27,7 @@ struct Connector:Codable {
         // special locations (that are not really locations but more accurately, 'terminations')
         case floating
         case ground
-        case shot
+        case impulse
     }
     
     let fromLocation:Location

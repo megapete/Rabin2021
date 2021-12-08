@@ -124,7 +124,7 @@ class Segment: Codable, Equatable {
     struct Connection:Codable {
         
         var segment:Segment?
-        let connector:Connector
+        var connector:Connector
     }
     
     /// The connections to the Segment
@@ -321,6 +321,11 @@ class Segment: Codable, Equatable {
                 return "An unknown error occurred."
             }
         }
+    }
+    
+    func AddConnector(toLocation:Connector.Location, toSegment:Segment?) {
+        
+        
     }
     
     func CapacitanceTurnToTurn() throws -> Double {

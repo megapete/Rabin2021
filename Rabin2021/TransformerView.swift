@@ -221,11 +221,11 @@ struct SegmentPath:Equatable {
         path.stroke()
     }
     
-    // show all connectors for this SegmentPath EXCEPT any that end at a Segment in 'maskSegments'. This allows us to avoid redrawing paths
-    func showConnectors(maskSegments:[Segment]) {
+    // Set up the paths for all connectors for this SegmentPath EXCEPT any that end at a Segment in 'maskSegments'. This allows us to avoid redrawing paths
+    func SetUpConnectors(maskSegments:[Segment]) {
         
         let model = SegmentPath.txfoView!.appController!.currentModel!
-        SegmentPath.txfoView!.floatingLocations = []
+        let txfoView = SegmentPath.txfoView!
         
         for nextConnection in self.segment.connections {
             
@@ -317,6 +317,8 @@ struct SegmentPath:Equatable {
                         
                         connectorPath.move(to: fromPoint * dimensionMultiplier)
                         connectorPath.line(to: toPoint * dimensionMultiplier)
+                        
+                        txfoView.viewConnectors.append(ViewConnector(segments: [self.segment, otherSeg], color: self.segmentColor, connectorType: .adjacent, connectorDirection: .up, path: connectorPath))
                     }
                     else {
                         // non-adjacent section, complicated!
@@ -330,7 +332,7 @@ struct SegmentPath:Equatable {
                 
                 // must be a termination
                 let fromLoc = nextConnection.connector.fromLocation
-                var specialDirection = SpecialConnector.direction.down
+                var specialDirection = ViewConnector.direction.down
                 if fromLoc == .center_lower || fromLoc == .inside_lower || fromLoc == .outside_lower {
                     
                     toPoint = fromPoint + NSSize(width: 0.0, height: -0.025)
@@ -352,32 +354,36 @@ struct SegmentPath:Equatable {
                 let toLoc = nextConnection.connector.toLocation
                 if toLoc == .ground {
                     
-                    let gndConnector = SpecialConnector.GroundConnection(connectionPoint: toPoint * dimensionMultiplier, owner: SegmentPath.txfoView!, connectorDirection: specialDirection)
+                    let gndConnector = ViewConnector.GroundConnection(connectionPoint: toPoint * dimensionMultiplier, segments: [self.segment], owner: SegmentPath.txfoView!, connectorDirection: specialDirection)
                     
-                    gndConnector.color.set()
-                    gndConnector.path.stroke()
+                    txfoView.viewConnectors.append(gndConnector)
+                    
+                    // gndConnector.color.set()
+                    // gndConnector.path.stroke()
+                    // continue
                 }
                 else if toLoc == .floating {
                     
-                    let tolerance = TransformerView.connectorDistanceTolerance
+                    txfoView.viewConnectors.append(ViewConnector(segments: [self.segment], color: self.segmentColor, connectorType: .general, connectorDirection: specialDirection, path: connectorPath))
                     
                 }
             }
             
-            self.segmentColor.set()
-            connectorPath.stroke()
+            // self.segmentColor.set()
+            // connectorPath.stroke()
         }
     }
 }
 
-/// Definition and drawing routines for Ground, Impulse, and connections between non-adjacent coil segments. Note that dimensions passed in to routines in the struct are expected to be in the model's coordiantes.
-struct SpecialConnector {
+/// Definition and drawing routines for Ground, Impulse, and connections between non-adjacent coil segments. Note that dimensions passed in to routines in the struct are expected to be in the model's coordiantes (inncluding the 'dimensionMultiplier' global variable). The fancy cursors are also defined here.
+struct ViewConnector {
     
     enum type {
         
         case ground
         case impulse
         case general
+        case adjacent
     }
     
     enum direction {
@@ -389,7 +395,11 @@ struct SpecialConnector {
         case right
     }
     
-    static let GroundCursor:NSCursor = SpecialConnector.LoadGroundCursor()
+    /// The Segments associated with the connector. There are usually either  one or two elements in the array.
+    var segments:[Segment] = []
+    
+    /// The global Ground cursor and its creation routine
+    static let GroundCursor:NSCursor = ViewConnector.LoadGroundCursor()
     
     static func LoadGroundCursor() -> NSCursor {
         
@@ -403,17 +413,59 @@ struct SpecialConnector {
         return NSCursor.arrow
     }
     
+    /// The circle that shows we're "connected"
     static let connectorCircleRadius = 3.0
     
+    /// The color of the connector
     let color:NSColor
     
-    let connectorType:SpecialConnector.type
+    /// The type
+    let connectorType:ViewConnector.type
     
-    let connectorDirection:SpecialConnector.direction
+    /// The direction
+    let connectorDirection:ViewConnector.direction
     
+    /// The drawn path
     let path:NSBezierPath
     
-    static func GroundConnection(connectionPoint:NSPoint, owner:TransformerView, connectorDirection:SpecialConnector.direction) -> SpecialConnector {
+    /// The "hit zone" for the connector. This can be polled by the NSBezierPath function 'contains' to see if a mouse click in in this hit zone.
+    var hitZone:NSBezierPath {
+        get {
+            
+            let result = NSBezierPath()
+            
+            let inset = TransformerView.connectorDistanceTolerance * dimensionMultiplier
+            
+            let numElements = self.path.elementCount
+            
+            if numElements > 1 {
+                
+                var pointArray:[NSPoint] = Array(repeating: NSPoint(), count: 3)
+                var _ = path.element(at: 0, associatedPoints: &pointArray)
+                var point1 = pointArray[0]
+                
+                for i in 1..<numElements {
+            
+                    _ = path.element(at: i, associatedPoints: &pointArray)
+                    let point2 = pointArray[0]
+                    
+                    // Convert the line into a rectangle for hit-testing. I came up with this all by myself.
+                    let nextZoneRect = NSInsetRect(NormalizeRect(srcRect: NSRect(x: point1.x, y: point1.y, width: point2.x - point1.x, height: point2.y - point1.y)), -inset, -inset)
+                    
+                    result.append(NSBezierPath(rect: nextZoneRect))
+                    
+                    if (i < numElements - 1) {
+                        
+                        point1 = point2
+                    }
+                }
+            }
+            
+            return result
+        }
+    }
+    
+    static func GroundConnection(connectionPoint:NSPoint, segments:[Segment], owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
         
         // set theta according to the direction that was passed into the routine - this value will be used to calculate the rotation matrix
         var theta = 0.0
@@ -432,7 +484,7 @@ struct SpecialConnector {
         let toFirstLine = owner.convert(NSPoint(x: 0.0, y: -8.5), from: owner.scrollView)
         let toEndFirstLine = owner.convert(NSPoint(x: 0.0, y: 17.0), from: owner.scrollView)
         
-        let path = Circle(center: connectionPoint, radius: SpecialConnector.connectorCircleRadius).path
+        let path = Circle(center: connectionPoint, radius: ViewConnector.connectorCircleRadius).path
         path.move(to: connectionPoint)
         
         // apply the rotation matrix to the points on the grounding symbol before adding it to the path
@@ -440,47 +492,18 @@ struct SpecialConnector {
         path.relativeMove(to: toFirstLine.Rotate(theta: theta))
         path.relativeLine(to: toEndFirstLine.Rotate(theta: theta))
         
-        return SpecialConnector(color:.green, connectorType: .ground, connectorDirection: connectorDirection, path: path)
+        return ViewConnector(segments:segments, color:.green, connectorType: .ground, connectorDirection: connectorDirection, path: path)
     }
 }
 
-struct ClickableConnectorZone {
-    
-    // the one-D path that the actual connector follows
-    let path:NSBezierPath
-    
-    let fromSegment:Segment
-    let toSegment:Segment? = nil
-    
-    enum Destinations {
-        
-        case toGround
-        case toImpulse
-        case toFloating
-        case toSegment
-    }
-    
-    var zone:NSBezierPath {
-        get {
-            
-            var result:NSBezierPath
-            
-            for i in 0..<self.path.elementCount {
-                
-                
-            }
-            
-            return result
-        }
-    }
-}
+
 
 class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     // I suppose that I could get fancy and create a TransformerViewDelegate protocol but since the calls are so specific, I'm unable to justify the extra complexity, so I'll just save a weak reference to the AppController here
     weak var appController:AppController? = nil
     
-    static let connectorDistanceTolerance = 0.003 // meters
+    static let connectorDistanceTolerance = 0.0015 // meters
     
     enum Mode {
         
@@ -512,7 +535,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             else if newValue == .addGround {
                 
                 print("setting cursor to ground")
-                SpecialConnector.GroundCursor.set()
+                ViewConnector.GroundCursor.set()
             }
             
             self.modeStore = newValue
@@ -520,8 +543,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     }
     
     var segments:[SegmentPath] = []
-    
-    var specialConnectors:[SpecialConnector] = []
+    var viewConnectors:[ViewConnector] = []
     
     var boundary:NSRect = NSRect(x: 0, y: 0, width: 0, height: 0)
     let boundaryColor:NSColor = .gray
@@ -614,12 +636,23 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
         
         var maskSegments:[Segment] = []
+        self.viewConnectors = []
+        
         for nextSegment in self.segments
         {
             nextSegment.show()
-            nextSegment.showConnectors(maskSegments: maskSegments)
+            nextSegment.SetUpConnectors(maskSegments: maskSegments)
             
             maskSegments.append(nextSegment.segment)
+        }
+        
+        for nextViewConnector in self.viewConnectors {
+            
+            if nextViewConnector.segments.count > 0 {
+            
+                nextViewConnector.color.set()
+                nextViewConnector.path.stroke()
+            }
         }
         
         for nextSegment in self.currentSegments
@@ -926,6 +959,14 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     func mouseDownWithAddGround(event:NSEvent) {
         
         let clickPoint = self.convert(event.locationInWindow, from: nil)
+        
+        for nextViewConnector in self.viewConnectors {
+            
+            if nextViewConnector.hitZone.contains(clickPoint) {
+                
+                print("Clicked on a connector!")
+            }
+        }
     }
     
     func mouseDownWithSelectSegment(event:NSEvent)
