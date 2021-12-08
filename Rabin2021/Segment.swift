@@ -323,9 +323,29 @@ class Segment: Codable, Equatable {
         }
     }
     
-    func AddConnector(toLocation:Connector.Location, toSegment:Segment?) {
+    /// Add a connector to the segment at the given fromLocation. The toLocation parameter depends on the toSegment parameter:
+    /// If toSegment is not nil, then toLocation refers to the location on the toSegment. This routine will also add the inverse connector to the toSegment
+    /// If toSegment is nil, then the behaviour of the routine is as follows:
+    /// If toLocation is .ground or .impulse and self.connection has a connection with a fromLocation the same as the parameter, and a toLocation equal to .floating, that connector is changed to the new connector definition.
+    /// If toLocation is .ground, or .impulse, or .floating, and self.connection does not have a corresponding .floating connector, then the new connector is added to self.connections.
+    func AddConnector(fromLocation:Connector.Location, toLocation:Connector.Location, toSegment:Segment?) {
         
-        
+        if let otherSegment = toSegment {
+            
+            let newSelfConnection = Connection(segment: otherSegment, connector: Connector(fromLocation: fromLocation, toLocation: toLocation))
+            self.connections.append(newSelfConnection)
+            let newOtherConnection = Connection(segment: self, connector: Connector(fromLocation: toLocation, toLocation: fromLocation))
+            otherSegment.connections.append(newOtherConnection)
+        }
+        else if let existingFloatingIndex = self.connections.firstIndex(where: {$0.connector.fromLocation == fromLocation && $0.connector.toLocation == .floating}) {
+            
+            self.connections.remove(at: existingFloatingIndex)
+            self.connections.append(Connection(segment: nil, connector: Connector(fromLocation: fromLocation, toLocation: toLocation)))
+        }
+        else {
+            
+            self.connections.append(Connection(segment: nil, connector: Connector(fromLocation: fromLocation, toLocation: toLocation)))
+        }
     }
     
     func CapacitanceTurnToTurn() throws -> Double {

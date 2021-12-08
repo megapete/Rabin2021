@@ -318,7 +318,7 @@ struct SegmentPath:Equatable {
                         connectorPath.move(to: fromPoint * dimensionMultiplier)
                         connectorPath.line(to: toPoint * dimensionMultiplier)
                         
-                        txfoView.viewConnectors.append(ViewConnector(segments: [self.segment, otherSeg], color: self.segmentColor, connectorType: .adjacent, connectorDirection: .up, path: connectorPath))
+                        txfoView.viewConnectors.append(ViewConnector(segments: [self.segment, otherSeg], color: self.segmentColor, connectorType: .adjacent, connectorDirection: .up, connector: nextConnection.connector, path: connectorPath))
                     }
                     else {
                         // non-adjacent section, complicated!
@@ -354,7 +354,7 @@ struct SegmentPath:Equatable {
                 let toLoc = nextConnection.connector.toLocation
                 if toLoc == .ground {
                     
-                    let gndConnector = ViewConnector.GroundConnection(connectionPoint: toPoint * dimensionMultiplier, segments: [self.segment], owner: SegmentPath.txfoView!, connectorDirection: specialDirection)
+                    let gndConnector = ViewConnector.GroundConnection(connectionPoint: toPoint * dimensionMultiplier, segments: [self.segment], connector: nextConnection.connector, owner: SegmentPath.txfoView!, connectorDirection: specialDirection)
                     
                     txfoView.viewConnectors.append(gndConnector)
                     
@@ -364,7 +364,7 @@ struct SegmentPath:Equatable {
                 }
                 else if toLoc == .floating {
                     
-                    txfoView.viewConnectors.append(ViewConnector(segments: [self.segment], color: self.segmentColor, connectorType: .general, connectorDirection: specialDirection, path: connectorPath))
+                    txfoView.viewConnectors.append(ViewConnector(segments: [self.segment], color: self.segmentColor, connectorType: .general, connectorDirection: specialDirection, connector: nextConnection.connector, path: connectorPath))
                     
                 }
             }
@@ -425,6 +425,9 @@ struct ViewConnector {
     /// The direction
     let connectorDirection:ViewConnector.direction
     
+    /// The connector itself
+    let connector:Connector
+    
     /// The drawn path
     let path:NSBezierPath
     
@@ -465,7 +468,7 @@ struct ViewConnector {
         }
     }
     
-    static func GroundConnection(connectionPoint:NSPoint, segments:[Segment], owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
+    static func GroundConnection(connectionPoint:NSPoint, segments:[Segment], connector:Connector, owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
         
         // set theta according to the direction that was passed into the routine - this value will be used to calculate the rotation matrix
         var theta = 0.0
@@ -492,7 +495,7 @@ struct ViewConnector {
         path.relativeMove(to: toFirstLine.Rotate(theta: theta))
         path.relativeLine(to: toEndFirstLine.Rotate(theta: theta))
         
-        return ViewConnector(segments:segments, color:.green, connectorType: .ground, connectorDirection: connectorDirection, path: path)
+        return ViewConnector(segments:segments, color:.green, connectorType: .ground, connectorDirection: connectorDirection, connector: connector, path: path)
     }
 }
 
@@ -964,7 +967,15 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             
             if nextViewConnector.hitZone.contains(clickPoint) {
                 
-                print("Clicked on a connector!")
+                if nextViewConnector.segments.count > 0 {
+                    
+                    for nextSegment in nextViewConnector.segments {
+                        
+                        nextSegment.AddConnector(fromLocation: nextViewConnector.connector.fromLocation, toLocation: .ground, toSegment: nil)
+                    }
+                    
+                    self.needsDisplay = true
+                }
             }
         }
     }
