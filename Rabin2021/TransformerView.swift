@@ -678,12 +678,75 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     // var snapEvent:NSEvent? = nil
     
+    
     override func awakeFromNib() {
         
         SegmentPath.txfoView = self
         
         self.window!.acceptsMouseMovedEvents = true
+        
+        self.createTrackingArea()
     }
+    
+    override var acceptsFirstResponder: Bool
+    {
+        return true
+    }
+    
+    // We need to create a tracking area so that the cursor is updated when it leaves our view (we don't want to have select menus, for instance, using the "ground" cursor).
+    func createTrackingArea() {
+        
+        let newTrackingArea = NSTrackingArea(rect: self.bounds, options: [.mouseEnteredAndExited, .activeAlways], owner: self, userInfo: nil)
+        
+        self.addTrackingArea(newTrackingArea)
+    }
+    
+    // Override the updateTrackingAreas() function, which is called by the system whenever something about the view changes (scrolling, resizing, etc)
+    override func updateTrackingAreas() {
+        
+        for nextTrackingArea in self.trackingAreas {
+        
+            self.removeTrackingArea(nextTrackingArea)
+        }
+        
+        self.createTrackingArea()
+        
+        super.updateTrackingAreas()
+    }
+    
+    // Whenever the user exits the view, we reset the cursor to the arrow
+    override func mouseExited(with event: NSEvent) {
+        
+        NSCursor.arrow.set()
+    }
+    
+    // Whenever we re-enter the view, we set the cursor depending on the mode of the view
+    override func mouseEntered(with event: NSEvent) {
+        
+        let mode = self.mode
+        
+        if mode == .selectSegment {
+            
+            NSCursor.arrow.set()
+        }
+        else if mode == .zoomRect || mode == .selectRect {
+            
+            NSCursor.crosshair.set()
+        }
+        else if mode == .addGround {
+            
+            ViewConnector.GroundCursor.set()
+        }
+        else if mode == .addImpulse {
+            
+            ViewConnector.ImpulseCursor.set()
+        }
+        else {
+            
+            NSCursor.arrow.set()
+        }
+    }
+    
     
     // MARK: Draw function override
     override func draw(_ dirtyRect: NSRect) {
@@ -758,10 +821,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         NSBezierPath.defaultLineWidth = oldLineWidth
     }
     
-    override var acceptsFirstResponder: Bool
-    {
-        return true
-    }
+    
     
     
     
