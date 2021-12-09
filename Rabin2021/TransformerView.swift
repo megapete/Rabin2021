@@ -44,6 +44,14 @@ fileprivate extension NSPoint {
         
         return NSPoint(x: newX, y: newY)
     }
+    
+    func Distance(otherPoint:NSPoint) -> CGFloat {
+        
+        let a = self.x - otherPoint.x
+        let b = self.y - otherPoint.y
+        
+        return sqrt(a * a + b * b)
+    }
 }
 
 fileprivate extension NSRect {
@@ -102,18 +110,6 @@ fileprivate extension NSRect {
     func RightCenter() -> NSPoint {
         
         return self.origin + NSSize(width: self.size.width, height: self.size.height / 2.0)
-    }
-}
-
-struct Circle {
-    
-    let center:NSPoint
-    let radius:CGFloat
-    
-    var path:NSBezierPath {
-        
-        let encRect = NSRect(x: center.x - radius, y: center.y - radius, width: 2.0 * radius, height: 2.0 * radius)
-        return NSBezierPath(roundedRect: encRect * dimensionMultiplier, xRadius: self.radius * dimensionMultiplier, yRadius: self.radius * dimensionMultiplier)
     }
 }
 
@@ -344,7 +340,7 @@ struct SegmentPath:Equatable {
                 }
                 else if fromLoc == .outside_center {
                     
-                    toPoint = fromPoint + NSSize(width: 0.25, height: 0.0)
+                    toPoint = fromPoint + NSSize(width: 0.025, height: 0.0)
                     specialDirection = .right
                 }
                 
@@ -357,20 +353,13 @@ struct SegmentPath:Equatable {
                     let gndConnector = ViewConnector.GroundConnection(connectionPoint: toPoint * dimensionMultiplier, segments: [self.segment], connector: nextConnection.connector, owner: SegmentPath.txfoView!, connectorDirection: specialDirection)
                     
                     txfoView.viewConnectors.append(gndConnector)
-                    
-                    // gndConnector.color.set()
-                    // gndConnector.path.stroke()
-                    // continue
                 }
-                else if toLoc == .floating {
-                    
-                    txfoView.viewConnectors.append(ViewConnector(segments: [self.segment], color: self.segmentColor, connectorType: .general, connectorDirection: specialDirection, connector: nextConnection.connector, path: connectorPath))
+                else if toLoc == .impulse {
                     
                 }
+                
+                txfoView.viewConnectors.append(ViewConnector(segments: [self.segment], color: self.segmentColor, connectorType: .general, connectorDirection: specialDirection, connector: nextConnection.connector, path: connectorPath))
             }
-            
-            // self.segmentColor.set()
-            // connectorPath.stroke()
         }
     }
 }
@@ -414,7 +403,7 @@ struct ViewConnector {
     }
     
     /// The circle that shows we're "connected"
-    static let connectorCircleRadius = 3.0
+    static let connectorCircleRadius = 1.5
     
     /// The color of the connector
     let color:NSColor
@@ -430,6 +419,40 @@ struct ViewConnector {
     
     /// The drawn path
     let path:NSBezierPath
+    
+    /// The end points of the path
+    var endPoints:(p1:NSPoint, p2:NSPoint) {
+        
+        var result = (NSPoint(), NSPoint())
+        
+        let numElements = self.path.elementCount
+        
+        if numElements > 1 {
+            
+            var pointArray:[NSPoint] = Array(repeating: NSPoint(), count: 3)
+            var _ = path.element(at: 0, associatedPoints: &pointArray)
+            let point1 = pointArray[0]
+            path.element(at: 1, associatedPoints: &pointArray)
+            let point2 = pointArray[0]
+            
+            result = (point1, point2)
+        }
+        
+        return result
+    }
+    
+    /// Return the end point that is closest to the given point
+    func ClosestEndPoint(toPoint:NSPoint) -> NSPoint {
+        
+        let points = self.endPoints
+        
+        if toPoint.Distance(otherPoint: points.p1) <= toPoint.Distance(otherPoint: points.p2) {
+            
+            return points.p1
+        }
+        
+        return points.p2
+    }
     
     /// The "hit zone" for the connector. This can be polled by the NSBezierPath function 'contains' to see if a mouse click in in this hit zone.
     var hitZone:NSBezierPath {
@@ -482,18 +505,36 @@ struct ViewConnector {
             theta = 1.5 * π
         }
         
+        // Get the scale from the scrollView
+        let scaleSize = owner.convert(NSSize(width: 1.0, height: 1.0), from: owner.scrollView)
         // set up the grounding arrow as if it is pointing to the right (theta = 0)
-        let leadEndPoint = owner.convert(NSPoint(x: 10.0, y: 0.0), from: owner.scrollView)
-        let toFirstLine = owner.convert(NSPoint(x: 0.0, y: -8.5), from: owner.scrollView)
-        let toEndFirstLine = owner.convert(NSPoint(x: 0.0, y: 17.0), from: owner.scrollView)
+        let leadEndPoint = NSPoint(x: 10.0 * scaleSize.width, y: 0.0)
+        let toFirstLine = NSPoint(x: 0.0, y: -8.5 * scaleSize.height)
+        let toEndFirstLine = NSPoint(x: 0.0, y: 17.0 * scaleSize.height)
         
-        let path = Circle(center: connectionPoint, radius: ViewConnector.connectorCircleRadius).path
+        let circleRadius = ViewConnector.connectorCircleRadius * scaleSize.width
+        let circleRectOrigin = connectionPoint + NSSize(width: -circleRadius, height: -circleRadius)
+        let circleRect = NSRect(origin: circleRectOrigin, size: NSSize(width: circleRadius * 2, height: circleRadius * 2))
+        let path = NSBezierPath(roundedRect: circleRect, xRadius: circleRadius, yRadius: circleRadius)
+        
+        //let path = Circle(center: connectionPoint, radius: ViewConnector.connectorCircleRadius * scaleSize.width).path
         path.move(to: connectionPoint)
         
         // apply the rotation matrix to the points on the grounding symbol before adding it to the path
         path.relativeLine(to: leadEndPoint.Rotate(theta: theta))
         path.relativeMove(to: toFirstLine.Rotate(theta: theta))
         path.relativeLine(to: toEndFirstLine.Rotate(theta: theta))
+        
+        let heightOffset = 2.0 * scaleSize.height
+        let widthOffset = 2.0 * scaleSize.width
+        var lastHeight = toEndFirstLine.y
+        for _ in 0..<3 {
+            
+            path.relativeMove(to: NSPoint(x: widthOffset, y: -lastHeight + heightOffset).Rotate(theta: theta))
+            lastHeight -= 2 * heightOffset
+            path.relativeLine(to: NSPoint(x: 0.0, y: lastHeight).Rotate(theta: theta))
+            
+        }
         
         return ViewConnector(segments:segments, color:.green, connectorType: .ground, connectorDirection: connectorDirection, connector: connector, path: path)
     }
@@ -506,7 +547,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     // I suppose that I could get fancy and create a TransformerViewDelegate protocol but since the calls are so specific, I'm unable to justify the extra complexity, so I'll just save a weak reference to the AppController here
     weak var appController:AppController? = nil
     
-    static let connectorDistanceTolerance = 0.0015 // meters
+    static let connectorDistanceTolerance = 0.003 // meters
     
     enum Mode {
         
@@ -537,7 +578,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             }
             else if newValue == .addGround {
                 
-                print("setting cursor to ground")
+                // print("setting cursor to ground")
                 ViewConnector.GroundCursor.set()
             }
             
@@ -612,9 +653,13 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     // The scrollview that this view is in
     @IBOutlet weak var scrollView:NSScrollView!
     
+    // var snapEvent:NSEvent? = nil
+    
     override func awakeFromNib() {
         
         SegmentPath.txfoView = self
+        
+        // self.window!.acceptsMouseMovedEvents = true
     }
     
     // MARK: Draw function override
@@ -694,6 +739,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     {
         return true
     }
+    
+    
     
     // MARK: Current segment functions
     
@@ -874,6 +921,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
 
     
     // MARK: Mouse Events
+    
     override func mouseDown(with event: NSEvent) {
         
         if self.mode == .zoomRect
