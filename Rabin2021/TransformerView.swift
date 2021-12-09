@@ -411,7 +411,7 @@ struct ViewConnector {
         
         if let impulseImage = NSImage(named: "Impulse") {
             
-            let impulseCursor = NSCursor(image: impulseImage, hotSpot: NSPoint(x: 8, y: 1))
+            let impulseCursor = NSCursor(image: impulseImage, hotSpot: NSPoint(x: 9, y: 22))
             
             return impulseCursor
         }
