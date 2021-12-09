@@ -28,6 +28,7 @@
                 <outlet property="combineSegmentsIntoSingleSegmentMenuItem" destination="bwi-RW-boG" id="dY2-kP-Zy8"/>
                 <outlet property="interleaveSelectionMenuItem" destination="Msd-Z1-NJO" id="iTF-13-8vY"/>
                 <outlet property="mainWindow" destination="QvC-M9-y7g" id="99a-gB-L5N"/>
+                <outlet property="rLocationTextField" destination="NTX-as-kOd" id="arL-Ge-79x"/>
                 <outlet property="radialShieldInsideMenuItem" destination="BEG-M4-Kp7" id="3uR-Go-Bnw"/>
                 <outlet property="removeConnectionMenuItem" destination="VZ8-kL-Dja" id="in8-h8-Gl3"/>
                 <outlet property="removeRadialShieldMenuItem" destination="xXj-L6-RCw" id="PQm-pG-7IL"/>
@@ -37,6 +38,7 @@
                 <outlet property="staticRingBelowMenuItem" destination="yYJ-bL-mnq" id="u77-aA-iGG"/>
                 <outlet property="staticRingOverMenuItem" destination="Qy0-6N-UAU" id="Sxy-Fa-RGp"/>
                 <outlet property="txfoView" destination="ebn-Op-mWN" id="ioC-u5-We5"/>
+                <outlet property="zLocationTextField" destination="32m-RH-bsV" id="6dS-zF-MwH"/>
                 <outlet property="zoomAllMenuItem" destination="RgU-kW-NLh" id="etU-ms-n89"/>
                 <outlet property="zoomInMenuItem" destination="YMj-qt-ByP" id="KfA-Qb-0D6"/>
                 <outlet property="zoomOutMenuItem" destination="n4t-Ht-rce" id="1hV-n4-3Gt"/>
@@ -416,6 +418,9 @@
                         <items>
                             <menuItem title="Add Impulse..." id="i9N-bc-tbw">
                                 <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleAddImpulse:" target="XWq-sU-B2V" id="pta-hK-fFO"/>
+                                </connections>
                             </menuItem>
                             <menuItem title="Add Ground..." id="v78-OQ-6tN">
                                 <modifierMask key="keyEquivalentModifierMask"/>
@@ -621,20 +626,20 @@
             <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" resizable="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
             <rect key="contentRect" x="335" y="390" width="601" height="682"/>
-            <rect key="screenRect" x="0.0" y="0.0" width="1680" height="1025"/>
+            <rect key="screenRect" x="0.0" y="0.0" width="2560" height="1415"/>
             <view key="contentView" id="EiT-Mj-1SZ">
                 <rect key="frame" x="0.0" y="0.0" width="601" height="682"/>
                 <autoresizingMask key="autoresizingMask"/>
                 <subviews>
                     <scrollView fixedFrame="YES" horizontalLineScroll="10" horizontalPageScroll="10" verticalLineScroll="10" verticalPageScroll="10" allowsMagnification="YES" usesPredominantAxisScrolling="NO" translatesAutoresizingMaskIntoConstraints="NO" id="Yo4-0m-Iub">
-                        <rect key="frame" x="-1" y="-1" width="603" height="684"/>
+                        <rect key="frame" x="-1" y="32" width="603" height="651"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <clipView key="contentView" id="SDg-ft-U91">
-                            <rect key="frame" x="1" y="1" width="601" height="682"/>
+                            <rect key="frame" x="1" y="1" width="586" height="634"/>
                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                             <subviews>
                                 <view id="ebn-Op-mWN" customClass="TransformerView" customModule="ImpulseDistribution" customModuleProvider="target">
-                                    <rect key="frame" x="0.0" y="0.0" width="602" height="683"/>
+                                    <rect key="frame" x="0.0" y="0.0" width="587" height="635"/>
                                     <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                     <connections>
                                         <outlet property="addRadialShieldMenuItem" destination="kmi-xS-wRk" id="JqN-Ra-ha9"/>
@@ -649,17 +654,53 @@
                             </subviews>
                         </clipView>
                         <scroller key="horizontalScroller" wantsLayer="YES" verticalHuggingPriority="750" horizontal="YES" id="ZNq-Kw-tyS">
-                            <rect key="frame" x="1" y="667" width="601" height="16"/>
+                            <rect key="frame" x="1" y="635" width="586" height="15"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </scroller>
                         <scroller key="verticalScroller" wantsLayer="YES" verticalHuggingPriority="750" doubleValue="1" horizontal="NO" id="aVc-m1-gzr">
-                            <rect key="frame" x="586" y="1" width="16" height="682"/>
+                            <rect key="frame" x="587" y="1" width="15" height="634"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </scroller>
                     </scrollView>
+                    <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="Bcy-w0-LYn">
+                        <rect key="frame" x="18" y="8" width="17" height="16"/>
+                        <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
+                        <textFieldCell key="cell" lineBreakMode="clipping" title="R:" id="Xje-OM-5zd">
+                            <font key="font" usesAppearanceFont="YES"/>
+                            <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
+                            <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                        </textFieldCell>
+                    </textField>
+                    <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="HvT-Sh-aza">
+                        <rect key="frame" x="114" y="8" width="17" height="16"/>
+                        <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
+                        <textFieldCell key="cell" lineBreakMode="clipping" title="Z:" id="9pl-G4-owg">
+                            <font key="font" usesAppearanceFont="YES"/>
+                            <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
+                            <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                        </textFieldCell>
+                    </textField>
+                    <textField verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="NTX-as-kOd">
+                        <rect key="frame" x="35" y="5" width="68" height="21"/>
+                        <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
+                        <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" drawsBackground="YES" id="uPt-aJ-oFA">
+                            <font key="font" metaFont="system"/>
+                            <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
+                            <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                        </textFieldCell>
+                    </textField>
+                    <textField verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="32m-RH-bsV">
+                        <rect key="frame" x="131" y="5" width="68" height="21"/>
+                        <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
+                        <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" drawsBackground="YES" id="15n-TP-hAf">
+                            <font key="font" metaFont="system"/>
+                            <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
+                            <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                        </textFieldCell>
+                    </textField>
                 </subviews>
             </view>
-            <point key="canvasLocation" x="416" y="627"/>
+            <point key="canvasLocation" x="415.5" y="627"/>
         </window>
         <menuItem title="Customize Toolbar…" id="hw9-gI-CaT">
             <modifierMask key="keyEquivalentModifierMask"/>

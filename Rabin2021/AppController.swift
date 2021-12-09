@@ -49,6 +49,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     @IBOutlet weak var addConnectionMenuItem: NSMenuItem!
     @IBOutlet weak var removeConnectionMenuItem: NSMenuItem!
     
+    /// R and Z indication on the main window
+    @IBOutlet weak var rLocationTextField: NSTextField!
+    @IBOutlet weak var zLocationTextField: NSTextField!
     
     
     /// Window controller to display graphs
@@ -81,6 +84,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         txfoView.appController = self
         
         rb2021_progressIndicatorWindow = PCH_ProgressIndicatorWindow()
+        
+        self.rLocationTextField.doubleValue = 0
+        self.zLocationTextField.doubleValue = 0
     }
     
     func InitializeController()
@@ -721,6 +727,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.txfoView.mode = .zoomRect
     }
     
+    // MARK: Coordinate update function
+    func updateCoordinates(rValue:Double, zValue:Double) {
+        
+        self.rLocationTextField.doubleValue = rValue
+        self.zLocationTextField.doubleValue = zValue
+    }
     
    
     
@@ -957,6 +969,21 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
         
         self.txfoView.mode = .addGround
+    }
+    
+    @IBAction func handleAddImpulse(_ sender: Any) {
+        
+        self.doAddImpulse()
+    }
+    
+    func doAddImpulse() {
+        
+        guard self.currentModel != nil else {
+            
+            return
+        }
+        
+        self.txfoView.mode = .addImpulse
     }
     
     // next two functions for adding a static ring over the selection

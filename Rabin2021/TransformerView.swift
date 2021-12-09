@@ -394,11 +394,29 @@ struct ViewConnector {
         
         if let groundImage = NSImage(named: "Ground") {
             
+            let imageSize = groundImage.size
+            print("ground image size: \(imageSize)")
             let groundCursor = NSCursor(image: groundImage, hotSpot: NSPoint(x: 8, y: 1))
             
             return groundCursor
         }
     
+        return NSCursor.arrow
+    }
+    
+    /// The global Impulse cursor and its creation routine
+    static let ImpulseCursor:NSCursor = ViewConnector.LoadImpulseCursor()
+   
+    static func LoadImpulseCursor() -> NSCursor {
+        
+        if let impulseImage = NSImage(named: "Impulse") {
+            
+            let impulseCursor = NSCursor(image: impulseImage, hotSpot: NSPoint(x: 8, y: 1))
+            
+            return impulseCursor
+        }
+    
+        print("Could not open Impulse Cursor")
         return NSCursor.arrow
     }
     
@@ -547,7 +565,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     // I suppose that I could get fancy and create a TransformerViewDelegate protocol but since the calls are so specific, I'm unable to justify the extra complexity, so I'll just save a weak reference to the AppController here
     weak var appController:AppController? = nil
     
-    static let connectorDistanceTolerance = 0.003 // meters
+    static let connectorDistanceTolerance = 0.005 // meters
     
     enum Mode {
         
@@ -555,6 +573,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         case selectRect
         case zoomRect
         case addGround
+        case addImpulse
     }
     
     private var modeStore:Mode = .selectSegment
@@ -580,6 +599,10 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 
                 // print("setting cursor to ground")
                 ViewConnector.GroundCursor.set()
+            }
+            else if newValue == .addImpulse {
+                
+                ViewConnector.ImpulseCursor.set()
             }
             
             self.modeStore = newValue
@@ -659,7 +682,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         SegmentPath.txfoView = self
         
-        // self.window!.acceptsMouseMovedEvents = true
+        self.window!.acceptsMouseMovedEvents = true
     }
     
     // MARK: Draw function override
@@ -921,6 +944,23 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
 
     
     // MARK: Mouse Events
+    
+    override func mouseMoved(with event: NSEvent) {
+        
+        guard let appCtrl = self.appController, appCtrl.currentModel != nil else {
+            
+            return
+        }
+        
+        let mouseLoc = self.convert(event.locationInWindow, from: nil)
+        
+        if !self.isMousePoint(mouseLoc, in: self.bounds) {
+            
+            return
+        }
+        
+        appCtrl.updateCoordinates(rValue: mouseLoc.x, zValue: mouseLoc.y)
+    }
     
     override func mouseDown(with event: NSEvent) {
         
