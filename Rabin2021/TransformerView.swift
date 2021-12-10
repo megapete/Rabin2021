@@ -509,6 +509,25 @@ struct ViewConnector {
         }
     }
     
+    static func ImpulseConnection(connectionPoint:NSPoint, segments:[Segment], connector:Connector, owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
+        
+        // Get the scale from the scrollView
+        let scaleSize = owner.convert(NSSize(width: 1.0, height: 1.0), from: owner.scrollView)
+        
+        // set up the lead so that it is pointing to the right
+        let leadEndPoint = NSPoint(x: 10.0 * scaleSize.width, y: 0.0)
+        
+        let circleRadius = ViewConnector.connectorCircleRadius * scaleSize.width
+        let circleRectOrigin = connectionPoint + NSSize(width: -circleRadius, height: -circleRadius)
+        let circleRect = NSRect(origin: circleRectOrigin, size: NSSize(width: circleRadius * 2, height: circleRadius * 2))
+        let path = NSBezierPath(roundedRect: circleRect, xRadius: circleRadius, yRadius: circleRadius)
+        
+        path.move(to: connectionPoint)
+        path.relativeLine(to: leadEndPoint)
+        
+        return ViewConnector(segments:segments, color: .lightGray, connectorType: .ground, connectorDirection: connectorDirection, connector: connector, path: path)
+    }
+    
     static func GroundConnection(connectionPoint:NSPoint, segments:[Segment], connector:Connector, owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
         
         // set theta according to the direction that was passed into the routine - this value will be used to calculate the rotation matrix
@@ -1097,14 +1116,33 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         self.needsDisplay = true
     }
     
-    
-    
     func mouseDraggedWithZoomRect(event:NSEvent)
     {
         let endPoint = self.convert(event.locationInWindow, from: nil)
         let newSize = NSSize(width: endPoint.x - self.zoomRect!.origin.x, height: endPoint.y - self.zoomRect!.origin.y)
         self.zoomRect!.size = newSize
         self.needsDisplay = true
+    }
+    
+    func mouseDownWithAddImpulse(event:NSEvent) {
+        
+        let clickPoint = self.convert(event.locationInWindow, from: nil)
+        
+        for nextViewConnector in self.viewConnectors {
+            
+            if nextViewConnector.hitZone.contains(clickPoint) {
+                
+                if nextViewConnector.segments.count > 0 {
+                    
+                    for nextSegment in nextViewConnector.segments {
+                        
+                        nextSegment.AddConnector(fromLocation: nextViewConnector.connector.fromLocation, toLocation: .impulse, toSegment: nil)
+                    }
+                    
+                    self.needsDisplay = true
+                }
+            }
+        }
     }
     
     func mouseDownWithAddGround(event:NSEvent) {

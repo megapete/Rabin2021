@@ -342,6 +342,11 @@ class Segment: Codable, Equatable {
             self.connections.remove(at: existingFloatingIndex)
             self.connections.append(Connection(segment: nil, connector: Connector(fromLocation: fromLocation, toLocation: toLocation)))
         }
+        else if (toLocation == .ground || toLocation == .impulse) && (self.connections.first(where: {$0.connector.toLocation == .ground}) != nil || self.connections.first(where: {$0.connector.toLocation == .impulse}) != nil) {
+            
+            // already grounded or impulsed, ignore and return
+            return
+        }
         else {
             
             self.connections.append(Connection(segment: nil, connector: Connector(fromLocation: fromLocation, toLocation: toLocation)))

@@ -85,6 +85,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         rb2021_progressIndicatorWindow = PCH_ProgressIndicatorWindow()
         
+        let formatter = NumberFormatter()
+        formatter.maximumFractionDigits = 1
+        
+        self.rLocationTextField.formatter = formatter
+        self.zLocationTextField.formatter = formatter
+        
         self.rLocationTextField.doubleValue = 0
         self.zLocationTextField.doubleValue = 0
     }
