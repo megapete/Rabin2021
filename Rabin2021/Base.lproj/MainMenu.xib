@@ -430,6 +430,9 @@
                             </menuItem>
                             <menuItem title="Add Connection..." id="wyt-nn-lsB">
                                 <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleAddConnection:" target="XWq-sU-B2V" id="Qup-Ay-jQg"/>
+                                </connections>
                             </menuItem>
                             <menuItem isSeparatorItem="YES" id="vnb-iu-z3T"/>
                             <menuItem title="Remove Connection..." id="VZ8-kL-Dja">

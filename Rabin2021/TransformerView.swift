@@ -500,6 +500,21 @@ struct ViewConnector {
         return NSCursor.arrow
     }
     
+    /// The global Add Connection cursor and its creation routine
+    static let AddConnectionCursor:NSCursor = ViewConnector.LoadAddConnectorCursor()
+    
+    static func LoadAddConnectorCursor() -> NSCursor {
+        
+        if let addCursor = NSImage(named: "AddConnector") {
+            
+            let addConnCursor = NSCursor(image: addCursor, hotSpot: NSPoint(x: 7, y: 9))
+            
+            return addConnCursor
+        }
+        
+        return NSCursor.arrow
+    }
+    
     /// The global pliers cursor and its creation routine
     static let PliersCursor:NSCursor = ViewConnector.LoadPliersCursor()
     
@@ -712,6 +727,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         case zoomRect
         case addGround
         case addImpulse
+        case addConnection
         case removeConnector
     }
     
@@ -746,6 +762,10 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             else if newValue == .removeConnector {
                 
                 ViewConnector.PliersCursor.set()
+            }
+            else if newValue == .addConnection {
+                
+                ViewConnector.AddConnectionCursor.set()
             }
             
             self.modeStore = newValue
@@ -887,6 +907,10 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         else if mode == .removeConnector {
             
             ViewConnector.PliersCursor.set()
+        }
+        else if mode == .addConnection {
+            
+            ViewConnector.AddConnectionCursor.set()
         }
         else {
             

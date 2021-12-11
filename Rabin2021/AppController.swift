@@ -992,6 +992,21 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.txfoView.mode = .addImpulse
     }
     
+    @IBAction func handleAddConnection(_ sender: Any) {
+        
+        self.doAddConnection()
+    }
+    
+    func doAddConnection() {
+        
+        guard self.currentModel != nil else {
+            
+            return
+        }
+        
+        self.txfoView.mode = .addConnection
+    }
+    
     @IBAction func handleRemoveConnection(_ sender: Any) {
         
         self.doRemoveConnection()
