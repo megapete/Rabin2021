@@ -37,6 +37,34 @@ fileprivate extension NSPoint {
         left = left + right
     }
     
+    static func -(left:NSPoint, right:NSSize) -> NSPoint {
+        
+        let newPoint = NSPoint(x: left.x - right.width, y: left.y - right.height)
+        return newPoint
+    }
+    
+    static func -=(left:inout NSPoint, right:NSSize) {
+        
+        left = left - right
+    }
+    
+    static func -(left:NSPoint, right:NSPoint) -> NSPoint {
+        
+        let newPoint = NSPoint(x: left.x - right.x, y: left.y - right.y)
+        return newPoint
+    }
+    
+    static func -=(left:inout NSPoint, right:NSPoint) {
+        
+        left = left - right
+    }
+    
+    static func +(left:NSPoint, right:NSPoint) -> NSPoint {
+        
+        let newPoint = NSPoint(x: left.x + right.x, y: left.y + right.y)
+        return newPoint
+    }
+    
     func Rotate(theta:CGFloat) -> NSPoint {
         
         let newX = self.x * cos(theta) - self.y * sin(theta)
@@ -314,7 +342,7 @@ struct SegmentPath:Equatable {
                         connectorPath.move(to: fromPoint * dimensionMultiplier)
                         connectorPath.line(to: toPoint * dimensionMultiplier)
                         
-                        txfoView.viewConnectors.append(ViewConnector(segments: [self.segment, otherSeg], color: self.segmentColor, connectorType: .adjacent, connectorDirection: .up, connector: nextConnection.connector, path: connectorPath))
+                        txfoView.viewConnectors.append(ViewConnector(segments: [self.segment, otherSeg], pathColor: self.segmentColor, connectorType: .adjacent, connectorDirection: .up, connector: nextConnection.connector, path: connectorPath))
                     }
                     else {
                         // non-adjacent section, complicated!
@@ -356,9 +384,12 @@ struct SegmentPath:Equatable {
                 }
                 else if toLoc == .impulse {
                     
+                    let impConnector = ViewConnector.ImpulseConnection(connectionPoint: toPoint * dimensionMultiplier, segments: [self.segment], connector: nextConnection.connector, owner: SegmentPath.txfoView!, connectorDirection: .right)
+                    
+                    txfoView.viewConnectors.append(impConnector)
                 }
                 
-                txfoView.viewConnectors.append(ViewConnector(segments: [self.segment], color: self.segmentColor, connectorType: .general, connectorDirection: specialDirection, connector: nextConnection.connector, path: connectorPath))
+                txfoView.viewConnectors.append(ViewConnector(segments: [self.segment], pathColor: self.segmentColor, connectorType: .general, connectorDirection: specialDirection, connector: nextConnection.connector, path: connectorPath))
             }
         }
     }
@@ -406,12 +437,14 @@ struct ViewConnector {
     
     /// The global Impulse cursor and its creation routine
     static let ImpulseCursor:NSCursor = ViewConnector.LoadImpulseCursor()
+    
+    static let impulseImagePoint = NSPoint(x: 9, y: 22)
    
     static func LoadImpulseCursor() -> NSCursor {
         
         if let impulseImage = NSImage(named: "Impulse") {
             
-            let impulseCursor = NSCursor(image: impulseImage, hotSpot: NSPoint(x: 9, y: 22))
+            let impulseCursor = NSCursor(image: impulseImage, hotSpot: ViewConnector.impulseImagePoint)
             
             return impulseCursor
         }
@@ -423,8 +456,8 @@ struct ViewConnector {
     /// The circle that shows we're "connected"
     static let connectorCircleRadius = 1.5
     
-    /// The color of the connector
-    let color:NSColor
+    /// The color of the connector (only used if the 'path' property is not nil)
+    let pathColor:NSColor
     
     /// The type
     let connectorType:ViewConnector.type
@@ -435,15 +468,24 @@ struct ViewConnector {
     /// The connector itself
     let connector:Connector
     
+    // A ViewConnector can have only a path, or a path and an image
     /// The drawn path
-    let path:NSBezierPath
+    var path:NSBezierPath
+    
+    /// Or the image to display
+    var image:NSImage? = nil
+    
+    /// The destination rectangle (in model coordinates) of the image
+    var imageRect:NSRect = NSRect()
     
     /// The end points of the path
     var endPoints:(p1:NSPoint, p2:NSPoint) {
         
         var result = (NSPoint(), NSPoint())
         
-        let numElements = self.path.elementCount
+        let path = self.path
+        
+        let numElements = path.elementCount
         
         if numElements > 1 {
             
@@ -480,7 +522,7 @@ struct ViewConnector {
             
             let inset = TransformerView.connectorDistanceTolerance * dimensionMultiplier
             
-            let numElements = self.path.elementCount
+            let numElements = path.elementCount
             
             if numElements > 1 {
                 
@@ -522,10 +564,21 @@ struct ViewConnector {
         let circleRect = NSRect(origin: circleRectOrigin, size: NSSize(width: circleRadius * 2, height: circleRadius * 2))
         let path = NSBezierPath(roundedRect: circleRect, xRadius: circleRadius, yRadius: circleRadius)
         
+        // print("Connection: \(connectionPoint), leadEnd: \(leadEndPoint), Connection + leadEnd: \(connectionPoint + leadEndPoint)")
+        
         path.move(to: connectionPoint)
         path.relativeLine(to: leadEndPoint)
         
-        return ViewConnector(segments:segments, color: .lightGray, connectorType: .ground, connectorDirection: connectorDirection, connector: connector, path: path)
+        let impulseImage = NSImage(named: "Impulse")
+        
+        var imageRect = NSRect()
+        if let image = impulseImage {
+            
+            let anchor = NSPoint(x: impulseImagePoint.x, y: image.size.height - impulseImagePoint.y) * scaleSize.width
+            imageRect = NSRect(x: (connectionPoint + leadEndPoint).x - anchor.x, y: (connectionPoint + leadEndPoint).y - anchor.y, width: image.size.width * scaleSize.width, height: image.size.height * scaleSize.height)
+        }
+        
+        return ViewConnector(segments:segments, pathColor: .red, connectorType: .impulse, connectorDirection: connectorDirection, connector: connector, path: path, image: impulseImage, imageRect: imageRect)
     }
     
     static func GroundConnection(connectionPoint:NSPoint, segments:[Segment], connector:Connector, owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
@@ -533,7 +586,7 @@ struct ViewConnector {
         // set theta according to the direction that was passed into the routine - this value will be used to calculate the rotation matrix
         var theta = 0.0
         if connectorDirection == .up {
-            theta = π / 2.0
+            theta = 0.5 * π
         }
         else if connectorDirection == .left {
             theta = π
@@ -573,7 +626,7 @@ struct ViewConnector {
             
         }
         
-        return ViewConnector(segments:segments, color:.green, connectorType: .ground, connectorDirection: connectorDirection, connector: connector, path: path)
+        return ViewConnector(segments:segments, pathColor:.green, connectorType: .ground, connectorDirection: connectorDirection, connector: connector, path: path)
     }
 }
 
@@ -802,9 +855,15 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         for nextViewConnector in self.viewConnectors {
             
             if nextViewConnector.segments.count > 0 {
-            
-                nextViewConnector.color.set()
+                
+                nextViewConnector.pathColor.set()
                 nextViewConnector.path.stroke()
+                
+                if let image = nextViewConnector.image {
+                    
+                    // draw the image
+                    image.draw(in: nextViewConnector.imageRect, from: NSRect(origin: NSPoint(), size: image.size), operation: .sourceOver, fraction: 1)
+                }
             }
         }
         
@@ -1058,6 +1117,11 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             self.mouseDownWithAddGround(event: event)
             return
         }
+        else if self.mode == .addImpulse {
+            
+            self.mouseDownWithAddImpulse(event: event)
+            return
+        }
     }
     
     override func mouseDragged(with event: NSEvent) {
@@ -1128,6 +1192,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         let clickPoint = self.convert(event.locationInWindow, from: nil)
         
+        print("Mouse down with impulse at point: \(clickPoint)")
+        
         for nextViewConnector in self.viewConnectors {
             
             if nextViewConnector.hitZone.contains(clickPoint) {
@@ -1136,6 +1202,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                     
                     for nextSegment in nextViewConnector.segments {
                         
+                        print("Adding impulse")
                         nextSegment.AddConnector(fromLocation: nextViewConnector.connector.fromLocation, toLocation: .impulse, toSegment: nil)
                     }
                     
@@ -1266,16 +1333,12 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         let boundsW = windowHt * aspectRatio
         
         let newRect = NSRect(x: coreRadius, y: 0.0, width: boundsW, height: windowHt) * dimensionMultiplier
-        // DLog("NewRect: \(newRect)")
         
         self.bounds = newRect
         
-        // DLog("Bounds: \(self.bounds)")
         self.boundary = self.bounds
         
         self.boundary.size.width = (tankWallR - coreRadius) * dimensionMultiplier
-        // DLog("Boundary: \(self.boundary)")
-        // print("Clip view: Bounds:\(self.superview!.bounds)\nFrame:\(self.superview!.frame)")
         
         self.needsDisplay = true
     }
@@ -1294,8 +1357,6 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         let contentCenter = NSPoint(x: self.scrollView.contentView.bounds.origin.x + self.scrollView.contentView.bounds.width / 2.0, y: self.scrollView.contentView.bounds.origin.y + self.scrollView.contentView.bounds.height / 2.0)
         self.scrollView.setMagnification(scrollView.magnification / zoomRatio, centeredAt: contentCenter)
-        
-        // self.needsDisplay = true
     }
     
     func handleZoomRect(zRect:NSRect)
@@ -1303,23 +1364,16 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         // reset the zoomRect
         self.zoomRect = NSRect()
         
-        // print("Old frame: \(self.frame); Old bounds: \(self.bounds)")
-        // zRect is in the same units as self.bounds
-        // print("New rect: \(zRect)")
         // Get the width/height ratio of self.bounds
         let reqWidthHeightRatio = self.bounds.width / self.bounds.height
         // Fix the zRect
         let newBoundsRect = ForceAspectRatioAndNormalize(srcRect: zRect, widthOverHeightRatio: reqWidthHeightRatio)
-        // print("Fixed zoom rect: \(newBoundsRect)")
         let zoomFactor = newBoundsRect.width / self.bounds.width
         
         let clipView = self.scrollView.contentView
         let contentCenter = NSPoint(x: newBoundsRect.origin.x + newBoundsRect.width / 2, y: newBoundsRect.origin.y + newBoundsRect.height / 2)
         
         self.scrollView.setMagnification(scrollView.magnification / zoomFactor, centeredAt: clipView.convert(contentCenter, from: self))
-
-        // self.needsDisplay = true
-        
     }
     
 
