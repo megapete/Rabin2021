@@ -12,6 +12,53 @@ import Cocoa
 
 fileprivate let dimensionMultiplier = 1000.0
 
+fileprivate extension NSImage {
+    
+    func resized(to newSize: NSSize) -> NSImage? {
+        if let bitmapRep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(newSize.width), pixelsHigh: Int(newSize.height),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .calibratedRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ) {
+            bitmapRep.size = newSize
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmapRep)
+            draw(in: NSRect(x: 0, y: 0, width: newSize.width, height: newSize.height), from: .zero, operation: .copy, fraction: 1.0)
+            NSGraphicsContext.restoreGraphicsState()
+
+            let resizedImage = NSImage(size: newSize)
+            resizedImage.addRepresentation(bitmapRep)
+            return resizedImage
+        }
+
+        return nil
+    }
+    
+    func rotated(by degrees: CGFloat) -> NSImage {
+            let sinDegrees = abs(sin(degrees * CGFloat.pi / 180.0))
+            let cosDegrees = abs(cos(degrees * CGFloat.pi / 180.0))
+            let newSize = CGSize(width: size.height * sinDegrees + size.width * cosDegrees,
+                                 height: size.width * sinDegrees + size.height * cosDegrees)
+
+            let imageBounds = NSRect(x: (newSize.width - size.width) / 2,
+                                     y: (newSize.height - size.height) / 2,
+                                     width: size.width, height: size.height)
+
+            let otherTransform = NSAffineTransform()
+            otherTransform.translateX(by: newSize.width / 2, yBy: newSize.height / 2)
+            otherTransform.rotate(byDegrees: degrees)
+            otherTransform.translateX(by: -newSize.width / 2, yBy: -newSize.height / 2)
+
+            let rotatedImage = NSImage(size: newSize)
+            rotatedImage.lockFocus()
+            otherTransform.concat()
+            draw(in: imageBounds, from: CGRect.zero, operation: NSCompositingOperation.copy, fraction: 1.0)
+            rotatedImage.unlockFocus()
+
+            return rotatedImage
+        }
+}
+
 fileprivate extension NSPoint {
     
     /// Convert the dimensions in an NSPoint to some other unit
@@ -453,6 +500,25 @@ struct ViewConnector {
         return NSCursor.arrow
     }
     
+    /// The global pliers cursor and its creation routine
+    static let PliersCursor:NSCursor = ViewConnector.LoadPliersCursor()
+    
+    static func LoadPliersCursor() -> NSCursor {
+        
+        if let pliersImage = NSImage(named: "Pliers") {
+            
+            if let scaledPliers = pliersImage.resized(to: NSSize(width: 16, height: 24)) {
+            
+                let rotatedPliers = scaledPliers.rotated(by: 45.0)
+                let pliersCursor = NSCursor(image: rotatedPliers, hotSpot: NSPoint(x: 6, y: 8))
+                
+                return pliersCursor
+            }
+        }
+        
+        return NSCursor.arrow
+    }
+    
     /// The circle that shows we're "connected"
     static let connectorCircleRadius = 1.5
     
@@ -646,6 +712,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         case zoomRect
         case addGround
         case addImpulse
+        case removeConnector
     }
     
     private var modeStore:Mode = .selectSegment
@@ -675,6 +742,10 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             else if newValue == .addImpulse {
                 
                 ViewConnector.ImpulseCursor.set()
+            }
+            else if newValue == .removeConnector {
+                
+                ViewConnector.PliersCursor.set()
             }
             
             self.modeStore = newValue
@@ -812,6 +883,10 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         else if mode == .addImpulse {
             
             ViewConnector.ImpulseCursor.set()
+        }
+        else if mode == .removeConnector {
+            
+            ViewConnector.PliersCursor.set()
         }
         else {
             

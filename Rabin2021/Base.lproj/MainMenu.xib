@@ -434,6 +434,9 @@
                             <menuItem isSeparatorItem="YES" id="vnb-iu-z3T"/>
                             <menuItem title="Remove Connection..." id="VZ8-kL-Dja">
                                 <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleRemoveConnection:" target="XWq-sU-B2V" id="ok3-5u-Sgm"/>
+                                </connections>
                             </menuItem>
                         </items>
                     </menu>

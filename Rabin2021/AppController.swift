@@ -992,6 +992,21 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.txfoView.mode = .addImpulse
     }
     
+    @IBAction func handleRemoveConnection(_ sender: Any) {
+        
+        self.doRemoveConnection()
+    }
+    
+    func doRemoveConnection() {
+        
+        guard self.currentModel != nil else {
+            
+            return
+        }
+        
+        self.txfoView.mode = .removeConnector
+    }
+    
     // next two functions for adding a static ring over the selection
     @IBAction func handleAddStaticRingOver(_ sender: Any) {
         
