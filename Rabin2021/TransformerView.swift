@@ -784,6 +784,9 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     var selectRect:NSRect? = nil
     let selectRectLineDash = NSSize(width: 10.0, height: 5.0)
     
+    var addConnectionStartConnector:ViewConnector? = nil
+    var addConnectionPath:NSBezierPath = NSBezierPath()
+    
     let defaultLineWidth = 1.0
     
     var currentSegments:[SegmentPath] = []
@@ -993,6 +996,11 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 selectPath.setLineDash([lineDashSize.width, lineDashSize.height], count: 2, phase: 0.0)
                 selectPath.stroke()
             }
+        }
+        else if self.mode == .addConnection && self.addConnectionStartConnector != nil {
+            
+            let viewConnector = self.addConnectionStartConnector!
+            
         }
         
         NSBezierPath.defaultLineWidth = oldLineWidth
@@ -1221,6 +1229,10 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             self.mouseDownWithAddImpulse(event: event)
             return
         }
+        else if self.mode == .addConnection {
+            
+            
+        }
     }
     
     override func mouseDragged(with event: NSEvent) {
@@ -1306,6 +1318,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                     }
                     
                     self.needsDisplay = true
+                    
+                    return
                 }
             }
         }
@@ -1327,7 +1341,25 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                     }
                     
                     self.needsDisplay = true
+                    
+                    return
                 }
+            }
+        }
+    }
+    
+    func mouseDownWithAddConnection(event:NSEvent) {
+        
+        let clickPoint = self.convert(event.locationInWindow, from: nil)
+        
+        for nextViewConnector in self.viewConnectors {
+            
+            if nextViewConnector.hitZone.contains(clickPoint) {
+                
+                self.addConnectionStartConnector = nextViewConnector
+                self.addConnectionPath.move(to: nextViewConnector.ClosestEndPoint(toPoint: clickPoint))
+                
+                return
             }
         }
     }
