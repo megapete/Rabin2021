@@ -33,6 +33,38 @@ struct Connector:Codable {
     let fromLocation:Location
     let toLocation:Location
     
+    var fromIsOutside:Bool {
+        
+        get {
+            
+            return self.fromLocation == .outside_lower || self.fromLocation == .outside_upper || self.fromLocation == .outside_center
+        }
+    }
+    
+    var fromIsUpper:Bool {
+        
+        get {
+            
+            return self.fromLocation == .center_upper || self.fromLocation == .outside_upper || self.fromLocation == .inside_upper
+        }
+    }
+    
+    var toIsOutside:Bool {
+        
+        get {
+            
+            return self.toLocation == .outside_lower || self.toLocation == .outside_upper || self.toLocation == .outside_center
+        }
+    }
+    
+    var toIsUpper:Bool {
+        
+        get {
+            
+            return self.toLocation == .center_upper || self.toLocation == .outside_upper || self.toLocation == .inside_upper
+        }
+    }
+    
     static func AlternatingLocation(lastLocation:Connector.Location) -> Connector.Location {
         
         if lastLocation == .outside_upper {

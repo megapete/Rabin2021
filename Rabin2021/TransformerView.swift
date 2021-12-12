@@ -785,7 +785,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     let selectRectLineDash = NSSize(width: 10.0, height: 5.0)
     
     var addConnectionStartConnector:ViewConnector? = nil
-    var addConnectionPath:NSBezierPath = NSBezierPath()
+    var addConnectionStartPoint:NSPoint = NSPoint()
+    let addConnectionPath = NSBezierPath()
     
     let defaultLineWidth = 1.0
     
@@ -999,8 +1000,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
         else if self.mode == .addConnection && self.addConnectionStartConnector != nil {
             
-            let viewConnector = self.addConnectionStartConnector!
-            
+            self.addConnectionStartConnector!.pathColor.set()
+            self.addConnectionPath.stroke()
         }
         
         NSBezierPath.defaultLineWidth = oldLineWidth
@@ -1231,7 +1232,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
         else if self.mode == .addConnection {
             
-            
+            self.mouseDownWithAddConnection(event: event)
+            return
         }
     }
     
@@ -1240,6 +1242,11 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         if self.mode == .zoomRect
         {
             self.mouseDraggedWithZoomRect(event: event)
+            return
+        }
+        else if self.mode == .addConnection {
+            
+            self.mouseDraggedWithAddConnection(event: event)
             return
         }
         
@@ -1286,8 +1293,34 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 }
             }
         }
+        else if self.mode == .addConnection, let startConnector = self.addConnectionStartConnector, startConnector.segments.count > 0 {
+            
+            let endPoint = self.convert(event.locationInWindow, from: nil)
+            
+            let startSegments = startConnector.segments
+            
+            for nextViewConnector in self.viewConnectors {
+                
+                if nextViewConnector.hitZone.contains(endPoint) {
+                    
+                    // TODO: I am here
+                }
+            }
+            
+            self.addConnectionStartConnector = nil
+            self.addConnectionPath.removeAllPoints()
+        }
         
         self.mode = .selectSegment
+        self.needsDisplay = true
+    }
+    
+    func mouseDraggedWithAddConnection(event:NSEvent) {
+        
+        let endPoint = self.convert(event.locationInWindow, from: nil)
+        self.addConnectionPath.removeAllPoints()
+        self.addConnectionPath.move(to: self.addConnectionStartPoint)
+        self.addConnectionPath.line(to: endPoint)
         self.needsDisplay = true
     }
     
@@ -1357,7 +1390,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             if nextViewConnector.hitZone.contains(clickPoint) {
                 
                 self.addConnectionStartConnector = nextViewConnector
-                self.addConnectionPath.move(to: nextViewConnector.ClosestEndPoint(toPoint: clickPoint))
+                self.addConnectionStartPoint = nextViewConnector.ClosestEndPoint(toPoint: clickPoint)
                 
                 return
             }
