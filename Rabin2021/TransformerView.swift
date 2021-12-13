@@ -1298,12 +1298,29 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             let endPoint = self.convert(event.locationInWindow, from: nil)
             
             let startSegments = startConnector.segments
+            var startConnections:[Segment.Connection] = []
+            for nextStartSegment in startSegments {
+                
+                var segmentsToCheck = startSegments
+                segmentsToCheck.removeAll(where: {$0 == nextStartSegment})
+                
+                for nextSegmentToCheck in segmentsToCheck {
+                    
+                    for nextConnectionToCheck in nextSegmentToCheck.connections {
+                        
+                        if let otherSegment = nextConnectionToCheck.segment, otherSegment == nextStartSegment {
+                            
+                            startConnections.append(nextConnectionToCheck)
+                        }
+                    }
+                }
+            }
             
             for nextViewConnector in self.viewConnectors {
                 
                 if nextViewConnector.hitZone.contains(endPoint) {
                     
-                    // TODO: I am here
+                    
                 }
             }
             
