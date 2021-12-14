@@ -389,7 +389,7 @@ struct SegmentPath:Equatable {
                         connectorPath.move(to: fromPoint * dimensionMultiplier)
                         connectorPath.line(to: toPoint * dimensionMultiplier)
                         
-                        txfoView.viewConnectors.append(ViewConnector(segments: [self.segment, otherSeg], pathColor: self.segmentColor, connectorType: .adjacent, connectorDirection: .up, connector: nextConnection.connector, path: connectorPath))
+                        txfoView.viewConnectors.append(ViewConnector(segments: (self.segment, otherSeg), pathColor: self.segmentColor, connectorType: .adjacent, connectorDirection: .up, connector: nextConnection.connector, path: connectorPath))
                     }
                     else {
                         // non-adjacent section, complicated!
@@ -425,18 +425,18 @@ struct SegmentPath:Equatable {
                 let toLoc = nextConnection.connector.toLocation
                 if toLoc == .ground {
                     
-                    let gndConnector = ViewConnector.GroundConnection(connectionPoint: toPoint * dimensionMultiplier, segments: [self.segment], connector: nextConnection.connector, owner: SegmentPath.txfoView!, connectorDirection: specialDirection)
+                    let gndConnector = ViewConnector.GroundConnection(connectionPoint: toPoint * dimensionMultiplier, segments: (self.segment, nil), connector: nextConnection.connector, owner: SegmentPath.txfoView!, connectorDirection: specialDirection)
                     
                     txfoView.viewConnectors.append(gndConnector)
                 }
                 else if toLoc == .impulse {
                     
-                    let impConnector = ViewConnector.ImpulseConnection(connectionPoint: toPoint * dimensionMultiplier, segments: [self.segment], connector: nextConnection.connector, owner: SegmentPath.txfoView!, connectorDirection: .right)
+                    let impConnector = ViewConnector.ImpulseConnection(connectionPoint: toPoint * dimensionMultiplier, segments: (self.segment, nil), connector: nextConnection.connector, owner: SegmentPath.txfoView!, connectorDirection: .right)
                     
                     txfoView.viewConnectors.append(impConnector)
                 }
                 
-                txfoView.viewConnectors.append(ViewConnector(segments: [self.segment], pathColor: self.segmentColor, connectorType: .general, connectorDirection: specialDirection, connector: nextConnection.connector, path: connectorPath))
+                txfoView.viewConnectors.append(ViewConnector(segments: (self.segment, nil), pathColor: self.segmentColor, connectorType: .general, connectorDirection: specialDirection, connector: nextConnection.connector, path: connectorPath))
             }
         }
     }
@@ -462,8 +462,8 @@ struct ViewConnector {
         case right
     }
     
-    /// The Segments associated with the connector. There are usually either  one or two elements in the array.
-    var segments:[Segment] = []
+    /// The Segments associated with the connector. There is always a 'from' Segment and there may be a 'to' Segment
+    var segments:(from:Segment, to:Segment?)
     
     /// The global Ground cursor and its creation routine
     static let GroundCursor:NSCursor = ViewConnector.LoadGroundCursor()
@@ -632,7 +632,7 @@ struct ViewConnector {
         }
     }
     
-    static func ImpulseConnection(connectionPoint:NSPoint, segments:[Segment], connector:Connector, owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
+    static func ImpulseConnection(connectionPoint:NSPoint, segments:(from:Segment, to:Segment?), connector:Connector, owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
         
         // Get the scale from the scrollView
         let scaleSize = owner.convert(NSSize(width: 1.0, height: 1.0), from: owner.scrollView)
@@ -662,7 +662,7 @@ struct ViewConnector {
         return ViewConnector(segments:segments, pathColor: .red, connectorType: .impulse, connectorDirection: connectorDirection, connector: connector, path: path, image: impulseImage, imageRect: imageRect)
     }
     
-    static func GroundConnection(connectionPoint:NSPoint, segments:[Segment], connector:Connector, owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
+    static func GroundConnection(connectionPoint:NSPoint, segments:(from:Segment, to:Segment?), connector:Connector, owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
         
         // set theta according to the direction that was passed into the routine - this value will be used to calculate the rotation matrix
         var theta = 0.0
@@ -957,16 +957,13 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         for nextViewConnector in self.viewConnectors {
             
-            if nextViewConnector.segments.count > 0 {
+            nextViewConnector.pathColor.set()
+            nextViewConnector.path.stroke()
+            
+            if let image = nextViewConnector.image {
                 
-                nextViewConnector.pathColor.set()
-                nextViewConnector.path.stroke()
-                
-                if let image = nextViewConnector.image {
-                    
-                    // draw the image
-                    image.draw(in: nextViewConnector.imageRect, from: NSRect(origin: NSPoint(), size: image.size), operation: .sourceOver, fraction: 1)
-                }
+                // draw the image
+                image.draw(in: nextViewConnector.imageRect, from: NSRect(origin: NSPoint(), size: image.size), operation: .sourceOver, fraction: 1)
             }
         }
         
@@ -1293,34 +1290,17 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 }
             }
         }
-        else if self.mode == .addConnection, let startConnector = self.addConnectionStartConnector, startConnector.segments.count > 0 {
+        else if self.mode == .addConnection, let startConnector = self.addConnectionStartConnector {
             
             let endPoint = self.convert(event.locationInWindow, from: nil)
-            
-            let startSegments = startConnector.segments
-            var startConnections:[Segment.Connection] = []
-            for nextStartSegment in startSegments {
-                
-                var segmentsToCheck = startSegments
-                segmentsToCheck.removeAll(where: {$0 == nextStartSegment})
-                
-                for nextSegmentToCheck in segmentsToCheck {
-                    
-                    for nextConnectionToCheck in nextSegmentToCheck.connections {
-                        
-                        if let otherSegment = nextConnectionToCheck.segment, otherSegment == nextStartSegment {
-                            
-                            startConnections.append(nextConnectionToCheck)
-                        }
-                    }
-                }
-            }
             
             for nextViewConnector in self.viewConnectors {
                 
                 if nextViewConnector.hitZone.contains(endPoint) {
                     
                     
+                    
+                    break
                 }
             }
             
