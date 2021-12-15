@@ -202,10 +202,10 @@ struct SegmentPath:Equatable {
             if segment.isStaticRing {
                 
                 let radius = self.segment.rect.height / 2.0
-                return NSBezierPath(roundedRect: self.segment.rect * dimensionMultiplier, xRadius: radius * dimensionMultiplier, yRadius: radius * dimensionMultiplier)
+                return NSBezierPath(roundedRect: self.rect, xRadius: radius * dimensionMultiplier, yRadius: radius * dimensionMultiplier)
             }
             
-            return NSBezierPath(rect: self.segment.rect * dimensionMultiplier)
+            return NSBezierPath(rect: self.rect)
         }
     }
     
@@ -294,6 +294,8 @@ struct SegmentPath:Equatable {
     
     // Set up the paths for all connectors for this SegmentPath EXCEPT any that end at a Segment in 'maskSegments'. This allows us to avoid redrawing paths
     func SetUpConnectors(maskSegments:[Segment]) {
+        
+        var nonAdjConnCount = 0
         
         let model = SegmentPath.txfoView!.appController!.currentModel!
         let txfoView = SegmentPath.txfoView!
@@ -393,10 +395,13 @@ struct SegmentPath:Equatable {
                     }
                     else {
                         // non-adjacent section, complicated!
+                        // print("Got a non-adjacent connection from Segment#\(self.segment.serialNumber) to Segment#\(otherSeg.serialNumber)")
+                        nonAdjConnCount += 1
                     }
                 }
                 else {
                     // other coil, complicated!
+                    print("Got a connection to another coil!")
                 }
             }
             else {
@@ -439,6 +444,11 @@ struct SegmentPath:Equatable {
                 txfoView.viewConnectors.append(ViewConnector(segments: (self.segment, nil), pathColor: self.segmentColor, connectorType: .general, connectorDirection: specialDirection, connector: nextConnection.connector, path: connectorPath))
             }
         }
+        
+        /*
+        if nonAdjConnCount > 0 {
+            print("TOTAL Non-adjacents: \(nonAdjConnCount)")
+        } */
     }
 }
 
@@ -927,6 +937,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     override func draw(_ dirtyRect: NSRect) {
         // super.draw(dirtyRect)
 
+        
         let oldLineWidth = NSBezierPath.defaultLineWidth
         
         // Set the line width to 1mm (as defined by the original ZoomAll)
@@ -949,18 +960,27 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         for nextSegment in self.segments
         {
-            nextSegment.show()
-            nextSegment.SetUpConnectors(maskSegments: maskSegments)
+            if self.needsToDraw(nextSegment.rect) {
+                
+                nextSegment.show()
+                nextSegment.SetUpConnectors(maskSegments: maskSegments)
             
-            maskSegments.append(nextSegment.segment)
+                maskSegments.append(nextSegment.segment)
+            }
         }
         
+        
+
         for nextViewConnector in self.viewConnectors {
             
-            nextViewConnector.pathColor.set()
-            nextViewConnector.path.stroke()
+            if self.needsToDraw(nextViewConnector.hitZone.bounds) {
             
-            if let image = nextViewConnector.image {
+                nextViewConnector.pathColor.set()
+                nextViewConnector.path.stroke()
+            
+            }
+            
+            if let image = nextViewConnector.image, self.needsToDraw(nextViewConnector.imageRect) {
                 
                 // draw the image
                 image.draw(in: nextViewConnector.imageRect, from: NSRect(origin: NSPoint(), size: image.size), operation: .sourceOver, fraction: 1)
@@ -1298,7 +1318,21 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 
                 if nextViewConnector.hitZone.contains(endPoint) {
                     
+                    var startConnections = startConnector.segments.from.ConnectionDestinations(fromLocation: startConnector.connector.fromLocation)
+                    startConnections.removeAll(where: { $0.segment == nil })
+                    startConnections.insert((startConnector.segments.from, startConnector.connector.fromLocation), at: 0)
                     
+                    var endConnections = nextViewConnector.segments.from.ConnectionDestinations(fromLocation: nextViewConnector.connector.fromLocation)
+                    endConnections.removeAll(where: { $0.segment == nil })
+                    endConnections.insert((nextViewConnector.segments.from, nextViewConnector.connector.fromLocation), at: 0)
+                    
+                    for nextStartConnection in startConnections {
+                        
+                        for nextEndConnection in endConnections {
+                            
+                            nextStartConnection.segment!.AddConnector(fromLocation: nextStartConnection.location, toLocation: nextEndConnection.location, toSegment: nextEndConnection.segment)
+                        }
+                    }
                     
                     break
                 }
@@ -1339,18 +1373,17 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             
             if nextViewConnector.hitZone.contains(clickPoint) {
                 
-                if nextViewConnector.segments.count > 0 {
+                nextViewConnector.segments.from.AddConnector(fromLocation: nextViewConnector.connector.fromLocation, toLocation: .impulse, toSegment: nil)
+                
+                for nextConnection in nextViewConnector.segments.from.ConnectionDestinations(fromLocation: nextViewConnector.connector.fromLocation) {
                     
-                    for nextSegment in nextViewConnector.segments {
+                    if let nextSegment = nextConnection.segment {
                         
-                        print("Adding impulse")
-                        nextSegment.AddConnector(fromLocation: nextViewConnector.connector.fromLocation, toLocation: .impulse, toSegment: nil)
+                        nextSegment.AddConnector(fromLocation: nextConnection.location, toLocation: .impulse, toSegment: nil)
                     }
-                    
-                    self.needsDisplay = true
-                    
-                    return
                 }
+                
+                return
             }
         }
     }
@@ -1363,14 +1396,17 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             
             if nextViewConnector.hitZone.contains(clickPoint) {
                 
-                if nextViewConnector.segments.count > 0 {
+                if nextViewConnector.hitZone.contains(clickPoint) {
                     
-                    for nextSegment in nextViewConnector.segments {
+                    nextViewConnector.segments.from.AddConnector(fromLocation: nextViewConnector.connector.fromLocation, toLocation: .ground, toSegment: nil)
+                    
+                    for nextConnection in nextViewConnector.segments.from.ConnectionDestinations(fromLocation: nextViewConnector.connector.fromLocation) {
                         
-                        nextSegment.AddConnector(fromLocation: nextViewConnector.connector.fromLocation, toLocation: .ground, toSegment: nil)
+                        if let nextSegment = nextConnection.segment {
+                            
+                            nextSegment.AddConnector(fromLocation: nextConnection.location, toLocation: .ground, toSegment: nil)
+                        }
                     }
-                    
-                    self.needsDisplay = true
                     
                     return
                 }
@@ -1429,7 +1465,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             let localLocation = self.convert(eventLocation, from: nil)
             self.mode = .selectRect
             self.selectRect = NSRect(origin: localLocation, size: NSSize())
-            self.needsDisplay = true
+            // self.needsDisplay = true
         }
         
         // check if it was actually a double-click
@@ -1511,6 +1547,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     {
         let contentCenter = NSPoint(x: self.scrollView.contentView.bounds.origin.x + self.scrollView.contentView.bounds.width / 2.0, y: self.scrollView.contentView.bounds.origin.y + self.scrollView.contentView.bounds.height / 2.0)
         self.scrollView.setMagnification(scrollView.magnification * zoomRatio, centeredAt: contentCenter)
+        self.needsDisplay = true
     }
     
     func handleZoomIn()
@@ -1518,6 +1555,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         let contentCenter = NSPoint(x: self.scrollView.contentView.bounds.origin.x + self.scrollView.contentView.bounds.width / 2.0, y: self.scrollView.contentView.bounds.origin.y + self.scrollView.contentView.bounds.height / 2.0)
         self.scrollView.setMagnification(scrollView.magnification / zoomRatio, centeredAt: contentCenter)
+        self.needsDisplay = true
     }
     
     func handleZoomRect(zRect:NSRect)
@@ -1535,6 +1573,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         let contentCenter = NSPoint(x: newBoundsRect.origin.x + newBoundsRect.width / 2, y: newBoundsRect.origin.y + newBoundsRect.height / 2)
         
         self.scrollView.setMagnification(scrollView.magnification / zoomFactor, centeredAt: clipView.convert(contentCenter, from: self))
+        self.needsDisplay = true
     }
     
 

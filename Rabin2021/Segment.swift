@@ -323,6 +323,22 @@ class Segment: Codable, Equatable {
         }
     }
     
+    /// Return all the destination segments (and locations) for the given location on this Segment
+    func ConnectionDestinations(fromLocation:Connector.Location) -> [(segment:Segment?, location:Connector.Location)] {
+        
+        var result:[(segment:Segment?, location:Connector.Location)] = []
+        
+        for nextConnection in self.connections {
+            
+            if nextConnection.connector.fromLocation == fromLocation {
+                
+                result.append((nextConnection.segment, nextConnection.connector.toLocation))
+            }
+        }
+        
+        return result
+    }
+    
     /// Add a connector to the segment at the given fromLocation. The toLocation parameter depends on the toSegment parameter:
     /// If toSegment is not nil, then toLocation refers to the location on the toSegment. This routine will also add the inverse connector to the toSegment
     /// If toSegment is nil, then the behaviour of the routine is as follows:
