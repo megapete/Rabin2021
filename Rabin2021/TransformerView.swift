@@ -754,26 +754,62 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             
             if newValue == .selectSegment
             {
+                if let appCtrl = self.appController {
+                    
+                    appCtrl.modeIndicatorTextField.stringValue = "Mode: Select"
+                }
+                
                 NSCursor.arrow.set()
             }
             else if newValue == .zoomRect || newValue == .selectRect
             {
+                if let appCtrl = self.appController {
+                    
+                    if newValue == .zoomRect {
+                    
+                        appCtrl.modeIndicatorTextField.stringValue = "Mode: Zoom Rect"
+                    }
+                    else {
+                        
+                        appCtrl.modeIndicatorTextField.stringValue = "Mode: Select Rect"
+                    }
+                }
+                
                 NSCursor.crosshair.set()
             }
             else if newValue == .addGround {
                 
-                // print("setting cursor to ground")
+                if let appCtrl = self.appController {
+                    
+                    appCtrl.modeIndicatorTextField.stringValue = "Mode: Add Ground"
+                }
+                
                 ViewConnector.GroundCursor.set()
             }
             else if newValue == .addImpulse {
+                
+                if let appCtrl = self.appController {
+                    
+                    appCtrl.modeIndicatorTextField.stringValue = "Mode: Add Impulse"
+                }
                 
                 ViewConnector.ImpulseCursor.set()
             }
             else if newValue == .removeConnector {
                 
+                if let appCtrl = self.appController {
+                    
+                    appCtrl.modeIndicatorTextField.stringValue = "Mode: Remove Connector"
+                }
+                
                 ViewConnector.PliersCursor.set()
             }
             else if newValue == .addConnection {
+                
+                if let appCtrl = self.appController {
+                    
+                    appCtrl.modeIndicatorTextField.stringValue = "Mode: Add Connector"
+                }
                 
                 ViewConnector.AddConnectionCursor.set()
             }
@@ -1523,6 +1559,14 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             return
         }
         
+        let contentCenter = NSPoint(x: self.scrollView.contentView.bounds.origin.x + self.scrollView.contentView.bounds.width / 2.0, y: self.scrollView.contentView.bounds.origin.y + self.scrollView.contentView.bounds.height / 2.0)
+        self.scrollView.setMagnification(1.0, centeredAt: contentCenter)
+        
+        // print("ScrollView bounds: \(self.scrollView.bounds)")
+        // print("ScrollView magnification: \(self.scrollView.magnification)")
+        // print("ClipView bounds: \(parentView.bounds)")
+        
+        // parentView.frame = self.scrollView.bounds
         self.frame = parentView.bounds
         // aspectRatio is defined as width/height
         // it is assumed that the window height (z) is ALWAYS the dominant dimension compared to the "half tank-width" in the r-direction
@@ -1532,6 +1576,9 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         let newRect = NSRect(x: coreRadius, y: 0.0, width: boundsW, height: windowHt) * dimensionMultiplier
         
         self.bounds = newRect
+        
+        // print("Self bounds: \(self.bounds)")
+        // print("ClipView bounds: \(parentView.bounds)")
         
         self.boundary = self.bounds
         

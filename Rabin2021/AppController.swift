@@ -53,6 +53,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     @IBOutlet weak var rLocationTextField: NSTextField!
     @IBOutlet weak var zLocationTextField: NSTextField!
     
+    /// Mode indicator
+    @IBOutlet weak var modeIndicatorTextField: NSTextField!
+    
     
     /// Window controller to display graphs
     var graphWindowCtrl:PCH_GraphingWindow? = nil
