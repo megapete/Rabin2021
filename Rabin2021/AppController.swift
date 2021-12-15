@@ -766,11 +766,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             return
         }
         
-        self.txfoView.segments = []
+        // self.txfoView.segments = []
         self.txfoView.currentSegments = []
         
         self.txfoView.removeAllToolTips()
         
+        var newSegmentPaths:[SegmentPath] = []
         for nextSegment in model.segments
         {
             let pathColor = AppController.segmentColors[nextSegment.radialPos % AppController.segmentColors.count]
@@ -779,11 +780,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             
             newSegPath.toolTipTag = self.txfoView.addToolTip(newSegPath.rect, owner: self.txfoView as Any, userData: nil)
             
-            self.txfoView.segments.append(newSegPath)
+            newSegmentPaths.append(newSegPath)
         }
         
+        self.txfoView.segments = newSegmentPaths
         self.txfoView.needsDisplay = true
-        
     }
     
     // MARK: Menu routines

@@ -395,7 +395,7 @@ struct SegmentPath:Equatable {
                     }
                     else {
                         // non-adjacent section, complicated!
-                        // print("Got a non-adjacent connection from Segment#\(self.segment.serialNumber) to Segment#\(otherSeg.serialNumber)")
+                        print("Got a non-adjacent connection from Segment#\(self.segment.serialNumber) to Segment#\(otherSeg.serialNumber)")
                         nonAdjConnCount += 1
                     }
                 }
@@ -818,7 +818,25 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
     }
     
-    var segments:[SegmentPath] = []
+    var segments:[SegmentPath] = [] {
+        
+        
+        didSet {
+            
+            print("The SegmentPaths changed")
+            var maskSegments:[Segment] = []
+            self.viewConnectors = []
+            for nextSegment in segments {
+                
+                nextSegment.SetUpConnectors(maskSegments: maskSegments)
+                maskSegments.append(nextSegment.segment)
+            }
+            
+            print("Total segments: \(segments.count); Total Connectors: \(self.viewConnectors.count)")
+        }
+         
+    }
+    
     var viewConnectors:[ViewConnector] = []
     
     var boundary:NSRect = NSRect(x: 0, y: 0, width: 0, height: 0)
@@ -991,22 +1009,17 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             boundaryPath.stroke()
         }
         
-        var maskSegments:[Segment] = []
-        self.viewConnectors = []
+        // var maskSegments:[Segment] = []
+        // self.viewConnectors = []
         
         for nextSegment in self.segments
         {
             if self.needsToDraw(nextSegment.rect) {
                 
                 nextSegment.show()
-                nextSegment.SetUpConnectors(maskSegments: maskSegments)
-            
-                maskSegments.append(nextSegment.segment)
             }
         }
         
-        
-
         for nextViewConnector in self.viewConnectors {
             
             if self.needsToDraw(nextViewConnector.hitZone.bounds) {
@@ -1370,6 +1383,23 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                         }
                     }
                     
+                    guard let startSegmentPath = self.segments.first(where: {$0.segment == startConnector.segments.from}) else {
+                        
+                        DLog("Problem!")
+                        break
+                    }
+                    
+                    var maskSegments:[Segment] = []
+                    for nextSegmentPath in self.segments {
+                        
+                        if nextSegmentPath.segment != nextViewConnector.segments.from {
+                            
+                            maskSegments.append(nextSegmentPath.segment)
+                        }
+                    }
+                    
+                    startSegmentPath.SetUpConnectors(maskSegments: maskSegments)
+                    
                     break
                 }
             }
@@ -1454,10 +1484,12 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         let clickPoint = self.convert(event.locationInWindow, from: nil)
         
+        print("Click location: \(clickPoint)")
         for nextViewConnector in self.viewConnectors {
             
             if nextViewConnector.hitZone.contains(clickPoint) {
                 
+                print("Got connector")
                 self.addConnectionStartConnector = nextViewConnector
                 self.addConnectionStartPoint = nextViewConnector.ClosestEndPoint(toPoint: clickPoint)
                 
