@@ -294,9 +294,7 @@ struct SegmentPath:Equatable {
     
     // Set up the paths for all connectors for this SegmentPath EXCEPT any that end at a Segment in 'maskSegments'. This allows us to avoid redrawing paths
     func SetUpConnectors(maskSegments:[Segment]) {
-        
-        var nonAdjConnCount = 0
-        
+                
         let model = SegmentPath.txfoView!.appController!.currentModel!
         let txfoView = SegmentPath.txfoView!
         
@@ -304,7 +302,7 @@ struct SegmentPath:Equatable {
             
             if let otherSegment = nextConnection.segment {
                 
-                if maskSegments.contains(otherSegment) {
+                if maskSegments.contains(otherSegment) || otherSegment == self.segment {
                     
                     continue
                 }
@@ -353,40 +351,40 @@ struct SegmentPath:Equatable {
                 // check if same coil
                 if otherSeg.location.radial == self.segment.location.radial {
                     
+                    let segRect = otherSeg.rect
+                    switch nextConnection.connector.toLocation {
+                        
+                    case .outside_upper:
+                        toPoint = segRect.TopRight()
+                    
+                    case .center_upper:
+                        toPoint = segRect.TopCenter()
+                    
+                    case .inside_upper:
+                        toPoint = segRect.TopLeft()
+                    
+                    case .outside_center:
+                        toPoint = segRect.RightCenter()
+                    
+                    case .inside_center:
+                        toPoint = segRect.LeftCenter()
+                    
+                    case .outside_lower:
+                        toPoint = segRect.BottomRight()
+                    
+                    case .center_lower:
+                        toPoint = segRect.BottomCenter()
+                    
+                    case .inside_lower:
+                        toPoint = segRect.BottomLeft()
+                    
+                    default:
+                        
+                        toPoint = NSPoint()
+                    }
+                    
                     // check if adjacent section
                     if model.SegmentsAreAdjacent(segment1: self.segment, segment2: otherSeg) {
-                        
-                        let segRect = otherSeg.rect
-                        switch nextConnection.connector.toLocation {
-                            
-                        case .outside_upper:
-                            toPoint = segRect.TopRight()
-                        
-                        case .center_upper:
-                            toPoint = segRect.TopCenter()
-                        
-                        case .inside_upper:
-                            toPoint = segRect.TopLeft()
-                        
-                        case .outside_center:
-                            toPoint = segRect.RightCenter()
-                        
-                        case .inside_center:
-                            toPoint = segRect.LeftCenter()
-                        
-                        case .outside_lower:
-                            toPoint = segRect.BottomRight()
-                        
-                        case .center_lower:
-                            toPoint = segRect.BottomCenter()
-                        
-                        case .inside_lower:
-                            toPoint = segRect.BottomLeft()
-                        
-                        default:
-                            
-                            toPoint = NSPoint()
-                        }
                         
                         connectorPath.move(to: fromPoint * dimensionMultiplier)
                         connectorPath.line(to: toPoint * dimensionMultiplier)
@@ -394,9 +392,91 @@ struct SegmentPath:Equatable {
                         txfoView.viewConnectors.append(ViewConnector(segments: (self.segment, otherSeg), pathColor: self.segmentColor, connectorType: .adjacent, connectorDirection: .up, connector: nextConnection.connector, path: connectorPath))
                     }
                     else {
-                        // non-adjacent section, complicated!
+                        // non-adjacent section, same coil
                         print("Got a non-adjacent connection from Segment#\(self.segment.serialNumber) to Segment#\(otherSeg.serialNumber)")
-                        nonAdjConnCount += 1
+                        
+                        if nextConnection.connector.fromIsOutside {
+                            
+                            if nextConnection.connector.toIsOutside {
+                                
+                                connectorPath.move(to: fromPoint * dimensionMultiplier)
+                                connectorPath.line(to: (fromPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
+                                connectorPath.line(to: (toPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
+                                connectorPath.line(to: toPoint * dimensionMultiplier)
+                            }
+                            else {
+                                
+                                guard let highestSegmentIndex = try? model.GetHighestSection(coil: self.segment.radialPos) else {
+                                    
+                                    return
+                                }
+                                
+                                let highestSegment = model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: highestSegmentIndex))!
+                                let lowestSegment = model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
+                                
+                                connectorPath.move(to: fromPoint * dimensionMultiplier)
+                                connectorPath.line(to: (fromPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
+                                
+                                if Double(self.segment.axialPos) / Double(highestSegmentIndex) < 0.5 {
+                                    
+                                    // go down
+                                    connectorPath.line(to: NSPoint(x: fromPoint.x + 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
+                                    connectorPath.line(to: NSPoint(x: toPoint.x - 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
+                                    connectorPath.line(to: (toPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
+                                    connectorPath.line(to: toPoint * dimensionMultiplier)
+                                }
+                                else {
+                                    
+                                    // go up
+                                    connectorPath.line(to: NSPoint(x: fromPoint.x + 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
+                                    connectorPath.line(to: NSPoint(x: toPoint.x - 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
+                                    connectorPath.line(to: (toPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
+                                    connectorPath.line(to: toPoint * dimensionMultiplier)
+                                }
+                            }
+                        }
+                        else { // fromConnector is inside
+                            
+                            if nextConnection.connector.toIsOutside {
+                                
+                                guard let highestSegmentIndex = try? model.GetHighestSection(coil: self.segment.radialPos) else {
+                                    
+                                    return
+                                }
+                                
+                                let highestSegment = model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: highestSegmentIndex))!
+                                let lowestSegment = model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
+                                
+                                connectorPath.move(to: fromPoint * dimensionMultiplier)
+                                connectorPath.line(to: (fromPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
+                                
+                                if Double(self.segment.axialPos) / Double(highestSegmentIndex) < 0.5 {
+                                    
+                                    // go down
+                                    connectorPath.line(to: NSPoint(x: fromPoint.x - 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
+                                    connectorPath.line(to: NSPoint(x: toPoint.x + 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
+                                    connectorPath.line(to: (toPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
+                                    connectorPath.line(to: toPoint * dimensionMultiplier)
+                                }
+                                else {
+                                    
+                                    // go up
+                                    connectorPath.line(to: NSPoint(x: fromPoint.x - 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
+                                    connectorPath.line(to: NSPoint(x: toPoint.x + 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
+                                    connectorPath.line(to: (toPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
+                                    connectorPath.line(to: toPoint * dimensionMultiplier)
+                                }
+                            }
+                            else {
+                                
+                                connectorPath.move(to: fromPoint * dimensionMultiplier)
+                                connectorPath.line(to: (fromPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
+                                connectorPath.line(to: (toPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
+                                connectorPath.line(to: toPoint * dimensionMultiplier)
+                            }
+                        }
+                        
+                        txfoView.viewConnectors.append(ViewConnector(segments: (self.segment, otherSeg), pathColor: self.segmentColor, connectorType: .adjacent, connectorDirection: .variable, connector: nextConnection.connector, path: connectorPath))
                     }
                 }
                 else {
@@ -445,10 +525,7 @@ struct SegmentPath:Equatable {
             }
         }
         
-        /*
-        if nonAdjConnCount > 0 {
-            print("TOTAL Non-adjacents: \(nonAdjConnCount)")
-        } */
+        
     }
 }
 

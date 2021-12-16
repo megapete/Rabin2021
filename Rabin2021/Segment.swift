@@ -348,6 +348,12 @@ class Segment: Codable, Equatable {
         
         if let otherSegment = toSegment {
             
+            // don't create a connector to self
+            if otherSegment == self {
+                
+                return
+            }
+            
             let newSelfConnection = Connection(segment: otherSegment, connector: Connector(fromLocation: fromLocation, toLocation: toLocation))
             self.connections.append(newSelfConnection)
             let newOtherConnection = Connection(segment: self, connector: Connector(fromLocation: toLocation, toLocation: fromLocation))
