@@ -302,6 +302,10 @@ struct SegmentPath:Equatable {
             
             if let otherSegment = nextConnection.segment {
                 
+                if otherSegment == self.segment {
+                    print("Same segment!")
+                }
+                
                 if maskSegments.contains(otherSegment) || otherSegment == self.segment {
                     
                     continue
@@ -1159,6 +1163,15 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 self.addConnectionPath.stroke()
             }
         }
+        else if self.mode == .addGround || self.mode == .addImpulse || self.mode == .removeConnector {
+            
+            if let highlightPath = self.highlightedConnectorPath {
+                
+                self.highlightColor.set()
+                highlightPath.stroke()
+                highlightPath.fill()
+            }
+        }
         
         NSBezierPath.defaultLineWidth = oldLineWidth
     }
@@ -1360,7 +1373,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         appCtrl.updateCoordinates(rValue: mouseLoc.x, zValue: mouseLoc.y)
         
-        if self.mode == .addConnection {
+        if self.mode == .addConnection || self.mode == .addImpulse || self.mode == .addGround || self.mode == .removeConnector {
             
             if let oldHightlightPath = self.highlightedConnectorPath {
                 
@@ -1555,7 +1568,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         let clickPoint = self.convert(event.locationInWindow, from: nil)
         
-        print("Mouse down with impulse at point: \(clickPoint)")
+        // print("Mouse down with impulse at point: \(clickPoint)")
         
         for nextViewConnector in self.viewConnectors {
             
@@ -1571,9 +1584,29 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                     }
                 }
                 
-                return
+                var maskSegments:[Segment] = []
+                for nextSegmentPath in self.segments {
+                    
+                    if nextSegmentPath.segment != nextViewConnector.segments.from {
+                        
+                        maskSegments.append(nextSegmentPath.segment)
+                    }
+                }
+                
+                guard let segmentPath = self.segments.first(where: {$0.segment == nextViewConnector.segments.from}) else {
+                    
+                    DLog("Problem!")
+                    break
+                }
+                
+                segmentPath.SetUpConnectors(maskSegments: maskSegments)
+                
+                break
             }
         }
+        
+        self.highlightedConnectorPath = nil
+        self.needsDisplay = true
     }
     
     func mouseDownWithAddGround(event:NSEvent) {
@@ -1596,22 +1629,42 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                         }
                     }
                     
-                    return
+                    var maskSegments:[Segment] = []
+                    for nextSegmentPath in self.segments {
+                        
+                        if nextSegmentPath.segment != nextViewConnector.segments.from {
+                            
+                            maskSegments.append(nextSegmentPath.segment)
+                        }
+                    }
+                    
+                    guard let segmentPath = self.segments.first(where: {$0.segment == nextViewConnector.segments.from}) else {
+                        
+                        DLog("Problem!")
+                        break
+                    }
+                    
+                    segmentPath.SetUpConnectors(maskSegments: maskSegments)
+                    
+                    break
                 }
             }
         }
+        
+        self.highlightedConnectorPath = nil
+        self.needsDisplay = true
     }
     
     func mouseDownWithAddConnection(event:NSEvent) {
         
         let clickPoint = self.convert(event.locationInWindow, from: nil)
         
-        print("Click location: \(clickPoint)")
+        // print("Click location: \(clickPoint)")
         for nextViewConnector in self.viewConnectors {
             
             if nextViewConnector.hitZone.contains(clickPoint) {
                 
-                print("Got connector")
+                // print("Got connector")
                 self.addConnectionStartConnector = nextViewConnector
                 self.addConnectionStartPoint = nextViewConnector.ClosestEndPoint(toPoint: clickPoint)
                 
