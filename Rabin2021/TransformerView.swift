@@ -12,6 +12,7 @@ import Cocoa
 
 fileprivate let dimensionMultiplier = 1000.0
 
+/// These extensions to NSImage come from the Internet. I only use them for custom cursors and didn't want to bother figuring this stuff out by myself.
 fileprivate extension NSImage {
     
     func resized(to newSize: NSSize) -> NSImage? {
@@ -59,6 +60,7 @@ fileprivate extension NSImage {
         }
 }
 
+/// Convenient extensions to NSPoint
 fileprivate extension NSPoint {
     
     /// Convert the dimensions in an NSPoint to some other unit
@@ -129,6 +131,7 @@ fileprivate extension NSPoint {
     }
 }
 
+/// Convenient extensions to NSRect
 fileprivate extension NSRect {
     
     /// Convert all the dimensions in an NSRect to some other unit
@@ -188,6 +191,7 @@ fileprivate extension NSRect {
     }
 }
 
+/// A struct for representing the segment paths that are displayed by the TransformeView class. Some of this comes from my AndersenFE-2020 program so there are a few things that aren't used.
 struct SegmentPath:Equatable {
     
     static var txfoView:TransformerView? = nil
@@ -224,7 +228,7 @@ struct SegmentPath:Equatable {
         }
     }
     
-    // Test whether this segment contains 'point'
+    /// Test whether this segment contains 'point'
     func contains(point:NSPoint) -> Bool
     {
         guard let segPath = self.path else
@@ -235,7 +239,7 @@ struct SegmentPath:Equatable {
         return segPath.contains(point)
     }
     
-    // constant for showing that a segment is not active
+    /// constant for showing that a segment is not active
     let nonActiveAlpha:CGFloat = 0.25
     
     func show()
@@ -250,7 +254,7 @@ struct SegmentPath:Equatable {
         }
     }
     
-    // Some functions that make it so we can use SegmentPaths in a similar way as NSBezierPaths
+    /// Some functions that make it so we can use SegmentPaths in a similar way as NSBezierPaths
     func stroke()
     {
         guard let path = self.path else
@@ -278,7 +282,7 @@ struct SegmentPath:Equatable {
         path.stroke()
     }
     
-    // fill the path with the background color
+    /// fill the path with the background color
     func clear()
     {
         guard let path = self.path else
@@ -292,7 +296,7 @@ struct SegmentPath:Equatable {
         path.stroke()
     }
     
-    // Set up the paths for all connectors for this SegmentPath EXCEPT any that end at a Segment in 'maskSegments'. This allows us to avoid redrawing paths
+    /// Set up the paths for all connectors for this SegmentPath EXCEPT any that end at a Segment in 'maskSegments'. This allows us to avoid redrawing paths. This function is automaticlaly called when the "segments" property of TransformerView is changed. However, it must be called manually when adding (or removing) a connection. The 'viewConnectors' property of the TransformerView is changed by this routine.
     func SetUpConnectors(maskSegments:[Segment]) {
                 
         let model = SegmentPath.txfoView!.appController!.currentModel!
@@ -301,11 +305,7 @@ struct SegmentPath:Equatable {
         for nextConnection in self.segment.connections {
             
             if let otherSegment = nextConnection.segment {
-                
-                if otherSegment == self.segment {
-                    print("Same segment!")
-                }
-                
+                                
                 if maskSegments.contains(otherSegment) || otherSegment == self.segment {
                     
                     continue
@@ -484,8 +484,20 @@ struct SegmentPath:Equatable {
                     }
                 }
                 else {
-                    // other coil, complicated!
-                    print("Got a connection to another coil!")
+                    
+                    // it's to another coil
+                    let otherCoilIsOutside = otherSeg.radialPos > self.segment.radialPos
+                    
+                    guard let highestSegmentIndex = try? model.GetHighestSection(coil: self.segment.radialPos) else {
+                        
+                        return
+                    }
+                    
+                    let highestSegment = model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: highestSegmentIndex))!
+                    let lowestSegment = model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
+                    let startHtFraction = Double(self.segment.axialPos) / Double(highestSegmentIndex)
+                    
+                    
                 }
             }
             else {
