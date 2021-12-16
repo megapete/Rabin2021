@@ -771,6 +771,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         self.txfoView.removeAllToolTips()
         
+        // See the comment for the TransformerView property 'segments' to see why I coded this in this way
         var newSegmentPaths:[SegmentPath] = []
         for nextSegment in model.segments
         {

@@ -728,7 +728,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     // I suppose that I could get fancy and create a TransformerViewDelegate protocol but since the calls are so specific, I'm unable to justify the extra complexity, so I'll just save a weak reference to the AppController here
     weak var appController:AppController? = nil
     
-    static let connectorDistanceTolerance = 0.005 // meters
+    static let connectorDistanceTolerance = 0.003 // meters
     
     enum Mode {
         
@@ -818,12 +818,13 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
     }
     
+    /// An array of all the Segment paths in the model.
+    /// - Warning: If it is necessary to add a large number of SegmentPaths (when initializing the model, for example), it is better to create a separate array in the calling routine and append it (or assign it, for initialization) to this property. The reason for this is that any change to the segments array will cause a recalculation of all the ViewConnectors, which tends to slow things down...a lot.
     var segments:[SegmentPath] = [] {
-        
         
         didSet {
             
-            print("The SegmentPaths changed")
+            // print("The SegmentPaths changed")
             var maskSegments:[Segment] = []
             self.viewConnectors = []
             for nextSegment in segments {
@@ -832,12 +833,14 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 maskSegments.append(nextSegment.segment)
             }
             
-            print("Total segments: \(segments.count); Total Connectors: \(self.viewConnectors.count)")
+            // print("Total segments: \(segments.count); Total Connectors: \(self.viewConnectors.count)")
         }
          
     }
     
     var viewConnectors:[ViewConnector] = []
+    var highlightedConnectorPath:NSBezierPath? = nil
+    let highlightColor:NSColor = .lightGray.withAlphaComponent(0.5)
     
     var boundary:NSRect = NSRect(x: 0, y: 0, width: 0, height: 0)
     let boundaryColor:NSColor = .gray
@@ -1064,17 +1067,24 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 selectPath.stroke()
             }
         }
-        else if self.mode == .addConnection && self.addConnectionStartConnector != nil {
+        else if self.mode == .addConnection {
             
-            self.addConnectionStartConnector!.pathColor.set()
-            self.addConnectionPath.stroke()
+            if let highlightPath = self.highlightedConnectorPath {
+                
+                self.highlightColor.set()
+                highlightPath.stroke()
+                highlightPath.fill()
+            }
+            
+            if let startConnector = self.addConnectionStartConnector {
+                
+                startConnector.pathColor.set()
+                self.addConnectionPath.stroke()
+            }
         }
         
         NSBezierPath.defaultLineWidth = oldLineWidth
     }
-    
-    
-    
     
     
     // MARK: Current segment functions
@@ -1272,6 +1282,26 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
         
         appCtrl.updateCoordinates(rValue: mouseLoc.x, zValue: mouseLoc.y)
+        
+        if self.mode == .addConnection {
+            
+            if let oldHightlightPath = self.highlightedConnectorPath {
+                
+                self.highlightedConnectorPath = nil
+                self.setNeedsDisplay(oldHightlightPath.bounds)
+            }
+            
+            for nextViewConnector in self.viewConnectors {
+                
+                let hitZone = nextViewConnector.hitZone
+                if hitZone.contains(mouseLoc) {
+                
+                    self.highlightedConnectorPath = hitZone
+                    self.setNeedsDisplay(hitZone.bounds)
+                    break
+                }
+            }
+        }
     }
     
     override func mouseDown(with event: NSEvent) {
@@ -1404,6 +1434,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 }
             }
             
+            self.highlightedConnectorPath = nil
             self.addConnectionStartConnector = nil
             self.addConnectionPath.removeAllPoints()
         }
@@ -1418,6 +1449,20 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         self.addConnectionPath.removeAllPoints()
         self.addConnectionPath.move(to: self.addConnectionStartPoint)
         self.addConnectionPath.line(to: endPoint)
+        
+        self.highlightedConnectorPath = nil
+        
+        for nextViewConnector in self.viewConnectors {
+            
+            let hitZone = nextViewConnector.hitZone
+            if hitZone.contains(endPoint) {
+            
+                self.highlightedConnectorPath = hitZone
+                // self.setNeedsDisplay(hitZone.bounds)
+                break
+            }
+        }
+        
         self.needsDisplay = true
     }
     
