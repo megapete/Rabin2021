@@ -352,40 +352,40 @@ struct SegmentPath:Equatable {
             
             if let otherSeg = nextConnection.segment {
                 
+                let segRect = otherSeg.rect
+                switch nextConnection.connector.toLocation {
+                    
+                case .outside_upper:
+                    toPoint = segRect.TopRight()
+                
+                case .center_upper:
+                    toPoint = segRect.TopCenter()
+                
+                case .inside_upper:
+                    toPoint = segRect.TopLeft()
+                
+                case .outside_center:
+                    toPoint = segRect.RightCenter()
+                
+                case .inside_center:
+                    toPoint = segRect.LeftCenter()
+                
+                case .outside_lower:
+                    toPoint = segRect.BottomRight()
+                
+                case .center_lower:
+                    toPoint = segRect.BottomCenter()
+                
+                case .inside_lower:
+                    toPoint = segRect.BottomLeft()
+                
+                default:
+                    
+                    toPoint = NSPoint()
+                }
+                
                 // check if same coil
                 if otherSeg.location.radial == self.segment.location.radial {
-                    
-                    let segRect = otherSeg.rect
-                    switch nextConnection.connector.toLocation {
-                        
-                    case .outside_upper:
-                        toPoint = segRect.TopRight()
-                    
-                    case .center_upper:
-                        toPoint = segRect.TopCenter()
-                    
-                    case .inside_upper:
-                        toPoint = segRect.TopLeft()
-                    
-                    case .outside_center:
-                        toPoint = segRect.RightCenter()
-                    
-                    case .inside_center:
-                        toPoint = segRect.LeftCenter()
-                    
-                    case .outside_lower:
-                        toPoint = segRect.BottomRight()
-                    
-                    case .center_lower:
-                        toPoint = segRect.BottomCenter()
-                    
-                    case .inside_lower:
-                        toPoint = segRect.BottomLeft()
-                    
-                    default:
-                        
-                        toPoint = NSPoint()
-                    }
                     
                     // check if adjacent section
                     if model.SegmentsAreAdjacent(segment1: self.segment, segment2: otherSeg) {
@@ -421,7 +421,8 @@ struct SegmentPath:Equatable {
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
                                 connectorPath.line(to: (fromPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
                                 
-                                if Double(self.segment.axialPos) / Double(highestSegmentIndex) < 0.5 {
+                                let startHtFraction = (self.segment.zMean - lowestSegment.z1) / (highestSegment.z2 - lowestSegment.z1)
+                                if startHtFraction < 0.5 {
                                     
                                     // go down
                                     connectorPath.line(to: NSPoint(x: fromPoint.x + 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
@@ -454,7 +455,8 @@ struct SegmentPath:Equatable {
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
                                 connectorPath.line(to: (fromPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
                                 
-                                if Double(self.segment.axialPos) / Double(highestSegmentIndex) < 0.5 {
+                                let startHtFraction = (self.segment.zMean - lowestSegment.z1) / (highestSegment.z2 - lowestSegment.z1)
+                                if startHtFraction < 0.5 {
                                     
                                     // go down
                                     connectorPath.line(to: NSPoint(x: fromPoint.x - 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
@@ -486,7 +488,7 @@ struct SegmentPath:Equatable {
                 else {
                     
                     // it's to another coil
-                    let otherCoilIsOutside = otherSeg.radialPos > self.segment.radialPos
+                    let fromAndToInSameHilo = (otherSeg.radialPos - self.segment.radialPos == 1 && nextConnection.connector.fromIsOutside && !nextConnection.connector.toIsOutside) || (otherSeg.radialPos - self.segment.radialPos == -1 && !nextConnection.connector.fromIsOutside && nextConnection.connector.toIsOutside)
                     
                     guard let highestSegmentIndex = try? model.GetHighestSection(coil: self.segment.radialPos) else {
                         
@@ -495,14 +497,59 @@ struct SegmentPath:Equatable {
                     
                     let highestSegment = model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: highestSegmentIndex))!
                     let lowestSegment = model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
-                    let startHtFraction = Double(self.segment.axialPos) / Double(highestSegmentIndex)
+                    let startHtFraction = (self.segment.zMean - lowestSegment.z1) / (highestSegment.z2 - lowestSegment.z1)
                     
+                    connectorPath.move(to: fromPoint * dimensionMultiplier)
                     
+                    var currentX = fromPoint.x + 0.010
+                    var currentY = fromPoint.y
+                    if nextConnection.connector.fromIsOutside {
+                        
+                        connectorPath.line(to: (fromPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
+                    }
+                    else { // from connector is inside
+                        
+                        connectorPath.line(to: (fromPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
+                        currentX = fromPoint.x - 0.010
+                    }
+                        
+                    if !fromAndToInSameHilo {
+                        
+                        if startHtFraction < 0.5 {
+                            
+                            // go down
+                            currentY = lowestSegment.z1 - 0.025 - 0.03
+                            connectorPath.line(to: NSPoint(x: currentX, y: currentY) * dimensionMultiplier)
+                        }
+                        else {
+                            
+                            // go up
+                            currentY = highestSegment.z2 + 0.025 + 0.03
+                            connectorPath.line(to: NSPoint(x: currentX, y: currentY) * dimensionMultiplier)
+                            
+                        }
+                    }
+                    
+                    var channelConnPoint = NSPoint()
+                    if nextConnection.connector.toIsOutside {
+                        
+                        channelConnPoint = toPoint + NSSize(width: 0.010, height: 0.0)
+                    }
+                    else {
+                        
+                        channelConnPoint = toPoint + NSSize(width: -0.010, height: 0.0)
+                    }
+                    
+                    connectorPath.line(to: NSPoint(x: channelConnPoint.x, y: currentY) * dimensionMultiplier)
+                    connectorPath.line(to: channelConnPoint * dimensionMultiplier)
+                    connectorPath.line(to: toPoint * dimensionMultiplier)
+                    
+                    txfoView.viewConnectors.append(ViewConnector(segments: (self.segment, otherSeg), pathColor: self.segmentColor, connectorType: .general, connectorDirection: .variable, connector: nextConnection.connector, path: connectorPath))
                 }
             }
             else {
                 
-                // must be a termination
+                // must be a 'termination'
                 let fromLoc = nextConnection.connector.fromLocation
                 var specialDirection = ViewConnector.direction.down
                 if fromLoc == .center_lower || fromLoc == .inside_lower || fromLoc == .outside_lower {

@@ -158,6 +158,12 @@ class Segment: Codable, Equatable {
         }
     }
     
+    /// The axial center of the segment (using the real window height)
+    var zMean:Double {
+        
+        return (self.z1 + self.z2) / 2
+    }
+    
     /// The window height that is used in the Fourier series (corresponds to the 'L' variable in  the formulas in DelVecchio
     var L:Double {
         get {
