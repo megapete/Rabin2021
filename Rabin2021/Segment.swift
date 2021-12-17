@@ -121,7 +121,31 @@ class Segment: Codable, Equatable {
     var rect:NSRect
     
     /// Simple struct for connections. These work as follows: if the 'segment' property is nil, the connector property should have a 'fromLocation' at the actual location on self, and a 'toConnector' of one of the special connectors (floating, shot, or ground). If, on the other hand, 'segment' is non-nil, then the fromLocation is still at the actual location on self, and toLocation is the actual location on 'segment'.
-    struct Connection:Codable {
+    struct Connection:Codable, Equatable {
+        
+        static func == (lhs: Segment.Connection, rhs: Segment.Connection) -> Bool {
+            
+            guard lhs.connector.fromLocation == rhs.connector.fromLocation && lhs.connector.toLocation == rhs.connector.toLocation else {
+                
+                return false
+            }
+            
+            if let lSegment = lhs.segment {
+                
+                guard let rSegment = rhs.segment else {
+                    
+                    return false
+                }
+                
+                return lSegment == rSegment
+            }
+            else if rhs.segment != nil {
+                
+                return false
+            }
+            
+            return true
+        }
         
         var segment:Segment?
         var connector:Connector
@@ -343,6 +367,38 @@ class Segment: Codable, Equatable {
         }
         
         return result
+    }
+    
+    /// Remove the given connection and its reverse (if it exists). It is the calling routine's responsibility to check (and remove as necessary) any other connections that woiuld effectively keep the bad connector in place. Note that "floating" connections are not removed. If thec connection is to ground or impulse, the connection is converted to a floating connection.
+    func RemoveConnection(connection:Segment.Connection) {
+        
+        if connection.connector.toLocation == .floating {
+            
+            return
+        }
+        
+        guard let connectionIndex = self.connections.firstIndex(where: { $0 == connection }) else {
+            
+            return
+        }
+        
+        if let otherSegment = connection.segment {
+            
+            let otherConnection = Segment.Connection(segment: self, connector: Connector(fromLocation: connection.connector.toLocation, toLocation: connection.connector.fromLocation))
+            if let otherConnectionIndex = otherSegment.connections.firstIndex(where: { $0 == otherConnection }) {
+                
+                otherSegment.connections.remove(at: otherConnectionIndex)
+            }
+        }
+        
+        self.connections.remove(at: connectionIndex)
+        
+        if connection.connector.toLocation == .ground || connection.connector.toLocation == .impulse {
+            
+            let floatingConnection = Connection(segment: nil, connector: Connector(fromLocation: connection.connector.fromLocation, toLocation: .floating))
+            self.connections.append(floatingConnection)
+        }
+        
     }
     
     /// Add a connector to the segment at the given fromLocation. The toLocation parameter depends on the toSegment parameter:
