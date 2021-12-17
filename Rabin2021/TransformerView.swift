@@ -1480,6 +1480,11 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             self.mouseDownWithAddConnection(event: event)
             return
         }
+        else if self.mode == .removeConnector {
+            
+            self.mouseDownWithRemoveConnector(event: event)
+            return
+        }
     }
     
     override func mouseDragged(with event: NSEvent) {
@@ -1621,6 +1626,36 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         let newSize = NSSize(width: endPoint.x - self.zoomRect!.origin.x, height: endPoint.y - self.zoomRect!.origin.y)
         self.zoomRect!.size = newSize
         self.needsDisplay = true
+    }
+    
+    func mouseDownWithRemoveConnector(event:NSEvent) {
+        
+        let clickPoint = self.convert(event.locationInWindow, from: nil)
+                
+        for nextViewConnector in self.viewConnectors {
+            
+            if nextViewConnector.hitZone.contains(clickPoint) {
+                
+                nextViewConnector.segments.from.RemoveConnection(connection: Segment.Connection(segment: nextViewConnector.segments.to, connector: nextViewConnector.connector))
+                
+                var maskSegments:[Segment] = []
+                for nextSegmentPath in self.segments {
+                    
+                    if nextSegmentPath.segment != nextViewConnector.segments.from && nextSegmentPath.segment != nextViewConnector.segments.to {
+                        
+                        maskSegments.append(nextSegmentPath.segment)
+                    }
+                }
+                
+                guard let segmentPath = self.segments.first(where: {$0.segment == nextViewConnector.segments.from}) else {
+                    
+                    DLog("Problem!")
+                    break
+                }
+                
+                segmentPath.SetUpConnectors(maskSegments: maskSegments)
+            }
+        }
     }
     
     func mouseDownWithAddImpulse(event:NSEvent) {
