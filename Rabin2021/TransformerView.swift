@@ -1632,7 +1632,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         let clickPoint = self.convert(event.locationInWindow, from: nil)
                 
-        for nextViewConnector in self.viewConnectors {
+        for (fromIndex, nextViewConnector) in self.viewConnectors.enumerated() {
             
             if nextViewConnector.hitZone.contains(clickPoint) {
                 
@@ -1647,15 +1647,37 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                     }
                 }
                 
+                // print("Total segments: \(self.segments.count); Masked segments:\(maskSegments.count)")
+                
                 guard let segmentPath = self.segments.first(where: {$0.segment == nextViewConnector.segments.from}) else {
                     
                     DLog("Problem!")
                     break
                 }
                 
+                self.viewConnectors.remove(at: fromIndex)
+                
+                // we just altered the self.viewConnectors array, so we need to search for the other segment (if any)
+                if let toSegment = nextViewConnector.segments.to {
+                    
+                    if let toIndex = self.viewConnectors.firstIndex(where: { $0.segments.from == toSegment}) {
+                        
+                        self.viewConnectors.remove(at: toIndex)
+                        
+                        if let toPath = self.segments.first(where: { $0.segment == toSegment}) {
+                            
+                            toPath.SetUpConnectors(maskSegments: maskSegments)
+                        }
+                    }
+                }
+                
                 segmentPath.SetUpConnectors(maskSegments: maskSegments)
+                self.needsDisplay = true
+                break
             }
         }
+        
+        
     }
     
     func mouseDownWithAddImpulse(event:NSEvent) {
