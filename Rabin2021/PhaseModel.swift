@@ -174,6 +174,33 @@ class PhaseModel:Codable {
         self.core = core
     }
     
+    /// Return the index into the inductance matrix for the given Segment
+    func SegmentIndex(segment:Segment) throws -> Int {
+        
+        guard self.segments.contains(segment) else {
+            
+            throw PhaseModelError(info: "", type: .SegmentNotInModel)
+        }
+        
+        var result = 0
+        
+        do {
+            for i in 0..<segment.radialPos {
+                
+                result += try GetHighestSection(coil: i)
+                result += 1
+            }
+        }
+        catch {
+            
+            throw error
+        }
+        
+        result += segment.axialPos
+        
+        return result
+    }
+    
     /// Function to check if two Segments are adjacent in the current model. This function assumes that the segmentStore is sorted according to location.
     func SegmentsAreAdjacent(segment1:Segment, segment2:Segment) -> Bool {
         
@@ -454,13 +481,6 @@ class PhaseModel:Codable {
             throw PhaseModelError(info: "", type: .OldSegmentCountIsNotOne)
             
         }
-        
-        
-        
-        
-        
-        
-        print("New segment has \(newSegments[0].connections.count) connections")
     }
     
     /// Function to check the comparative position of 'toSegment' with respect to 'fromSegment'. For instance, if 'fromSegment;' is in coil position 2, and toSegment is in coil position 1, the function will return 'adjacentInner'. The 'toSegment' parameter must exit in the current model or an error is thrown. It is not necessary that the fromSegment exists in the model, but it must have the correct location (with repsect to the current model) set in it.
@@ -658,6 +678,10 @@ class PhaseModel:Codable {
                     DispatchQueue.main.sync { mainWindow.endSheet(progIndicator.window!) }
                 }
             }
+        }
+        else {
+            
+            throw PhaseModelError(info: "", type: .UnimplementedInductanceMethod)
         }
     }
     

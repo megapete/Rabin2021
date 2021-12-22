@@ -120,7 +120,7 @@ class Segment: Codable, Equatable {
     /// The rectangle that the segment occupies in the core window, with the origin at (LegCenter, BottomYoke)
     var rect:NSRect
     
-    /// Simple struct for connections. These work as follows: if the 'segment' property is nil, the connector property should have a 'fromLocation' at the actual location on self, and a 'toConnector' of one of the special connectors (floating, shot, or ground). If, on the other hand, 'segment' is non-nil, then the fromLocation is still at the actual location on self, and toLocation is the actual location on 'segment'.
+    /// Simple struct for connections. These work as follows: if the 'segment' property is nil, the connector property should have a 'fromLocation' at the actual location on self, and a 'toConnector' of one of the special connectors (floating, impulse, or ground). If, on the other hand, 'segment' is non-nil, then the fromLocation is still at the actual location on self, and toLocation is the actual location on 'segment'.
     struct Connection:Codable, Equatable {
         
         static func == (lhs: Segment.Connection, rhs: Segment.Connection) -> Bool {
@@ -451,6 +451,59 @@ class Segment: Codable, Equatable {
             
             self.connections.append(Connection(segment: nil, connector: Connector(fromLocation: fromLocation, toLocation: toLocation)))
         }
+    }
+    
+    /// The series capacitance of the segment caused by the turns of the disc (for continuous-disc windings), double-disc (for interleaved segments) or a single layer (for layer windings). The methods come from (respectively) DelVecchio, Viverka, Huber (ie: me)
+    func SeriesCapacitance() throws -> Double {
+        
+        guard !self.isStaticRing else {
+            
+            throw SegmentError(info: "\(self.location)", type: .StaticRing)
+        }
+        
+        guard !self.isRadialShield else {
+            
+            throw SegmentError(info: "\(self.location)", type: .RadialShield)
+        }
+        
+        if self.wdgType == .helical || self.wdgType == .sheet {
+            
+            return 0.0
+        }
+        
+        do {
+            
+            let Ctt = try self.CapacitanceTurnToTurn()
+            
+            if self.wdgType == .disc && self.interleaved {
+                
+                // Viverka method
+                let Cs = Ctt * (self.N - 1) / 2
+                
+                return Cs
+            }
+            else if self.wdgType == .disc {
+                
+                // Del Vecchio method
+                let Cs = Ctt * (self.N - 1) / (self.N * self.N)
+                
+                return Cs
+            }
+            else if self.wdgType == .layer {
+                
+                // Huber method. Basically, this uses the Del Vecchio method for discs, but turns it on its side, so that the series capacitance goes in the axial direction and the disc-disc capacitance becomes the layer-layer capacitance. 
+                let turnsPerLayer = self.N / Double(self.basicSections[0].wdgData.layers.numLayers)
+                let Cs = Ctt * (turnsPerLayer - 1) / (turnsPerLayer * turnsPerLayer)
+                
+                return Cs
+            }
+        }
+        catch {
+            
+            throw error
+        }
+        
+        throw SegmentError(info: "", type: .UnimplementedWdgType)
     }
     
     func CapacitanceTurnToTurn() throws -> Double {
