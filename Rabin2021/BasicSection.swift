@@ -77,6 +77,7 @@ struct BasicSectionWindingData:Codable {
         let radialDimn:Double
         let axialDimn:Double
         let turnInsulation:Double
+        let resistancePerMeter:Double
     }
     
     let turn:TurnData
