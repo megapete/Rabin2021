@@ -453,8 +453,13 @@ class Segment: Codable, Equatable {
         }
     }
     
-    /// The series capacitance of the segment caused by the turns of the disc (for continuous-disc windings), double-disc (for interleaved segments) or a single layer (for layer windings). The methods come from (respectively) DelVecchio, Viverka, Huber (ie: me)
-    func SeriesCapacitance() throws -> Double {
+    func SegmentSeriesCapacitance(axialGaps:(below:Double, above:Double)?, radialGaps:(inside:Double, outside:Double)?) throws -> Double {
+        
+        
+    }
+    
+    /// The series capacitance of a single BasicSection, as caused by the turns of the disc (for continuous-disc windings), double-disc (for interleaved segments) or a single layer (for layer windings). The methods come from (respectively) DelVecchio, Viverka, Huber (ie: me)
+    func BasicSectionSeriesCapacitance() throws -> Double {
         
         guard !self.isStaticRing else {
             
@@ -506,6 +511,7 @@ class Segment: Codable, Equatable {
         throw SegmentError(info: "", type: .UnimplementedWdgType)
     }
     
+    /// The turn-turn capacitance of the mean turn of a single basic section of this Segment,
     func CapacitanceTurnToTurn() throws -> Double {
         
         guard !self.isStaticRing else {
