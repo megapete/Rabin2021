@@ -331,6 +331,9 @@ class Segment: Codable, Equatable {
             case StaticRing
             case RadialShield
             case UnimplementedWdgType
+            case AxialAndRadialGapsAreNil
+            case AxialAndRadialGapsAreNonNil
+            case IllegalWindingType
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -362,6 +365,14 @@ class Segment: Codable, Equatable {
                 else if self.type == .UnimplementedWdgType {
                     
                     return "Unimplemented winding type!"
+                }
+                else if self.type == .AxialAndRadialGapsAreNil {
+                    
+                    return "Either Axial or Radial adjacent gaps must be defined!"
+                }
+                else if self.type == .IllegalWindingType {
+                    
+                    return "The winding type does not match the adjacent gaps that are defined!"
                 }
                 
                 return "An unknown error occurred."
@@ -455,7 +466,62 @@ class Segment: Codable, Equatable {
     
     func SegmentSeriesCapacitance(axialGaps:(below:Double, above:Double)?, radialGaps:(inside:Double, outside:Double)?) throws -> Double {
         
+        let axialGapsAreNil = axialGaps == nil
+        let radialGapsAreNil = radialGaps == nil
         
+        guard !(axialGapsAreNil && radialGapsAreNil) else {
+            
+            throw SegmentError(info: "", type: .AxialAndRadialGapsAreNil)
+        }
+        
+        guard !axialGapsAreNil && radialGapsAreNil && (self.wdgType == .disc || self.wdgType == .helical) || axialGapsAreNil && !radialGapsAreNil  else {
+            
+            throw SegmentError(info: "", type: .IllegalWindingType)
+        }
+        
+        var result = 0.0
+        
+        do {
+            
+            let basicSectionCs = try self.BasicSectionSeriesCapacitance()
+            
+            if self.wdgType == .disc || self.wdgType == .helical {
+                
+                var nextBelowGap = axialGaps!.below
+                
+                for i in 0..<self.basicSections.count {
+                    
+                    let nextBasicSection = self.basicSections[i]
+                    var nextAboveGap = axialGaps!.above
+                    if i < self.basicSections.count - 1 {
+                        
+                        nextAboveGap = self.basicSections[i + 1].z1 - nextBasicSection.z2
+                    }
+                    
+                    let fks = Double(nextBasicSection.wdgData.discData.numAxialColumns) * nextBasicSection.wdgData.discData.axialColumnWidth / (π * (self.r1 + self.r2))
+                    let tp = 2.0 * nextBasicSection.wdgData.turn.turnInsulation
+                    
+                    var Cdd_below = ε0 * π * (self.r2 * self.r2 - self.r1 * self.r1)
+                    var Cdd_above = Cdd_below
+                    // calculate Cdd for the gap below the segment
+                    var firstTerm = fks / ((tp / εPaper) + (nextBelowGap / εBoard))
+                    var secondTerm = (1 - fks) / ((tp / εPaper) + (nextBelowGap / εBoard))
+                    Cdd_below *= (firstTerm + secondTerm)
+                    
+                    // calculate Cdd for the gap above the segment
+                    firstTerm = fks / ((tp / εPaper) + (nextAboveGap / εBoard))
+                    secondTerm = (1 - fks) / ((tp / εPaper) + (nextAboveGap / εBoard))
+                    Cdd_above *= (firstTerm + secondTerm)
+                }
+                
+            }
+        }
+        catch {
+            
+            throw error
+        }
+        
+        return 1 / result
     }
     
     /// The series capacitance of a single BasicSection, as caused by the turns of the disc (for continuous-disc windings), double-disc (for interleaved segments) or a single layer (for layer windings). The methods come from (respectively) DelVecchio, Viverka, Huber (ie: me)
@@ -562,7 +628,7 @@ class Segment: Codable, Equatable {
         let originY = adjacentSegment.rect.origin.y
         let rsRect = NSRect(x: originX, y: originY, width: rsThickness, height: elecHt)
         // create a dummy BSdata struct
-        let rsWdgData = BasicSectionWindingData(type: .disc, layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: rsThickness, axialDimn: elecHt, turnInsulation: 0, resistancePerMeter: 0))
+        let rsWdgData = BasicSectionWindingData(type: .disc, discData: BasicSectionWindingData.DiscData(numAxialColumns: 10, axialColumnWidth: 0.038), layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: rsThickness, axialDimn: elecHt, turnInsulation: 0, resistancePerMeter: 0))
         let rsSection = BasicSection(location: rsLocation, N: 0, I: 0, wdgData: rsWdgData, rect: rsRect)
         
         do {
@@ -595,7 +661,7 @@ class Segment: Codable, Equatable {
         srRect.origin.y += offsetY
         srRect.size.height = srThickness
         // we need to create a dummy cable definition for the static ring
-        let srWdgData = BasicSectionWindingData(type: .disc, layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: 0, axialDimn: 0, turnInsulation: 0.125 * meterPerInch, resistancePerMeter: 0))
+        let srWdgData = BasicSectionWindingData(type: .disc, discData: BasicSectionWindingData.DiscData(numAxialColumns: 10, axialColumnWidth: 0.038), layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: 0, axialDimn: 0, turnInsulation: 0.125 * meterPerInch, resistancePerMeter: 0))
         let srSection = BasicSection(location: srLocation, N: 0.0, I: 0.0, wdgData: srWdgData,  rect: srRect)
         
         do {

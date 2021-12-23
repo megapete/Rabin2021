@@ -54,6 +54,15 @@ struct BasicSectionWindingData:Codable {
     /// The WdgType of the section
     let type:WdgType
     
+    /// Disc data for the section (only really relevant for disc and helical windings)
+    struct DiscData:Codable {
+        
+        let numAxialColumns:Int
+        let axialColumnWidth:Double
+    }
+    
+    let discData:DiscData
+    
     /// Layer data for the section (only relevent for layer, sheet, and multistart windings)
     struct LayerData:Codable {
         
