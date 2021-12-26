@@ -10,54 +10,78 @@
 
 import Cocoa
 
+// Through trial and error, I have discovered that NSView does not like small (<1) dimensions. Since the main units used in transformer design are in meters, I multiply all dimensions that are drawn by 1000 so that the NSView is using numbers that it likes more.
 fileprivate let dimensionMultiplier = 1000.0
 
-/// These extensions to NSImage come from the Internet. I only use them for custom cursors and didn't want to bother figuring this stuff out by myself.
+/// These extensions to NSImage come from the Internet. I only use them for custom cursors and didn't want to bother figuring this stuff out by myself. However, I have commented the code so that I can understand what its doing.
 fileprivate extension NSImage {
     
+    // PCH: Create a new NSImage by resizing 'self'
     func resized(to newSize: NSSize) -> NSImage? {
+        
+        // PCH: Create a bitmap image representation. We will draw into this bitmap.
         if let bitmapRep = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: Int(newSize.width), pixelsHigh: Int(newSize.height),
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
             colorSpaceName: .calibratedRGB, bytesPerRow: 0, bitsPerPixel: 0
         ) {
             bitmapRep.size = newSize
+            // PCH: Save the current NSGraphicsContext
             NSGraphicsContext.saveGraphicsState()
+            // PCH: Set the current NSGraphicsContexto to our bitmap. Subsequent drawing calls will draw into the bitmap
             NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmapRep)
+            // PCH: Draw self (an NSImage) into the bitmap. Note that the width and height parameters are the new size - our image will be scaled to fit into those dimensions
             draw(in: NSRect(x: 0, y: 0, width: newSize.width, height: newSize.height), from: .zero, operation: .copy, fraction: 1.0)
+            // PCH: Restore the NSGraphicsContext to whatever it was before we did our drawing
             NSGraphicsContext.restoreGraphicsState()
-
+            
+            // PCH: At this point, we have a bitmap image with our resized drawing in it, but we need to convert it to an NSimage by using the 'addRepresentation' call.
             let resizedImage = NSImage(size: newSize)
             resizedImage.addRepresentation(bitmapRep)
             return resizedImage
         }
-
+        
         return nil
     }
     
+    // PCH: Create a new NSImage by rotating 'self'
     func rotated(by degrees: CGFloat) -> NSImage {
-            let sinDegrees = abs(sin(degrees * CGFloat.pi / 180.0))
-            let cosDegrees = abs(cos(degrees * CGFloat.pi / 180.0))
-            let newSize = CGSize(width: size.height * sinDegrees + size.width * cosDegrees,
-                                 height: size.width * sinDegrees + size.height * cosDegrees)
-
-            let imageBounds = NSRect(x: (newSize.width - size.width) / 2,
-                                     y: (newSize.height - size.height) / 2,
-                                     width: size.width, height: size.height)
-
-            let otherTransform = NSAffineTransform()
-            otherTransform.translateX(by: newSize.width / 2, yBy: newSize.height / 2)
-            otherTransform.rotate(byDegrees: degrees)
-            otherTransform.translateX(by: -newSize.width / 2, yBy: -newSize.height / 2)
-
-            let rotatedImage = NSImage(size: newSize)
-            rotatedImage.lockFocus()
-            otherTransform.concat()
-            draw(in: imageBounds, from: CGRect.zero, operation: NSCompositingOperation.copy, fraction: 1.0)
-            rotatedImage.unlockFocus()
-
-            return rotatedImage
-        }
+        
+        // PCH: Get the sin and cos of the angle (convert to radians first)
+        let sinDegrees = abs(sin(degrees * CGFloat.pi / 180.0))
+        let cosDegrees = abs(cos(degrees * CGFloat.pi / 180.0))
+        
+        // PCH: The rectangle that the image will fit into will change based on the rotation angle - calculate the size of the rectangle
+        let newSize = CGSize(width: size.height * sinDegrees + size.width * cosDegrees,
+                             height: size.width * sinDegrees + size.height * cosDegrees)
+        
+        // PCH: Create the new rectangle so that it will be centered on the new size
+        let imageBounds = NSRect(x: (newSize.width - size.width) / 2,
+                                 y: (newSize.height - size.height) / 2,
+                                 width: size.width, height: size.height)
+        
+        // PCH: Create an affine transform (this is an advanced graphics topic). From the Xcode documentatiion: "A transformation specifies how points in one coordinate system are transformed to points in another coordinate system. An affine transformation is a special type of transformation that preserves parallel lines in a path but does not necessarily preserve lengths or angles."
+        let otherTransform = NSAffineTransform()
+        // PCH: Move to the center of the transform
+        otherTransform.translateX(by: newSize.width / 2, yBy: newSize.height / 2)
+        // PCH: Rotate the transform
+        otherTransform.rotate(byDegrees: degrees)
+        // PCH: Move back to where we started
+        otherTransform.translateX(by: -newSize.width / 2, yBy: -newSize.height / 2)
+        
+        // PCH: Create a new, empty NSImage
+        let rotatedImage = NSImage(size: newSize)
+        // PCH: Lock the focus of drawing routines to the new NSImage
+        rotatedImage.lockFocus()
+        // PCH: Multiply the NSImage's transformation matrix by the affine transform's matrix (this is an advanced graphics topic)
+        otherTransform.concat()
+        // PCH: Draw the new image
+        draw(in: imageBounds, from: CGRect.zero, operation: NSCompositingOperation.copy, fraction: 1.0)
+        // PCH: Reset the focus
+        rotatedImage.unlockFocus()
+        
+        return rotatedImage
+    }
 }
 
 /// Convenient extensions to NSPoint
@@ -75,6 +99,7 @@ fileprivate extension NSPoint {
         left = left * right
     }
     
+    /// Add an NSSize to and NSPoint
     static func +(left:NSPoint, right:NSSize) -> NSPoint {
         
         let newPoint = NSPoint(x: left.x + right.width, y: left.y + right.height)
@@ -86,6 +111,7 @@ fileprivate extension NSPoint {
         left = left + right
     }
     
+    /// Subtract an NSSize from an NSPoint
     static func -(left:NSPoint, right:NSSize) -> NSPoint {
         
         let newPoint = NSPoint(x: left.x - right.width, y: left.y - right.height)
@@ -97,6 +123,7 @@ fileprivate extension NSPoint {
         left = left - right
     }
     
+    /// Subtract an NSPoint from and NSPoint
     static func -(left:NSPoint, right:NSPoint) -> NSPoint {
         
         let newPoint = NSPoint(x: left.x - right.x, y: left.y - right.y)
@@ -108,12 +135,14 @@ fileprivate extension NSPoint {
         left = left - right
     }
     
+    /// Add an NSPoint to an NSPoint
     static func +(left:NSPoint, right:NSPoint) -> NSPoint {
         
         let newPoint = NSPoint(x: left.x + right.x, y: left.y + right.y)
         return newPoint
     }
     
+    /// Rotate an NSPoint about the origin (theta is in radians)
     func Rotate(theta:CGFloat) -> NSPoint {
         
         let newX = self.x * cos(theta) - self.y * sin(theta)
@@ -122,6 +151,7 @@ fileprivate extension NSPoint {
         return NSPoint(x: newX, y: newY)
     }
     
+    /// Calculate the straight-line distance between two NSPoints
     func Distance(otherPoint:NSPoint) -> CGFloat {
         
         let a = self.x - otherPoint.x
@@ -150,56 +180,68 @@ fileprivate extension NSRect {
         left = left * right
     }
     
+    /// Return the point at the bottom-left of the NSRect
     func BottomLeft() -> NSPoint {
         
         return self.origin
     }
     
+    /// Return the point at the top-right of the NSRect
     func TopRight() -> NSPoint {
         
         return self.origin + self.size
     }
     
+    /// Return the point at the top-left of the NSRect
     func TopLeft() -> NSPoint {
         
         return self.origin + NSSize(width: 0.0, height: self.size.height)
     }
     
+    /// Return the point at the bottom-right of the NSRect
     func BottomRight() -> NSPoint {
         
         return self.origin + NSSize(width: self.size.width, height: 0.0)
     }
     
+    /// Return the point at the bottom-center of the NSRect
     func BottomCenter() -> NSPoint {
         
         return self.origin + NSSize(width: self.size.width / 2.0, height: 0.0)
     }
     
+    /// Return the point at the top-center of the NSRect
     func TopCenter() -> NSPoint {
         
         return self.origin + NSSize(width: self.size.width / 2.0, height: self.size.height)
     }
     
+    /// Return the point at the left-center of the NSRect
     func LeftCenter() -> NSPoint {
         
         return self.origin + NSSize(width: 0.0, height: self.size.height / 2.0)
     }
     
+    /// Return the point at the right-center of the NSRect
     func RightCenter() -> NSPoint {
         
         return self.origin + NSSize(width: self.size.width, height: self.size.height / 2.0)
     }
 }
 
-/// A struct for representing the segment paths that are displayed by the TransformeView class. Some of this comes from my AndersenFE-2020 program so there are a few things that aren't used.
+/// A struct for representing the segment paths that are displayed by the TransformeView class. Some of this comes from my AndersenFE-2020 program so there are a few things that aren't actually used. Eventually, I will remove unused code.
 struct SegmentPath:Equatable {
     
+    // This is kind of an ugly way to get "global" access to the TransformerView. Since my program only has one TransformerView available at a time, this works, but it would probably be better to declare it as an instance variable (in case I ever allow more than one TransformerView).
     static var txfoView:TransformerView? = nil
     
+    // The Segment that is displayed by this instance
     let segment:Segment
     
+    // A holder for future ToolTips for the Segment (not sure what to show yet)
     var toolTipTag:NSView.ToolTipTag = 0
     
+    // The actual path that is drawn for the Segment. Note that for a Static Ring, the path is converted from a rectangle to a RoundedRectangle
     var path:NSBezierPath? {
         get {
         
@@ -213,15 +255,20 @@ struct SegmentPath:Equatable {
         }
     }
     
+    // The rectangle that the Segment occupies (multiplied by the dimensionMultiplier global
     var rect:NSRect {
         get {
             return self.segment.rect * dimensionMultiplier
         }
     }
         
+    // The color of the Segment
     let segmentColor:NSColor
+    
+    // The background for the a Segment
     static var bkGroundColor:NSColor = .white
     
+    // Unused indicator to show that the Segment is active
     var isActive:Bool {
         get {
             return true
@@ -239,9 +286,10 @@ struct SegmentPath:Equatable {
         return segPath.contains(point)
     }
     
-    /// constant for showing that a segment is not active
+    /// constant for showing that a segment is not active (unused)
     let nonActiveAlpha:CGFloat = 0.25
     
+    /// Call this function to actually show the Segment. If the Segment is active, then call clear()
     func show()
     {
         if isActive
@@ -254,7 +302,7 @@ struct SegmentPath:Equatable {
         }
     }
     
-    /// Some functions that make it so we can use SegmentPaths in a similar way as NSBezierPaths
+    /// The stroke() function so that  we can use SegmentPaths in a similar way as NSBezierPaths
     func stroke()
     {
         guard let path = self.path else
@@ -269,6 +317,7 @@ struct SegmentPath:Equatable {
         }
     }
     
+    /// The fill() function so that  we can use SegmentPaths in a similar way as NSBezierPaths
     func fill(alpha:CGFloat)
     {
         guard let path = self.path else
@@ -282,7 +331,7 @@ struct SegmentPath:Equatable {
         path.stroke()
     }
     
-    /// fill the path with the background color
+    /// fill the path with the background color and stroke the path with the segmentColor
     func clear()
     {
         guard let path = self.path else
@@ -296,7 +345,7 @@ struct SegmentPath:Equatable {
         path.stroke()
     }
     
-    /// Set up the paths for all connectors for this SegmentPath EXCEPT any that end at a Segment in 'maskSegments'. This allows us to avoid redrawing paths. This function is automaticlaly called when the "segments" property of TransformerView is changed. However, it must be called manually when adding (or removing) a connection. The 'viewConnectors' property of the TransformerView is changed by this routine.
+    /// Set up the paths for all connectors for this SegmentPath EXCEPT any that end at a Segment in 'maskSegments'. This allows us to avoid redrawing paths. This function is automaticlaly called when the "segments" property of TransformerView is changed. However, it must be called manually when adding (or removing) a connection. The 'viewConnectors' property of the TransformerView is changed by this routine. See the Connector struct and the Segment.Connection struct for more details on how those structures work.
     func SetUpConnectors(maskSegments:[Segment]) {
                 
         let model = SegmentPath.txfoView!.appController!.currentModel!
@@ -549,7 +598,7 @@ struct SegmentPath:Equatable {
             }
             else {
                 
-                // must be a 'termination'
+                // must be a 'termination' (ground, impulse, or floating)
                 let fromLoc = nextConnection.connector.fromLocation
                 var specialDirection = ViewConnector.direction.down
                 if fromLoc == .center_lower || fromLoc == .inside_lower || fromLoc == .outside_lower {
@@ -592,9 +641,10 @@ struct SegmentPath:Equatable {
     }
 }
 
-/// Definition and drawing routines for Ground, Impulse, and connections between non-adjacent coil segments. Note that dimensions passed in to routines in the struct are expected to be in the model's coordiantes (inncluding the 'dimensionMultiplier' global variable). The fancy cursors are also defined here.
+/// Definition and drawing routines for Ground, Impulse, and connections between non-adjacent coil segments. Note that dimensions passed in to routines in the struct are expected to be in the model's coordiantes (including the 'dimensionMultiplier' global variable). The fancy cursors are also defined here.
 struct ViewConnector {
     
+    /// The different types of connectors
     enum type {
         
         case ground
@@ -603,6 +653,7 @@ struct ViewConnector {
         case adjacent
     }
     
+    /// The direction of the connector (the reasoning for this enum is evolving - it will probably be  changed in some future version of the program)
     enum direction {
         
         case variable
@@ -629,6 +680,7 @@ struct ViewConnector {
             return groundCursor
         }
     
+        // couldn't load the cursor image, just show the arrow
         return NSCursor.arrow
     }
     
@@ -646,7 +698,7 @@ struct ViewConnector {
             return impulseCursor
         }
     
-        print("Could not open Impulse Cursor")
+        // couldn't load the cursor image, just show the arrow
         return NSCursor.arrow
     }
     
@@ -674,6 +726,7 @@ struct ViewConnector {
             
             if let scaledPliers = pliersImage.resized(to: NSSize(width: 16, height: 24)) {
             
+                // The image of the pliers is pointing straight up, so rotate it 45 degrees so it looks better
                 let rotatedPliers = scaledPliers.rotated(by: 45.0)
                 let pliersCursor = NSCursor(image: rotatedPliers, hotSpot: NSPoint(x: 6, y: 8))
                 
@@ -681,6 +734,7 @@ struct ViewConnector {
             }
         }
         
+        // couldn't load the cursor image, just show the arrow
         return NSCursor.arrow
     }
     
@@ -732,7 +786,7 @@ struct ViewConnector {
         return result
     }
     
-    /// Return the end point that is closest to the given point
+    /// Return the end point of this SegmentPath that is closest to the given point (in TransformerView dimensions)
     func ClosestEndPoint(toPoint:NSPoint) -> NSPoint {
         
         let points = self.endPoints
@@ -782,6 +836,13 @@ struct ViewConnector {
         }
     }
     
+    /// Function to draw an Impulse connection image at the given NSPoint and in the given direction.
+    /// - Parameter connectionPoint: The point (in TransformerView coordinates) where the connector will be drawn. This should be an EndPoint of a ViewConnector.
+    /// - Parameter segments: Needed for the call to ViewConnector(). The 'to' member should always be 'nil'
+    /// - Parameter connector: The Connector that this will replace
+    /// - Parameter owner: The TransformerView that is to display this connector
+    /// - Parameter connectorDirection: The direction that the new connector should point in
+    /// - Returns: A ViewConnector
     static func ImpulseConnection(connectionPoint:NSPoint, segments:(from:Segment, to:Segment?), connector:Connector, owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
         
         // Get the scale from the scrollView
@@ -812,6 +873,13 @@ struct ViewConnector {
         return ViewConnector(segments:segments, pathColor: .red, connectorType: .impulse, connectorDirection: connectorDirection, connector: connector, path: path, image: impulseImage, imageRect: imageRect)
     }
     
+    /// Function to draw a ground connection image at the given NSPoint and in the given direction.
+    /// - Parameter connectionPoint: The point (in TransformerView coordinates) where the connector will be drawn. This should be an EndPoint of a ViewConnector.
+    /// - Parameter segments: Needed for the call to ViewConnector(). The 'to' member should always be 'nil'
+    /// - Parameter connector: The Connector that this will replace
+    /// - Parameter owner: The TransformerView that is to display this connector
+    /// - Parameter connectorDirection: The direction that the new connector should point in
+    /// - Returns: A ViewConnector
     static func GroundConnection(connectionPoint:NSPoint, segments:(from:Segment, to:Segment?), connector:Connector, owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
         
         // set theta according to the direction that was passed into the routine - this value will be used to calculate the rotation matrix
@@ -862,27 +930,38 @@ struct ViewConnector {
 }
 
 
-
+/// The class that actually displays all the Segments the current model, along with all Connectors. There are also routines to update the mouse cursor depending on the current mode of the TransformerView, as well as mouseDown routines that do different things depending on the mode. See each function for a biref description of what it does. This class derives from NSView and conforms to the NSViewToolTipOwner and NSMenuItemValidation protocols.
 class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
-    // I suppose that I could get fancy and create a TransformerViewDelegate protocol but since the calls are so specific, I'm unable to justify the extra complexity, so I'll just save a weak reference to the AppController here
+    /// I suppose that I could get fancy and create a TransformerViewDelegate protocol but since the calls are so specific, I'm unable to justify the extra complexity, so I'll just save a weak reference to the AppController here. The AppController will need to stuff a pointer to itself in here, probably best done in awakeFromNib()
     weak var appController:AppController? = nil
     
+    /// The distance (in meters) that is used to highlight the connectors (used for certain modes)
     static let connectorDistanceTolerance = 0.003 // meters
     
+    /// The different modes that are available
     enum Mode {
         
+        /// Select a segment
         case selectSegment
+        /// Use a rectangle to select one or more segments
         case selectRect
+        /// Use a rectangle to zoom in on a certain section of the TransformerView
         case zoomRect
+        /// Add a ground connector
         case addGround
+        /// Add an impulse connector
         case addImpulse
+        /// Add a connector between any two existing connectors
         case addConnection
+        /// Remove a connector
         case removeConnector
     }
     
+    /// The actual storage for the TransformerView's mode
     private var modeStore:Mode = .selectSegment
     
+    /// A computed property for the mode of the TransformerView. The getter just returns the current mode, but the setter does things like update the mode indicator field at the bottom of the window and change the cursor (if necessary)
     var mode:Mode {
         
         get {
@@ -964,7 +1043,6 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         didSet {
             
-            // print("The SegmentPaths changed")
             var maskSegments:[Segment] = []
             self.viewConnectors = []
             for nextSegment in segments {
@@ -972,10 +1050,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 nextSegment.SetUpConnectors(maskSegments: maskSegments)
                 maskSegments.append(nextSegment.segment)
             }
-            
-            // print("Total segments: \(segments.count); Total Connectors: \(self.viewConnectors.count)")
         }
-         
     }
     
     var viewConnectors:[ViewConnector] = []
