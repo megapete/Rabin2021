@@ -1053,26 +1053,42 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
     }
     
+    /// An array of the ViewConnectors currently being displayed by the TransformerView
     var viewConnectors:[ViewConnector] = []
+    /// The bezier path of the currently-highlighted connector path (if any)
     var highlightedConnectorPath:NSBezierPath? = nil
+    /// A constant for the color of the highighted connector path
     let highlightColor:NSColor = .lightGray.withAlphaComponent(0.5)
     
+    /// The boundary of the core window
     var boundary:NSRect = NSRect(x: 0, y: 0, width: 0, height: 0)
+    /// The color to stroke the edges of the core window
     let boundaryColor:NSColor = .gray
     
+    /// In zoom mode, this variable holds the current zoom rectangle
     var zoomRect:NSRect? = nil
+    /// A constant for the line dash used when displaying the zoom rectangle
     let zoomRectLineDash = NSSize(width: 15.0, height: 8.0)
     
+    /// In selectRect mode, this variable holds the current selection rectangle
     var selectRect:NSRect? = nil
+    /// A constant for the line dash used when displaying the selecttion rectangle
     let selectRectLineDash = NSSize(width: 10.0, height: 5.0)
     
+    /// In addConnection mode, this holds the ViewConnector where the connection started
     var addConnectionStartConnector:ViewConnector? = nil
+    /// In addConnection mode, this holds the NSPoint where the connection started
     var addConnectionStartPoint:NSPoint = NSPoint()
+    /// In addConnection mode, this holds the current connection path
     let addConnectionPath = NSBezierPath()
     
+    /// The default line width for the TransformerView
     let defaultLineWidth = 1.0
     
+    /// An array of the currently-selected SegmentPaths
     var currentSegments:[SegmentPath] = []
+    
+    /// An array of Int that holds the indices of the currently-selected SegmentPaths (the indices are into the segments array)
     var currentSegmentIndices:[Int] {
         
         get {
@@ -1091,6 +1107,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
     }
     
+    /// A Boolean that returns true if the collection of currently-selected SegmentPaths includes Segments from more than one coil (winding).
     var currentSegmentsContainMoreThanOneWinding:Bool {
         
         get {
@@ -1112,6 +1129,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
     }
     
+    /// A variable that holds the currently-selected SegmentPath that was actually selected with a right-click
     var rightClickSelection:SegmentPath? = nil
     
     // contextual (right-click) menus
@@ -1124,19 +1142,21 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     // The scrollview that this view is in
     @IBOutlet weak var scrollView:NSScrollView!
-    
-    // var snapEvent:NSEvent? = nil
-    
-    
+        
+    // Override awakeFromNib() to do some initialization
     override func awakeFromNib() {
         
+        // stuff ourself into the SegmentPath.txfoView global
         SegmentPath.txfoView = self
         
+        // mark our window as 'wanting' mouse-moved events
         self.window!.acceptsMouseMovedEvents = true
         
+        // call our function createTrackingArea() so that we can check if the mouse is in our window for cursor-changing
         self.createTrackingArea()
     }
     
+    // We want to get first-responder messages, so we need to override the property and return true
     override var acceptsFirstResponder: Bool
     {
         return true
@@ -1207,17 +1227,15 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     // MARK: Draw function override
     override func draw(_ dirtyRect: NSRect) {
-        // super.draw(dirtyRect)
-
         
+        // save the old line width
         let oldLineWidth = NSBezierPath.defaultLineWidth
         
-        // Set the line width to 1mm (as defined by the original ZoomAll)
-        // NSBezierPath.defaultLineWidth = 1.0 / scrollView.magnification
-        
+        // calculate the new line width based on the size of the scrollView. We use the convenient 'convert' function from NSView to do this
         let fixedLineWidthSize = self.convert(NSSize(width: self.defaultLineWidth, height: self.defaultLineWidth), from: self.scrollView)
         NSBezierPath.defaultLineWidth = fixedLineWidthSize.width
-        // Drawing code here.
+        
+        // In the interest of speed, we do not simply set "needsDisplay" to true for every single update that is required (that will cause a complete redraw of the entire view rectangle, which takes time). Instead, most of the routines will call setNeedsDisplay(invalidRect:NSRect) with a rectangle (in TransformerView coordinates) that needs to be redrawn. The system collects these rectangles and then passes it through to the draw routine. We could either check ourselves if we need to redraw certain elements, or use the NSView routine "needsToDraw" and oly redraw if that routine returns 'true'. This is the kind of advanced programming that is needed if you are drawing a LOT of different elements at a somewhat high speed (for instance, the zoom and select rectangles).
         
         if self.needsToDraw(self.boundary) {
             
@@ -1226,9 +1244,6 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             self.boundaryColor.set()
             boundaryPath.stroke()
         }
-        
-        // var maskSegments:[Segment] = []
-        // self.viewConnectors = []
         
         for nextSegment in self.segments
         {
@@ -1313,6 +1328,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     // MARK: Current segment functions
     
+    /// Show the little square 'handles' on the corners of the given SegmentPath
     func ShowHandles(segment:SegmentPath)
     {
         let handleSide = NSBezierPath.defaultLineWidth * 5.0
@@ -1491,6 +1507,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     // MARK: Mouse Events
     
+    // We track mouse-moved events so that we can highlight the connector paths if the mode is one of addConnectio, addImpulse, addground, or removeConnector. We also update the R/Z indicator at the bottom of teh window (but only if the mouse is in the TransformerView).
     override func mouseMoved(with event: NSEvent) {
         
         guard let appCtrl = self.appController, appCtrl.currentModel != nil else {
@@ -1528,6 +1545,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
     }
     
+    // We forward the various mouse-down events based on the current mode
     override func mouseDown(with event: NSEvent) {
         
         if self.mode == .zoomRect
@@ -1562,6 +1580,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
     }
     
+    // Depending on the current mode, dragging the mouse means different things. We handle selection-rectangle updating in this routine but transfer to otehr routines for zooming and for adding a connection.
     override func mouseDragged(with event: NSEvent) {
         
         if self.mode == .zoomRect
@@ -1588,8 +1607,10 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         self.needsDisplay = true
     }
     
+    // Depending on the mode, we may be interested when the user releases the mouse button.
     override func mouseUp(with event: NSEvent) {
         
+        // The user has finished dragging his zoom rectangle, get the end point and do the zoom
         if self.mode == .zoomRect
         {
             let endPoint = self.convert(event.locationInWindow, from: nil)
@@ -1597,6 +1618,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             self.zoomRect!.size = newSize
             self.handleZoomRect(zRect: self.zoomRect!)
         }
+        // The user has finished dragging his selection rectangle, so get the end point and add all segments in the rectangle to the currentSegments array
         else if self.mode == .selectRect {
             
             let endPoint = self.convert(event.locationInWindow, from: nil)
@@ -1618,6 +1640,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 }
             }
         }
+        // The user has finished adding a connection. If teh end-point is a valid connection point, add the new conenctor to the model.
         else if self.mode == .addConnection, let startConnector = self.addConnectionStartConnector {
             
             let endPoint = self.convert(event.locationInWindow, from: nil)
@@ -1644,10 +1667,12 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                     
                     guard let startSegmentPath = self.segments.first(where: {$0.segment == startConnector.segments.from}) else {
                         
+                        // this should never happen
                         DLog("Problem!")
                         break
                     }
                     
+                    // add all the non-touched segments to the maskSegment array so that the SetUpConnectors call goes quickly
                     var maskSegments:[Segment] = []
                     for nextSegmentPath in self.segments {
                         
@@ -1672,6 +1697,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         self.needsDisplay = true
     }
     
+    // The mouse is being dragged while in addConnection mode. Update the connection path and check if the mouse location is currently in the hitZone of a connector - if it is, set the highlight
     func mouseDraggedWithAddConnection(event:NSEvent) {
         
         let endPoint = self.convert(event.locationInWindow, from: nil)
@@ -1687,7 +1713,6 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             if hitZone.contains(endPoint) {
             
                 self.highlightedConnectorPath = hitZone
-                // self.setNeedsDisplay(hitZone.bounds)
                 break
             }
         }
@@ -1695,6 +1720,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         self.needsDisplay = true
     }
     
+    // The mouse is being dragged while in zoomRect mode. Update the zoom rectangle
     func mouseDraggedWithZoomRect(event:NSEvent)
     {
         let endPoint = self.convert(event.locationInWindow, from: nil)
@@ -1703,6 +1729,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         self.needsDisplay = true
     }
     
+    // The mouse was clicked while in removeConnector mode. Remove the connection and call SetUpConnectors to update the connectors that are displayed.
     func mouseDownWithRemoveConnector(event:NSEvent) {
         
         let clickPoint = self.convert(event.locationInWindow, from: nil)
@@ -1713,6 +1740,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 
                 nextViewConnector.segments.from.RemoveConnection(connection: Segment.Connection(segment: nextViewConnector.segments.to, connector: nextViewConnector.connector))
                 
+                // add all the non-touched segments to the maskSegment array so that the SetUpConnectors call goes quickly
                 var maskSegments:[Segment] = []
                 for nextSegmentPath in self.segments {
                     
@@ -1722,10 +1750,9 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                     }
                 }
                 
-                // print("Total segments: \(self.segments.count); Masked segments:\(maskSegments.count)")
-                
                 guard let segmentPath = self.segments.first(where: {$0.segment == nextViewConnector.segments.from}) else {
                     
+                    // this shouldn't happen
                     DLog("Problem!")
                     break
                 }
@@ -1755,6 +1782,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
     }
     
+    // The mouse was clicked while in addImpulse mode. Check if the clicked point is a valid location and if so, add the impulse connection and show it
     func mouseDownWithAddImpulse(event:NSEvent) {
         
         let clickPoint = self.convert(event.locationInWindow, from: nil)
@@ -1800,6 +1828,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         self.needsDisplay = true
     }
     
+    // The mouse was clicked while in addGround mode. Check if the clicked point is a valid location and if so, add the ground connection and show it
     func mouseDownWithAddGround(event:NSEvent) {
         
         let clickPoint = self.convert(event.locationInWindow, from: nil)
@@ -1846,6 +1875,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         self.needsDisplay = true
     }
     
+    // The user clicked down on the mouse while in addConnector mode. If the click is at a valid location, set the addConnectionStartConnector and addConnectionStartPoint so that we can track the new connector
     func mouseDownWithAddConnection(event:NSEvent) {
         
         let clickPoint = self.convert(event.locationInWindow, from: nil)
@@ -1864,12 +1894,10 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
     }
     
+    // The user clicked the mouse while in selectSegment mode. Check if the click was in a segment and if so, highlight it. If the user was holding down the shift key while clicking, add the segment to the set of current segments, otherwise erase the set of current segments and add the new one to it. If the segment is already selected, de-select it (remove it from the set of current segments).
     func mouseDownWithSelectSegment(event:NSEvent)
     {
         let clickPoint = self.convert(event.locationInWindow, from: nil)
-        // print("Point:\(clickPoint)")
-        // let clipBounds = self.convert(self.superview!.bounds, from: self.superview!)
-        // print("Clip view: Bounds: \(clipBounds)")
         
         if !event.modifierFlags.contains(.shift) {
         
@@ -1911,6 +1939,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         self.needsDisplay = true
     }
     
+    // The user clicked the mouse while in zoomRect mode. Start tracking the zoom rectangle
     func mouseDownWithZoomRect(event:NSEvent)
     {
         let eventLocation = event.locationInWindow
@@ -1949,7 +1978,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     }
     
     // MARK: Zoom Functions
-    // transformer display zoom functions
+
+    // Zoom the view so that we see the entire model (ie: zoom to the core window)
     func handleZoomAll(coreRadius:CGFloat, windowHt:CGFloat, tankWallR:CGFloat)
     {
         guard let parentView = self.superview else
@@ -1957,26 +1987,23 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             return
         }
         
+        // find the center point of the view, then set the magnification of the scrollView to 1, centered on that point
         let contentCenter = NSPoint(x: self.scrollView.contentView.bounds.origin.x + self.scrollView.contentView.bounds.width / 2.0, y: self.scrollView.contentView.bounds.origin.y + self.scrollView.contentView.bounds.height / 2.0)
         self.scrollView.setMagnification(1.0, centeredAt: contentCenter)
         
-        // print("ScrollView bounds: \(self.scrollView.bounds)")
-        // print("ScrollView magnification: \(self.scrollView.magnification)")
-        // print("ClipView bounds: \(parentView.bounds)")
-        
-        // parentView.frame = self.scrollView.bounds
+        // set our frame to the clipView's bounds
         self.frame = parentView.bounds
+        
         // aspectRatio is defined as width/height
         // it is assumed that the window height (z) is ALWAYS the dominant dimension compared to the "half tank-width" in the r-direction
         let aspectRatio = parentView.bounds.width / parentView.bounds.height
         let boundsW = windowHt * aspectRatio
         
+        // Set the display rectangle to be equal to the core window - don't forget to multiply everything by dimensionMultiplier so that it shows up correctly
         let newRect = NSRect(x: coreRadius, y: 0.0, width: boundsW, height: windowHt) * dimensionMultiplier
         
+        // and set the new bounds rectangle
         self.bounds = newRect
-        
-        // print("Self bounds: \(self.bounds)")
-        // print("ClipView bounds: \(parentView.bounds)")
         
         self.boundary = self.bounds
         
@@ -1990,6 +2017,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     func handleZoomOut()
     {
+        // Define the center of the new view and multiply the current scrollView magnification by the zoomRatio global to get the new view rectangle
         let contentCenter = NSPoint(x: self.scrollView.contentView.bounds.origin.x + self.scrollView.contentView.bounds.width / 2.0, y: self.scrollView.contentView.bounds.origin.y + self.scrollView.contentView.bounds.height / 2.0)
         self.scrollView.setMagnification(scrollView.magnification * zoomRatio, centeredAt: contentCenter)
         self.needsDisplay = true
@@ -1997,7 +2025,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     func handleZoomIn()
     {
-        
+        // Define the center of the new view and divide the current scrollView magnification by the zoomRatio global to get the new view rectangle
         let contentCenter = NSPoint(x: self.scrollView.contentView.bounds.origin.x + self.scrollView.contentView.bounds.width / 2.0, y: self.scrollView.contentView.bounds.origin.y + self.scrollView.contentView.bounds.height / 2.0)
         self.scrollView.setMagnification(scrollView.magnification / zoomRatio, centeredAt: contentCenter)
         self.needsDisplay = true
@@ -2010,17 +2038,17 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         // Get the width/height ratio of self.bounds
         let reqWidthHeightRatio = self.bounds.width / self.bounds.height
-        // Fix the zRect
+        // Fix the zoomRect using my ForceAspectRatioAndNormalize routine (found in GlobalDefs)
         let newBoundsRect = ForceAspectRatioAndNormalize(srcRect: zRect, widthOverHeightRatio: reqWidthHeightRatio)
+        // calculate the required zoom factor
         let zoomFactor = newBoundsRect.width / self.bounds.width
         
+        // find the new center
         let clipView = self.scrollView.contentView
         let contentCenter = NSPoint(x: newBoundsRect.origin.x + newBoundsRect.width / 2, y: newBoundsRect.origin.y + newBoundsRect.height / 2)
         
+        // set the magnification (it is guaranteed to be a "zoom in") and center it at the new center point
         self.scrollView.setMagnification(scrollView.magnification / zoomFactor, centeredAt: clipView.convert(contentCenter, from: self))
         self.needsDisplay = true
     }
-    
-
-    
 }
