@@ -396,35 +396,32 @@ class Segment: Codable, Equatable {
         return result
     }
     
-    /// Remove the given connection and its reverse (if it exists). It is the calling routine's responsibility to check (and remove as necessary) any other connections that woiuld effectively keep the bad connector in place. Note that "floating" connections are not removed. If thec connection is to ground or impulse, the connection is converted to a floating connection.
-    func RemoveConnection(connection:Segment.Connection) {
+    /// Remove the given connection and all of it's iterations (from connected segments, etc), except for segments in the maskSegments array.. If the connection is to ground or impulse, the connection is converted to a floating connection.
+    func RemoveConnection(connection:Segment.Connection, maskSegments:[Segment] = []) {
         
         if connection.connector.toLocation == .floating {
             
             return
         }
         
-        guard let connectionIndex = self.connections.firstIndex(where: { $0 == connection }) else {
+        // Get all the destinations that the starting connector goes to, then remove any that are in maskSegments (also remove any that end at ground, impulse, or floating).
+        var startDestinations = self.ConnectionDestinations(fromLocation: connection.connector.fromLocation)
+        startDestinations.removeAll(where: {
             
-            return
-        }
-        
-        if let otherSegment = connection.segment {
-            
-            let otherConnection = Segment.Connection(segment: self, connector: Connector(fromLocation: connection.connector.toLocation, toLocation: connection.connector.fromLocation))
-            if let otherConnectionIndex = otherSegment.connections.firstIndex(where: { $0 == otherConnection }) {
+            if let destSegment = $0.segment {
                 
-                otherSegment.connections.remove(at: otherConnectionIndex)
+                return maskSegments.contains(destSegment)
             }
-        }
-        
-        self.connections.remove(at: connectionIndex)
-        
-        if connection.connector.toLocation == .ground || connection.connector.toLocation == .impulse {
             
-            let floatingConnection = Connection(segment: nil, connector: Connector(fromLocation: connection.connector.fromLocation, toLocation: .floating))
-            self.connections.append(floatingConnection)
-        }
+            return true
+        })
+        
+        // Do the same thing for the other end of the connection
+        var otherDestinations:[(segment:Segment?, location:Connector.Location)] = connection.segment == nil ? [] : connection.segment!.ConnectionDestinations(fromLocation: connection.connector.toLocation)
+        
+        
+        
+        
         
     }
     
