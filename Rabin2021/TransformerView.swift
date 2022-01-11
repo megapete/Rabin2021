@@ -1734,47 +1734,35 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         let clickPoint = self.convert(event.locationInWindow, from: nil)
                 
-        for (fromIndex, nextViewConnector) in self.viewConnectors.enumerated() {
+        for nextViewConnector in self.viewConnectors {
             
             if nextViewConnector.hitZone.contains(clickPoint) {
                 
                 // var removeMask:[Segment] = []
-                nextViewConnector.segments.from.RemoveConnection(connection: Segment.Connection(segment: nextViewConnector.segments.to, connector: nextViewConnector.connector))
+                let affectedSegments = nextViewConnector.segments.from.RemoveConnection(connection: Segment.Connection(segment: nextViewConnector.segments.to, connector: nextViewConnector.connector))
                 
                 // add all the non-touched segments to the maskSegment array so that the SetUpConnectors call goes quickly
                 var maskSegments:[Segment] = []
                 for nextSegmentPath in self.segments {
                     
-                    if nextSegmentPath.segment != nextViewConnector.segments.from && nextSegmentPath.segment != nextViewConnector.segments.to {
+                    if !affectedSegments.contains(nextSegmentPath.segment) {
                         
                         maskSegments.append(nextSegmentPath.segment)
                     }
                 }
                 
-                guard let segmentPath = self.segments.first(where: {$0.segment == nextViewConnector.segments.from}) else {
-                    
-                    // this shouldn't happen
-                    DLog("Problem!")
-                    break
-                }
+                self.viewConnectors.removeAll(where: { affectedSegments.contains($0.segments.from) || ($0.segments.to != nil && affectedSegments.contains($0.segments.to!)) })
                 
-                self.viewConnectors.remove(at: fromIndex)
-                
-                // we just altered the self.viewConnectors array, so we need to search for the other segment (if any)
-                if let toSegment = nextViewConnector.segments.to {
+                for nextChangedSegment in affectedSegments {
                     
-                    if let toIndex = self.viewConnectors.firstIndex(where: { $0.segments.from == toSegment}) {
+                    if let changedIndex = self.segments.firstIndex(where: { $0.segment == nextChangedSegment }) {
                         
-                        self.viewConnectors.remove(at: toIndex)
-                        
-                        if let toPath = self.segments.first(where: { $0.segment == toSegment}) {
-                            
-                            toPath.SetUpConnectors(maskSegments: maskSegments)
-                        }
+                        self.segments[changedIndex].SetUpConnectors(maskSegments: maskSegments)
+                        // maskSegments.append(nextChangedSegment)
                     }
                 }
                 
-                segmentPath.SetUpConnectors(maskSegments: maskSegments)
+                // segmentPath.SetUpConnectors(maskSegments: maskSegments)
                 self.needsDisplay = true
                 break
             }

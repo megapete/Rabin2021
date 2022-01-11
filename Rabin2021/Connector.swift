@@ -65,6 +65,11 @@ struct Connector:Codable {
         }
     }
     
+    func Inverse() -> Connector {
+        
+        return Connector(fromLocation: self.toLocation, toLocation: self.fromLocation)
+    }
+    
     static func AlternatingLocation(lastLocation:Connector.Location) -> Connector.Location {
         
         if lastLocation == .outside_upper {
