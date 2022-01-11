@@ -397,33 +397,78 @@ class Segment: Codable, Equatable {
     }
     
     /// Remove the given connection and all of it's iterations (from connected segments, etc), except for segments in the maskSegments array.. If the connection is to ground or impulse, the connection is converted to a floating connection.
-    func RemoveConnection(connection:Segment.Connection, maskSegments:[Segment] = []) {
+    func RemoveConnection(connection:Segment.Connection) {
         
-        if connection.connector.toLocation == .floating {
+        self.DoRemoveConnection(connection: connection)
+        // Get all the points that the starting point is connected to, then remove any that are not connected to another segment.
+        var startPoints = self.ConnectionDestinations(fromLocation: connection.connector.fromLocation)
+        startPoints.removeAll(where: { $0.segment == nil })
+        
+        let endPoints:[(segment:Segment?, location:Connector.Location)] = connection.segment == nil ? [] : connection.segment!.ConnectionDestinations(fromLocation: connection.connector.toLocation)
+        
+        // Get rid of the end point connections that go back to one of the start points. Note that startPoints may be empty if the only 'start' was self
+        if startPoints.count == 0 {
+            
+            for nextEndPoint in endPoints {
+                
+                let badConnection = Segment.Connection(segment: self, connector: Connector(fromLocation: nextEndPoint.location, toLocation: connection.connector.fromLocation))
+                nextEndPoint.segment!.DoRemoveConnection(connection: badConnection)
+            }
+        }
+        else {
+            
+            for nextEndPoint in endPoints {
+                
+                for nextStartPoint in startPoints {
+                    
+                    let badConnection = Segment.Connection(segment: nextStartPoint.segment, connector: Connector(fromLocation: nextEndPoint.location, toLocation: nextStartPoint.location))
+                    nextEndPoint.segment!.DoRemoveConnection(connection: badConnection)
+                }
+            }
+        }
+        
+        // getting rid of the connections from the start points is complicated by the fact that the end point might actually be ground/impulse/floating
+        if endPoints.count == 0 {
+            
+            for nextStartPoint in startPoints {
+                
+                let badConnection = Segment.Connection(segment: nil, connector: Connector(fromLocation: nextStartPoint.location, toLocation: connection.connector.toLocation))
+                nextStartPoint.segment!.DoRemoveConnection(connection: badConnection)
+            }
+        }
+        else {
+            
+            for nextStartPoint in startPoints {
+                
+                for nextEndPoint in endPoints {
+                    
+                    let badConnection = Segment.Connection(segment: nextEndPoint.segment, connector: Connector(fromLocation: nextStartPoint.location, toLocation: nextEndPoint.location))
+                    nextStartPoint.segment!.DoRemoveConnection(connection: badConnection)
+                }
+            }
+        }
+    }
+    
+    /// A private function that actually removes a connection from this Segment. Calling routines should call the RemoveConnection() function to make sure all related connections are also removed. If the connection that is passed to the routine does not exist, the routine does nothing. If the connecion is to ground or impulse, it is basically converted to floating. If the connection is floating, the routine does nothing,
+    private func DoRemoveConnection(connection:Segment.Connection) {
+        
+        let toLocation = connection.connector.toLocation
+        
+        if toLocation == .floating {
             
             return
         }
         
-        // Get all the destinations that the starting connector goes to, then remove any that are in maskSegments (also remove any that end at ground, impulse, or floating).
-        var startDestinations = self.ConnectionDestinations(fromLocation: connection.connector.fromLocation)
-        startDestinations.removeAll(where: {
+        self.connections.removeAll(where: { $0 == connection })
+        
+        if toLocation == .impulse || toLocation == .ground {
             
-            if let destSegment = $0.segment {
-                
-                return maskSegments.contains(destSegment)
-            }
-            
-            return true
-        })
-        
-        // Do the same thing for the other end of the connection
-        var otherDestinations:[(segment:Segment?, location:Connector.Location)] = connection.segment == nil ? [] : connection.segment!.ConnectionDestinations(fromLocation: connection.connector.toLocation)
-        
-        
-        
-        
+            let newConnection = Segment.Connection(segment: connection.segment, connector: Connector(fromLocation: connection.connector.fromLocation, toLocation: .floating))
+            self.connections.append(newConnection)
+        }
         
     }
+    
     
     /// Add a connector to the segment at the given fromLocation. The toLocation parameter depends on the toSegment parameter:
     /// If toSegment is not nil, then toLocation refers to the location on the toSegment. This routine will also add the inverse connector to the toSegment

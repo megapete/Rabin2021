@@ -1738,6 +1738,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             
             if nextViewConnector.hitZone.contains(clickPoint) {
                 
+                // var removeMask:[Segment] = []
                 nextViewConnector.segments.from.RemoveConnection(connection: Segment.Connection(segment: nextViewConnector.segments.to, connector: nextViewConnector.connector))
                 
                 // add all the non-touched segments to the maskSegment array so that the SetUpConnectors call goes quickly
