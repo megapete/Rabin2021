@@ -10,7 +10,7 @@
 import Foundation
 
 /// A Segment is, at its most basic, a collection of BasicSections. The collection MUST be from the same Winding and it must represent an axially contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (for disc coils, only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed). Static rings and radial shields are special Segments - creation routines (class functions) are provided for each.
-class Segment: Codable, Equatable {
+class Segment: Codable, Equatable, Hashable {
     
     /// flag used during debugging to identify a Segment for a breakpoint
     var debugFlag = false
@@ -38,6 +38,11 @@ class Segment: Codable, Equatable {
     static func == (lhs: Segment, rhs: Segment) -> Bool {
         
         return lhs.serialNumber == rhs.serialNumber
+    }
+    
+    func hash(into hasher: inout Hasher) {
+        
+        hasher.combine(self.serialnumberStore)
     }
     
     /// Global storage for the next serial number to assign
@@ -149,7 +154,32 @@ class Segment: Codable, Equatable {
         
         var segment:Segment?
         var connector:Connector
-        var equivalentConnections:[Connection] = []
+        
+        private var equivalentConnections:[Connection] = [] {
+            
+            didSet {
+                
+                var noDupes:[Connection] = []
+                
+                for nextConn in self.equivalentConnections {
+                    
+                    if !noDupes.contains(nextConn) {
+                        
+                        noDupes.append(nextConn)
+                    }
+                }
+                
+                self.equivalentConnections = noDupes
+            }
+        }
+        
+        // The struct requires an explicitly defined initializer due to the private var above (its a Swift thing)
+        init(segment:Segment?, connector:Connector, equivalentConnections:[Connection] = []) {
+            
+            self.segment = segment
+            self.connector = connector
+            self.equivalentConnections = equivalentConnections
+        }
     }
     
     /// The connections to the Segment
@@ -505,20 +535,26 @@ class Segment: Codable, Equatable {
     /// If toSegment is nil, then the behaviour of the routine is as follows:
     /// If toLocation is .ground or .impulse and self.connection has a connection with a fromLocation the same as the parameter, and a toLocation equal to .floating, that connector is changed to the new connector definition.
     /// If toLocation is .ground, or .impulse, or .floating, and self.connection does not have a corresponding .floating connector, then the new connector is added to self.connections.
-    func AddConnector(fromLocation:Connector.Location, toLocation:Connector.Location, toSegment:Segment?) {
+    /// - Returns: If toSegment is non-nil, the function returns an array of the two equivalent connections that were created; otherwise an empty array
+    func AddConnector(fromLocation:Connector.Location, toLocation:Connector.Location, toSegment:Segment?) -> [Segment.Connection] {
         
         if let otherSegment = toSegment {
             
             // don't create a connector to self
             if otherSegment == self {
                 
-                return
+                return []
             }
             
             let newSelfConnection = Connection(segment: otherSegment, connector: Connector(fromLocation: fromLocation, toLocation: toLocation))
             self.connections.append(newSelfConnection)
             let newOtherConnection = Connection(segment: self, connector: Connector(fromLocation: toLocation, toLocation: fromLocation))
             otherSegment.connections.append(newOtherConnection)
+            
+            self.AddEquivalentConnections(to: newSelfConnection, equ: [newOtherConnection])
+            otherSegment.AddEquivalentConnections(to: newOtherConnection, equ: [newSelfConnection])
+            
+            return [newSelfConnection, newOtherConnection]
         }
         else if let existingFloatingIndex = self.connections.firstIndex(where: {$0.connector.fromLocation == fromLocation && $0.connector.toLocation == .floating}) {
             
@@ -528,12 +564,14 @@ class Segment: Codable, Equatable {
         else if (toLocation == .ground || toLocation == .impulse) && (self.connections.first(where: {$0.connector.toLocation == .ground}) != nil || self.connections.first(where: {$0.connector.toLocation == .impulse}) != nil) {
             
             // already grounded or impulsed, ignore and return
-            return
+            return []
         }
         else {
             
             self.connections.append(Connection(segment: nil, connector: Connector(fromLocation: fromLocation, toLocation: toLocation)))
         }
+        
+        return []
     }
     
     func SegmentSeriesCapacitance(axialGaps:(below:Double, above:Double)?, radialGaps:(inside:Double, outside:Double)?) throws -> Double {

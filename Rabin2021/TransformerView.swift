@@ -1640,7 +1640,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 }
             }
         }
-        // The user has finished adding a connection. If teh end-point is a valid connection point, add the new conenctor to the model.
+        // The user has finished adding a connection. If the end-point is a valid connection point, add the new conenctor to the model.
         else if self.mode == .addConnection, let startConnector = self.addConnectionStartConnector {
             
             let endPoint = self.convert(event.locationInWindow, from: nil)
@@ -1657,13 +1657,19 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                     endConnections.removeAll(where: { $0.segment == nil })
                     endConnections.insert((nextViewConnector.segments.from, nextViewConnector.connector.fromLocation), at: 0)
                     
+                    var newConnectionDict:[Segment:[Segment.Connection]] = [:]
+                    
                     for nextStartConnection in startConnections {
                         
                         for nextEndConnection in endConnections {
                             
-                            nextStartConnection.segment!.AddConnector(fromLocation: nextStartConnection.location, toLocation: nextEndConnection.location, toSegment: nextEndConnection.segment)
+                            let newConnections = nextStartConnection.segment!.AddConnector(fromLocation: nextStartConnection.location, toLocation: nextEndConnection.location, toSegment: nextEndConnection.segment)
+                            
+                            
                         }
                     }
+                    
+                    
                     
                     guard let startSegmentPath = self.segments.first(where: {$0.segment == startConnector.segments.from}) else {
                         
