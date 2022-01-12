@@ -1657,7 +1657,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                     endConnections.removeAll(where: { $0.segment == nil })
                     endConnections.insert((nextViewConnector.segments.from, nextViewConnector.connector.fromLocation), at: 0)
                     
-                    var newConnectionDict:[Segment:[Segment.Connection]] = [:]
+                    var equivalentConnections:Set<Segment.Connection.EquivalentConnection> = []
                     
                     for nextStartConnection in startConnections {
                         
@@ -1665,11 +1665,21 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                             
                             let newConnections = nextStartConnection.segment!.AddConnector(fromLocation: nextStartConnection.location, toLocation: nextEndConnection.location, toSegment: nextEndConnection.segment)
                             
+                            guard let newSrcConnection = newConnections.from, let newDestConnection = newConnections.to else {
+                                
+                                ALog("FUCK!")
+                                return
+                            }
                             
+                            equivalentConnections.insert(Segment.Connection.EquivalentConnection(parent: nextStartConnection.segment!, connection: newSrcConnection))
+                            equivalentConnections.insert(Segment.Connection.EquivalentConnection(parent: nextEndConnection.segment!, connection: newDestConnection))
                         }
                     }
                     
-                    
+                    for nextConnection in equivalentConnections {
+                        
+                        nextConnection.parent.AddEquivalentConnections(to: nextConnection.connection, equ: equivalentConnections)
+                    }
                     
                     guard let startSegmentPath = self.segments.first(where: {$0.segment == startConnector.segments.from}) else {
                         

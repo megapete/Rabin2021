@@ -270,7 +270,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                         let outgoingConnection = Segment.Connection(segment: newSegment, connector: outgoingConnector)
                         prevSegment.connections.append(outgoingConnection)
                         // The outgoingConnection of the previous section is equivalent to the incomingConnection of this section, so mark it as such
-                        newSegment.AddEquivalentConnections(to: incomingConnection, equ: [outgoingConnection])
+                        newSegment.AddEquivalentConnections(to: incomingConnection, equ: [Segment.Connection.EquivalentConnection(parent: prevSegment, connection: outgoingConnection)])
                     }
                     
                     // set up the connector for the outgoing connection next time through the loop

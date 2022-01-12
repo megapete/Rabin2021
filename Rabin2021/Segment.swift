@@ -126,7 +126,7 @@ class Segment: Codable, Equatable, Hashable {
     var rect:NSRect
     
     /// Simple struct for connections. These work as follows: if the 'segment' property is nil, the connector property should have a 'fromLocation' at the actual location on self, and a 'toConnector' of one of the special connectors (floating, impulse, or ground). If, on the other hand, 'segment' is non-nil, then the fromLocation is still at the actual location on self, and toLocation is the actual location on 'segment'.
-    struct Connection:Codable, Equatable {
+    struct Connection:Codable, Equatable, Hashable {
         
         static func == (lhs: Segment.Connection, rhs: Segment.Connection) -> Bool {
             
@@ -152,34 +152,22 @@ class Segment: Codable, Equatable, Hashable {
             return true
         }
         
+        func hash(into hasher: inout Hasher) {
+            
+            hasher.combine(self.segment)
+            hasher.combine(self.connector)
+        }
+        
         var segment:Segment?
         var connector:Connector
         
-        private var equivalentConnections:[Connection] = [] {
+        struct EquivalentConnection:Codable, Equatable, Hashable {
             
-            didSet {
-                
-                var noDupes:[Connection] = []
-                
-                for nextConn in self.equivalentConnections {
-                    
-                    if !noDupes.contains(nextConn) {
-                        
-                        noDupes.append(nextConn)
-                    }
-                }
-                
-                self.equivalentConnections = noDupes
-            }
+            let parent:Segment
+            let connection:Connection
         }
         
-        // The struct requires an explicitly defined initializer due to the private var above (its a Swift thing)
-        init(segment:Segment?, connector:Connector, equivalentConnections:[Connection] = []) {
-            
-            self.segment = segment
-            self.connector = connector
-            self.equivalentConnections = equivalentConnections
-        }
+        var equivalentConnections:Set<EquivalentConnection> = []
     }
     
     /// The connections to the Segment
@@ -427,20 +415,16 @@ class Segment: Codable, Equatable, Hashable {
         return result
     }
     
-    /// Add the collection of Connections as 'equivalent connections' to the given Connection. If the 'to' parameter is in the 'equ' array, it is ignored. If 'to' does not exist, the function does nothing.
-    func AddEquivalentConnections(to:Connection, equ:[Connection]) {
+    /// Add the Set of Connections as 'equivalent connections' to the given Connection. If the 'to' parameter is in the 'equ' array, it is ignored. If 'to' does not exist, the function does nothing.
+    func AddEquivalentConnections(to:Connection, equ:Set<Connection.EquivalentConnection>) {
         
         guard let connIndex = self.connections.firstIndex(where: { $0 == to }) else {
             
             return
         }
         
-        var equConns = equ
-        equConns.removeAll(where: { $0 == to })
-        
-        let newConnection = Connection(segment: to.segment, connector: to.connector, equivalentConnections: equConns)
-        
-        self.connections[connIndex] = newConnection
+        self.connections[connIndex].equivalentConnections.formUnion(equ)
+        self.connections[connIndex].equivalentConnections.remove(Connection.EquivalentConnection(parent: self, connection: to))
     }
     
     /// Remove the given connection and all of it's iterations (from connected segments, etc), except for segments in the maskSegments array.. If the connection is to ground or impulse, the connection is converted to a floating connection.
@@ -535,15 +519,15 @@ class Segment: Codable, Equatable, Hashable {
     /// If toSegment is nil, then the behaviour of the routine is as follows:
     /// If toLocation is .ground or .impulse and self.connection has a connection with a fromLocation the same as the parameter, and a toLocation equal to .floating, that connector is changed to the new connector definition.
     /// If toLocation is .ground, or .impulse, or .floating, and self.connection does not have a corresponding .floating connector, then the new connector is added to self.connections.
-    /// - Returns: If toSegment is non-nil, the function returns an array of the two equivalent connections that were created; otherwise an empty array
-    func AddConnector(fromLocation:Connector.Location, toLocation:Connector.Location, toSegment:Segment?) -> [Segment.Connection] {
+    /// - Returns: If toSegment is non-nil, the function returns tuple of the one or two equivalent connections that were created; otherwise it returns both nil
+    func AddConnector(fromLocation:Connector.Location, toLocation:Connector.Location, toSegment:Segment?) -> (from:Segment.Connection?, to:Segment.Connection?) {
         
         if let otherSegment = toSegment {
             
             // don't create a connector to self
             if otherSegment == self {
                 
-                return []
+                return (nil, nil)
             }
             
             let newSelfConnection = Connection(segment: otherSegment, connector: Connector(fromLocation: fromLocation, toLocation: toLocation))
@@ -551,27 +535,30 @@ class Segment: Codable, Equatable, Hashable {
             let newOtherConnection = Connection(segment: self, connector: Connector(fromLocation: toLocation, toLocation: fromLocation))
             otherSegment.connections.append(newOtherConnection)
             
-            self.AddEquivalentConnections(to: newSelfConnection, equ: [newOtherConnection])
-            otherSegment.AddEquivalentConnections(to: newOtherConnection, equ: [newSelfConnection])
+            self.AddEquivalentConnections(to: newSelfConnection, equ: [Connection.EquivalentConnection(parent: otherSegment, connection: newOtherConnection)])
+            otherSegment.AddEquivalentConnections(to: newOtherConnection, equ: [Connection.EquivalentConnection(parent: self, connection: newSelfConnection)])
             
-            return [newSelfConnection, newOtherConnection]
+            return (newSelfConnection, newOtherConnection)
         }
         else if let existingFloatingIndex = self.connections.firstIndex(where: {$0.connector.fromLocation == fromLocation && $0.connector.toLocation == .floating}) {
             
             self.connections.remove(at: existingFloatingIndex)
-            self.connections.append(Connection(segment: nil, connector: Connector(fromLocation: fromLocation, toLocation: toLocation)))
+            let newSelfConnection = Connection(segment: nil, connector: Connector(fromLocation: fromLocation, toLocation: toLocation))
+            self.connections.append(newSelfConnection)
+            return (newSelfConnection, nil)
         }
         else if (toLocation == .ground || toLocation == .impulse) && (self.connections.first(where: {$0.connector.toLocation == .ground}) != nil || self.connections.first(where: {$0.connector.toLocation == .impulse}) != nil) {
             
             // already grounded or impulsed, ignore and return
-            return []
+            return (nil, nil)
         }
         else {
             
-            self.connections.append(Connection(segment: nil, connector: Connector(fromLocation: fromLocation, toLocation: toLocation)))
+            // add a new termination at a non-floating location
+            let newSelfConnection = Connection(segment: nil, connector: Connector(fromLocation: fromLocation, toLocation: toLocation))
+            self.connections.append(newSelfConnection)
+            return (newSelfConnection, nil)
         }
-        
-        return []
     }
     
     func SegmentSeriesCapacitance(axialGaps:(below:Double, above:Double)?, radialGaps:(inside:Double, outside:Double)?) throws -> Double {
