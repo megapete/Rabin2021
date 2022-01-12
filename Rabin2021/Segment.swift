@@ -149,6 +149,7 @@ class Segment: Codable, Equatable {
         
         var segment:Segment?
         var connector:Connector
+        var equivalentConnections:[Connection] = []
     }
     
     /// The connections to the Segment
@@ -396,6 +397,22 @@ class Segment: Codable, Equatable {
         return result
     }
     
+    /// Add the collection of Connections as 'equivalent connections' to the given Connection. If the 'to' parameter is in the 'equ' array, it is ignored. If 'to' does not exist, the function does nothing.
+    func AddEquivalentConnections(to:Connection, equ:[Connection]) {
+        
+        guard let connIndex = self.connections.firstIndex(where: { $0 == to }) else {
+            
+            return
+        }
+        
+        var equConns = equ
+        equConns.removeAll(where: { $0 == to })
+        
+        let newConnection = Connection(segment: to.segment, connector: to.connector, equivalentConnections: equConns)
+        
+        self.connections[connIndex] = newConnection
+    }
+    
     /// Remove the given connection and all of it's iterations (from connected segments, etc), except for segments in the maskSegments array.. If the connection is to ground or impulse, the connection is converted to a floating connection.
     /// - Returns: An array of all the Segments that were affected by the operation
     func RemoveConnection(connection:Segment.Connection) -> [Segment] {
@@ -412,10 +429,14 @@ class Segment: Codable, Equatable {
         let _ = destSegment.DoRemoveConnection(connection: Segment.Connection(segment: self, connector: connection.connector.Inverse()))
         
         // get all the points that are connected to the start segment/location
-        let startDestinations = self.ConnectionDestinations(fromLocation: connection.connector.fromLocation)
+        var startDestinations = self.ConnectionDestinations(fromLocation: connection.connector.fromLocation)
+        startDestinations.append((self, connection.connector.fromLocation))
+        startDestinations.removeAll(where: { $0.segment != nil && $0.segment! == destSegment })
         
         // get all the points that are connected to the end segment/location
-        let endDestinations = destSegment.ConnectionDestinations(fromLocation: connection.connector.toLocation)
+        var endDestinations = destSegment.ConnectionDestinations(fromLocation: connection.connector.toLocation)
+        endDestinations.append((destSegment, connection.connector.toLocation))
+        endDestinations.removeAll(where: { $0.segment != nil && $0.segment! == self})
         
         for nextStart in startDestinations {
             

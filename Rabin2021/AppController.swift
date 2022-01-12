@@ -261,12 +261,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                     let newSegment = try Segment(basicSections: [nextSection],  realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentWindowMultiplier * self.currentCore!.realWindowHeight)
                     
                     // The "incoming" connection
-                    newSegment.connections.append(Segment.Connection(segment: lastSegment, connector: incomingConnector))
+                    let incomingConnection = Segment.Connection(segment: lastSegment, connector: incomingConnector, equivalentConnections: [])
+                    newSegment.connections.append(incomingConnection)
                     
                     // The "outgoing" connection for the previous Segment
                     if let prevSegment = lastSegment {
                         
-                        prevSegment.connections.append(Segment.Connection(segment: newSegment, connector: outgoingConnector))
+                        let outgoingConnection = Segment.Connection(segment: newSegment, connector: outgoingConnector)
+                        prevSegment.connections.append(outgoingConnection)
                     }
                     
                     // set up the connector for the outgoing connection next time through the loop
