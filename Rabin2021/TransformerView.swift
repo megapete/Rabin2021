@@ -1754,18 +1754,43 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             
             if nextViewConnector.hitZone.contains(clickPoint) {
                 
+                guard let appCtrl = self.appController, let model = appCtrl.currentModel else {
+                    
+                    return
+                }
+                
                 // var removeMask:[Segment] = []
                 let affectedSegments = nextViewConnector.segments.from.RemoveConnection(connection: Segment.Connection(segment: nextViewConnector.segments.to, connector: nextViewConnector.connector))
+                
+                // we will be removing ALL the ViewConnectors that are associated with the affected Segments. Since we show the ViewConnectors in a way that keeps "moving forward" (up), we need to also keep the previous segments (as long as they are on the same coil) out of thh maskSegments array
+                var adjacentSegments:[Segment] = []
+                for nextAffectedSegment in affectedSegments {
+                    
+                    if let adjSegs = try? model.AxiallyAdjacentSegments(to: nextAffectedSegment) {
+                        
+                        if let belowAdj = adjSegs.below {
+                            
+                            adjacentSegments.append(belowAdj)
+                        }
+                        
+                        if let aboveAdj = adjSegs.above {
+                            
+                            adjacentSegments.append(aboveAdj)
+                        }
+                    }
+                }
                 
                 // add all the non-touched segments to the maskSegment array so that the SetUpConnectors call goes quickly
                 var maskSegments:[Segment] = []
                 for nextSegmentPath in self.segments {
                     
-                    if !affectedSegments.contains(nextSegmentPath.segment) {
+                    if !affectedSegments.contains(nextSegmentPath.segment) && !adjacentSegments.contains(nextSegmentPath.segment) {
                         
                         maskSegments.append(nextSegmentPath.segment)
                     }
                 }
+                
+                
                 
                 self.viewConnectors.removeAll(where: { affectedSegments.contains($0.segments.from) || ($0.segments.to != nil && affectedSegments.contains($0.segments.to!)) })
                 

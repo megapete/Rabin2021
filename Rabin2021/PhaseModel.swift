@@ -217,6 +217,26 @@ class PhaseModel:Codable {
         return abs(seg1index - seg2index) == 1
     }
     
+    /// Function to return the axially adjacent Segments below and above the given Segment
+    func AxiallyAdjacentSegments(to:Segment) throws -> (below:Segment?, above:Segment?) {
+        
+        do {
+            
+            let segmentIndex = try self.SegmentIndex(segment: to)
+            let belowIndex = segmentIndex - 1
+            let aboveIndex = segmentIndex == self.segments.count - 1 ? -1 : segmentIndex + 1
+            
+            let belowSegment:Segment? = belowIndex < 0 ? nil : self.segments[belowIndex]
+            let aboveSegment:Segment? = aboveIndex < 0 ? nil : self.segments[aboveIndex]
+            
+            return (belowSegment, aboveSegment)
+        }
+        catch {
+            
+            throw error
+        }
+    }
+    
     /// A routine to change the connectors in the model when newSegment(s) take(s) the place of oldSegment(s). It is assumed that the Segment arrays are contiguous and in order. The count of oldSegments must be a multiple of newSegments or the count of newSegmenst must be a multiple of oldSegments.  If both arguments only have a single Segment, it is assumed that the one in newSegment replaces the one in oldSegment. It is further assumed that the new Segments have _NOT_ been added to the model yet, but will be soon after calling this function. Any connector references to oldSegments that should be set to newSegments will be replaced in the model - however, the model itself (ie: the array of Segments in segmentStore) will not be changed.
     ///  - Note: If there is only a single oldSegment, only adjacent-segment connections are retained, and connections to non-Segments (like ground, etc) are trashed.
     func UpdateConnectors(oldSegments:[Segment], newSegments:[Segment]) throws {
