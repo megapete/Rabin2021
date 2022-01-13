@@ -428,61 +428,29 @@ class Segment: Codable, Equatable, Hashable {
     }
     
     /// Remove the given connection and all of it's iterations (from connected segments, etc), except for segments in the maskSegments array.. If the connection is to ground or impulse, the connection is converted to a floating connection.
-    /// - Returns: An array of all the Segments that were affected by the operation
-    func RemoveConnection(connection:Segment.Connection) -> [Segment] {
+    /// - Returns: A Set of all the Segments that were affected by the operation
+    func RemoveConnection(connection:Segment.Connection) -> Set<Segment> {
         
-        var result = [self]
-        let _ = self.DoRemoveConnection(connection: connection)
+        var result:Set<Segment> = []
         
-        guard let destSegment = connection.segment else {
+        guard let connIndex = self.connections.firstIndex(where: { $0 == connection }) else {
             
-            return result
+            return []
         }
         
-        result.append(destSegment)
-        let _ = destSegment.DoRemoveConnection(connection: Segment.Connection(segment: self, connector: connection.connector.Inverse()))
-        
-        // get all the points that are connected to the start segment/location
-        var startDestinations = self.ConnectionDestinations(fromLocation: connection.connector.fromLocation)
-        startDestinations.append((self, connection.connector.fromLocation))
-        startDestinations.removeAll(where: { $0.segment != nil && $0.segment! == destSegment })
-        
-        // get all the points that are connected to the end segment/location
-        var endDestinations = destSegment.ConnectionDestinations(fromLocation: connection.connector.toLocation)
-        endDestinations.append((destSegment, connection.connector.toLocation))
-        endDestinations.removeAll(where: { $0.segment != nil && $0.segment! == self})
-        
-        for nextStart in startDestinations {
+        for nextEquivalent in self.connections[connIndex].equivalentConnections {
             
-            guard let startSegment = nextStart.segment else {
-                
-                continue
-            }
+            let removeCheck = nextEquivalent.parent.DoRemoveConnection(connection: nextEquivalent.connection)
             
-            for nextEnd in endDestinations {
+            if removeCheck {
                 
-                guard let endSegment = nextEnd.segment else {
-                    
-                    continue
-                }
-                
-                let badConnector = Connector(fromLocation: nextStart.location, toLocation: nextEnd.location)
-                
-                if startSegment.DoRemoveConnection(connection: Connection(segment: endSegment, connector: badConnector)) {
-                    
-                    if !result.contains(startSegment) {
-                        
-                        result.append(startSegment)
-                    }
-                    
-                    if !result.contains(endSegment) {
-                        
-                        result.append(endSegment)
-                    }
-                }
-                
-                let _ = endSegment.DoRemoveConnection(connection: Connection(segment: startSegment, connector: badConnector.Inverse()))
+                result.insert(nextEquivalent.parent)
             }
+        }
+        
+        if self.DoRemoveConnection(connection: connection) {
+            
+            result.insert(self)
         }
         
         return result
@@ -510,7 +478,7 @@ class Segment: Codable, Equatable, Hashable {
             return true
         }
         
-        return self.connections.count == oldCount
+        return self.connections.count < oldCount
     }
     
     
