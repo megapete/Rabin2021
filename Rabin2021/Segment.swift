@@ -554,6 +554,8 @@ class Segment: Codable, Equatable, Hashable {
                 
                 var nextBelowGap = axialGaps!.below
                 
+                var sectionCount = self.basicSections.count
+                
                 for i in 0..<self.basicSections.count {
                     
                     let nextBasicSection = self.basicSections[i]
@@ -589,7 +591,7 @@ class Segment: Codable, Equatable, Hashable {
         return 1 / result
     }
     
-    /// The series capacitance of a single BasicSection, as caused by the turns of the disc (for continuous-disc windings), double-disc (for interleaved segments) or a single layer (for layer windings). The methods come from (respectively) DelVecchio, Viverka, Huber (ie: me)
+    /// The series capacitance of a single BasicSection, as caused by the turns of the disc (for continuous-disc windings), double-disc (for interleaved segments) or a single layer (for layer windings). For interleaved windings, note that the value returned is the "effective" capacitance of a single disc, which is double the capacitance of the double-disc. It is up to the calling routine to treat the capacitance correctly. The methods come from (respectively) DelVecchio, Veverka, Huber (ie: me)
     func BasicSectionSeriesCapacitance() throws -> Double {
         
         guard !self.isStaticRing else {
@@ -613,8 +615,8 @@ class Segment: Codable, Equatable, Hashable {
             
             if self.wdgType == .disc && self.interleaved {
                 
-                // Viverka method
-                let Cs = Ctt * (self.N - 1) / 2
+                // Veverka method (equation 6.4). This should probably be made more precise using the logic given in DelVecchio where they say that the turn-turn capacitances do not see the full disc voltage (it's actually one turn less voltage per disc). Note that as mentioned in the comment for the function, this is actually double the amount of the double-disc.
+                let Cs = Ctt * (self.N - 1) // divide by 2 to get the double-disc series capacitance value
                 
                 return Cs
             }
