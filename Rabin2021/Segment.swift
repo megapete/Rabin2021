@@ -534,21 +534,10 @@ class Segment: Codable, Equatable, Hashable {
         }
     }
     
-    func SegmentSeriesCapacitance(axialGaps:(below:Double, above:Double)?, radialGaps:(inside:Double, outside:Double)?) throws -> Double {
+    // The 'internal' series capacitance of a Segment. In the case where the Segment is made up of a single BasicSection, this routine returns the Cs from the turns only (for interleaved discs, it returns the Cs of the 'double-disc'). In all other cases, the actual series capacitance for the entire collection of BasicSections is calculated using equation 12.43 from DelVecchio (3rd Ed). The bottom-most and top-most BasicSections in the Segment are treated as "end-discs" and have their Cs calculated per equation 12.63.
+    func SegmentSeriesCapacitance() throws -> Double {
         
-        let axialGapsAreNil = axialGaps == nil
-        let radialGapsAreNil = radialGaps == nil
-        
-        guard !(axialGapsAreNil && radialGapsAreNil) else {
-            
-            throw SegmentError(info: "", type: .AxialAndRadialGapsAreNil)
-        }
-        
-        guard !axialGapsAreNil && radialGapsAreNil && (self.wdgType == .disc || self.wdgType == .helical) || axialGapsAreNil && !radialGapsAreNil  else {
-            
-            throw SegmentError(info: "", type: .IllegalWindingType)
-        }
-        
+        // only disc coils can be interleaved
         guard !self.interleaved || self.wdgType == .disc else {
             
             throw SegmentError(info: "", type: .IllegalInterleavedType)
@@ -558,14 +547,99 @@ class Segment: Codable, Equatable, Hashable {
         
         do {
             
-            let basicSectionCs = try self.BasicSectionSeriesCapacitance()
+            var Cs = try self.BasicSectionSeriesCapacitance()
+            if self.interleaved {
+                
+                Cs /= 2
+            }
             
-            if self.wdgType == .disc || self.wdgType == .helical {
+            if self.wdgType == .sheet {
                 
-                let internalSections = self.basicSections.count / (self.interleaved ? 2 : 1)
+                result = Cs
+            }
+            else if self.wdgType == .disc || self.wdgType == .helical {
+                
+                // the actual number of sections to check depends on if this is an interleaved coil
+                let sectionCount = self.interleaved ? self.basicSections.count / 2 : self.basicSections.count
+                
+                var sum = 0.0
+                
+                // simplest case, just one section (which may be a double-disc interleaved section)
+                if sectionCount == 1 {
+                    
+                    sum = 1 / Cs
+                }
+                else {
+                    
+                    // we'll set the above-gap amount outside of the loop for reasons we'll see inside the loop
+                    var aboveGap = 0.0
+                    for i in 0..<sectionCount {
+                        
+                        // the actual BasicSection index depends on whether this is an interleaved winding
+                        let bsIndex = self.interleaved ? i * 2 + 1 : i
+                        let nextIndex = bsIndex + 1
+                        
+                        // we set the gap below the section to be equal to the previous "aboveGap" (which is why we set it to 0 outside the loop)
+                        let belowGap = aboveGap
+                        // set the aboveGap, depending on whether this is the top-most section, in which case we set it to 0
+                        aboveGap = i < sectionCount - 1 ? self.basicSections[nextIndex].z1 - self.basicSections[bsIndex].z2 : 0.0
+                        // get Cdd
+                        let Cdd = Segment.DiscToDiscSeriesCapacitance(belowGap: belowGap, aboveGap: aboveGap, basicSection: self.basicSections[bsIndex])
+                        
+                        // helical windings are treated very simply (eq 12.41 in DelVecchio 3rd Ed)
+                        if self.wdgType == .helical {
+                            
+                            let useCdd = max(Cdd.below, Cdd.above)
+                            
+                            if useCdd > 0.0 {
+                            
+                                sum += 1.0 / (4.0 / 3.0 * useCdd)
+                            }
+                        }
+                        // The first section is treated as an "end-disc"
+                        else if i == 0 {
+                            
+                            let alpha = sqrt(2 * Cdd.above / Cs)
+                            let Cend = Cs * alpha / tanh(alpha)
+                        
+                            sum += 1 / Cend
+                        }
+                        // the last section is treated as an "end-disc"
+                        else if i == sectionCount - 1 {
+                            
+                            let alpha = sqrt(2 * Cdd.below / Cs)
+                            let Cend = Cs * alpha / tanh(alpha)
+                        
+                            sum += 1 / Cend
+                        }
+                        // everything else is treated as a "general disc" (eq 12.53 in DelVecchio 3rd Ed)
+                        else {
+                            
+                            let CddSum = Cdd.below + Cdd.above
+                            let Ya = Cdd.above / CddSum
+                            let Yb = Cdd.below / CddSum
+                            let alpha = sqrt(2 * (Cdd.above + Cdd.below) / Cs)
+                            
+                            let firstTerm = (Ya * Ya + Yb * Yb) * alpha / tanh(alpha)
+                            let secondTerm = 2 * Ya * Yb * alpha / sinh(alpha)
+                            let thirdTerm = Ya * Yb * alpha * alpha
+                            
+                            let Cgeneral = Cs * (firstTerm + secondTerm + thirdTerm)
+                            
+                            sum += 1 / Cgeneral
+                        }
+                    }
+                }
+                
+                result = 1 / sum
+            }
+            /* else if self.wdgType == .layer {
                 
                 
+            } */
+            else {
                 
+                throw SegmentError(info: "", type: .UnimplementedWdgType)
             }
         }
         catch {
@@ -573,7 +647,7 @@ class Segment: Codable, Equatable, Hashable {
             throw error
         }
         
-        return 1 / result
+        return result
     }
     
     /// Return the Cdd values per DelVecchio equation 12.52 (3rd edition) for the gap above an below the given BasicSection.
@@ -585,14 +659,28 @@ class Segment: Codable, Equatable, Hashable {
         var Cdd_below = ε0 * π * (basicSection.r2 * basicSection.r2 - basicSection.r1 * basicSection.r1)
         var Cdd_above = Cdd_below
         // calculate Cdd for the gap below the segment
-        var firstTerm = fks / ((tp / εPaper) + (belowGap / εBoard))
-        var secondTerm = (1 - fks) / ((tp / εPaper) + (belowGap / εBoard))
-        Cdd_below *= (firstTerm + secondTerm)
+        if belowGap > 0.0 {
+            
+            let firstTerm = fks / ((tp / εPaper) + (belowGap / εBoard))
+            let secondTerm = (1 - fks) / ((tp / εPaper) + (belowGap / εBoard))
+            Cdd_below *= (firstTerm + secondTerm)
+        }
+        else {
+            
+            Cdd_below = 0.0
+        }
         
         // calculate Cdd for the gap above the segment
-        firstTerm = fks / ((tp / εPaper) + (aboveGap / εBoard))
-        secondTerm = (1 - fks) / ((tp / εPaper) + (aboveGap / εBoard))
-        Cdd_above *= (firstTerm + secondTerm)
+        if aboveGap > 0.0 {
+            
+            let firstTerm = fks / ((tp / εPaper) + (aboveGap / εBoard))
+            let secondTerm = (1 - fks) / ((tp / εPaper) + (aboveGap / εBoard))
+            Cdd_above *= (firstTerm + secondTerm)
+        }
+        else {
+            
+            Cdd_above = 0.0
+        }
         
         return (Cdd_below, Cdd_above)
     }
@@ -626,7 +714,7 @@ class Segment: Codable, Equatable, Hashable {
                 
                 return Cs
             }
-            else if self.wdgType == .disc {
+            else if self.wdgType == .disc || self.wdgType == .sheet {
                 
                 // Del Vecchio method
                 let Cs = Ctt * (self.N - 1) / (self.N * self.N)
@@ -663,19 +751,32 @@ class Segment: Codable, Equatable, Hashable {
             throw SegmentError(info: "\(self.location)", type: .RadialShield)
         }
         
-        if self.wdgType == .helical || self.wdgType == .sheet {
+        if self.wdgType == .helical {
             
             return 0.0
         }
         
-        // For disc coils, this corresponds to Ctt in the DelVeccio book. For layer windings, it is the turn-turn capacitance in the axial direction (my own invention).
-        
-        let tau = 2.0 * self.basicSections[0].wdgData.turn.turnInsulation
+        // For disc & sheet coils, this corresponds to Ctt in the DelVeccio book. For layer windings, it is the turn-turn capacitance in the axial direction (my own invention).
         
         if self.wdgType == .disc || self.wdgType == .layer {
             
-            // the calculation of the turn thickness of laye windings does not account for ducts in the winding
+            let tau = 2.0 * self.basicSections[0].wdgData.turn.turnInsulation
+            
+            // the calculation of the turn thickness of layer windings does not account for ducts in the winding
             let h = self.wdgType == .disc ? self.basicSections[0].height - tau : self.basicSections[0].width / Double(self.basicSections[0].wdgData.layers.numLayers)
+            
+            var Ctt:Double = ε0 * εPaper
+            Ctt *= π * (self.r1 + self.r2)
+            Ctt *= (h + 2 * tau) / tau
+            
+            return Ctt
+        }
+        else if self.wdgType == .sheet {
+            
+            let bs = self.basicSections[0]
+            let copperAxial = bs.N * bs.wdgData.turn.radialDimn
+            let tau = (bs.width - copperAxial) / (bs.N - 1)
+            let h = bs.height
             
             var Ctt:Double = ε0 * εPaper
             Ctt *= π * (self.r1 + self.r2)
