@@ -353,6 +353,7 @@ class Segment: Codable, Equatable, Hashable {
             case AxialAndRadialGapsAreNil
             case AxialAndRadialGapsAreNonNil
             case IllegalWindingType
+            case IllegalInterleavedType
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -392,6 +393,10 @@ class Segment: Codable, Equatable, Hashable {
                 else if self.type == .IllegalWindingType {
                     
                     return "The winding type does not match the adjacent gaps that are defined!"
+                }
+                else if self.type == .IllegalInterleavedType {
+                    
+                    return "Only disc windings can be interleaved!"
                 }
                 
                 return "An unknown error occurred."
@@ -544,6 +549,11 @@ class Segment: Codable, Equatable, Hashable {
             throw SegmentError(info: "", type: .IllegalWindingType)
         }
         
+        guard !self.interleaved || self.wdgType == .disc else {
+            
+            throw SegmentError(info: "", type: .IllegalInterleavedType)
+        }
+        
         var result = 0.0
         
         do {
@@ -552,34 +562,9 @@ class Segment: Codable, Equatable, Hashable {
             
             if self.wdgType == .disc || self.wdgType == .helical {
                 
-                var nextBelowGap = axialGaps!.below
+                let internalSections = self.basicSections.count / (self.interleaved ? 2 : 1)
                 
-                var sectionCount = self.basicSections.count
                 
-                for i in 0..<self.basicSections.count {
-                    
-                    let nextBasicSection = self.basicSections[i]
-                    var nextAboveGap = axialGaps!.above
-                    if i < self.basicSections.count - 1 {
-                        
-                        nextAboveGap = self.basicSections[i + 1].z1 - nextBasicSection.z2
-                    }
-                    
-                    let fks = Double(nextBasicSection.wdgData.discData.numAxialColumns) * nextBasicSection.wdgData.discData.axialColumnWidth / (π * (self.r1 + self.r2))
-                    let tp = 2.0 * nextBasicSection.wdgData.turn.turnInsulation
-                    
-                    var Cdd_below = ε0 * π * (self.r2 * self.r2 - self.r1 * self.r1)
-                    var Cdd_above = Cdd_below
-                    // calculate Cdd for the gap below the segment
-                    var firstTerm = fks / ((tp / εPaper) + (nextBelowGap / εBoard))
-                    var secondTerm = (1 - fks) / ((tp / εPaper) + (nextBelowGap / εBoard))
-                    Cdd_below *= (firstTerm + secondTerm)
-                    
-                    // calculate Cdd for the gap above the segment
-                    firstTerm = fks / ((tp / εPaper) + (nextAboveGap / εBoard))
-                    secondTerm = (1 - fks) / ((tp / εPaper) + (nextAboveGap / εBoard))
-                    Cdd_above *= (firstTerm + secondTerm)
-                }
                 
             }
         }
@@ -589,6 +574,27 @@ class Segment: Codable, Equatable, Hashable {
         }
         
         return 1 / result
+    }
+    
+    /// Return the Cdd values per DelVecchio equation 12.52 (3rd edition) for the gap above an below the given BasicSection.
+    static func DiscToDiscSeriesCapacitance(belowGap:Double, aboveGap:Double, basicSection:BasicSection) -> (below:Double, above:Double) {
+        
+        let fks = Double(basicSection.wdgData.discData.numAxialColumns) * basicSection.wdgData.discData.axialColumnWidth / (π * (basicSection.r1 + basicSection.r2))
+        let tp = 2.0 * basicSection.wdgData.turn.turnInsulation
+        
+        var Cdd_below = ε0 * π * (basicSection.r2 * basicSection.r2 - basicSection.r1 * basicSection.r1)
+        var Cdd_above = Cdd_below
+        // calculate Cdd for the gap below the segment
+        var firstTerm = fks / ((tp / εPaper) + (belowGap / εBoard))
+        var secondTerm = (1 - fks) / ((tp / εPaper) + (belowGap / εBoard))
+        Cdd_below *= (firstTerm + secondTerm)
+        
+        // calculate Cdd for the gap above the segment
+        firstTerm = fks / ((tp / εPaper) + (aboveGap / εBoard))
+        secondTerm = (1 - fks) / ((tp / εPaper) + (aboveGap / εBoard))
+        Cdd_above *= (firstTerm + secondTerm)
+        
+        return (Cdd_below, Cdd_above)
     }
     
     /// The series capacitance of a single BasicSection, as caused by the turns of the disc (for continuous-disc windings), double-disc (for interleaved segments) or a single layer (for layer windings). For interleaved windings, note that the value returned is the "effective" capacitance of a single disc, which is double the capacitance of the double-disc. It is up to the calling routine to treat the capacitance correctly. The methods come from (respectively) DelVecchio, Veverka, Huber (ie: me)
