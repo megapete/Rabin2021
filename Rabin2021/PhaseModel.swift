@@ -33,6 +33,9 @@ class PhaseModel:Codable {
     /// The inductance matrix for the model
     var M:PCH_BaseClass_Matrix? = nil
     
+    /// The basic (unmodified) capacitance matrix for the model
+    var C:PCH_BaseClass_Matrix? = nil
+    
     /// The window height to actually use
     var useWindowHeight:Double {
         
@@ -655,6 +658,21 @@ class PhaseModel:Codable {
         
         // we've run the gauntlet, return true
         return true
+    }
+    
+    func CalculateCapacitanceMatrix() throws {
+        
+        guard self.segments.count > 0 else {
+            
+            throw PhaseModelError(info: "", type: .EmptyModel)
+        }
+        
+        self.C = PCH_BaseClass_Matrix(matrixType: .general, numType: .Double, rows: UInt(self.segments.count), columns: UInt(self.segments.count))
+        
+        for i in 0..<self.segments.count {
+            
+            
+        }
     }
     
     func CalculateInductanceMatrix(useEVmodel:Bool = true) throws {

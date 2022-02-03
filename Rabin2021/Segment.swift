@@ -345,6 +345,7 @@ class Segment: Codable, Equatable, Hashable {
         /// The different error types that are available
         enum errorType {
             
+            case UnknownError
             case EmptyModel
             case IllegalSection
             case StaticRing
@@ -534,8 +535,136 @@ class Segment: Codable, Equatable, Hashable {
         }
     }
     
-    // The 'internal' series capacitance of a Segment. In the case where the Segment is made up of a single BasicSection, this routine returns the Cs from the turns only (for interleaved discs, it returns the Cs of the 'double-disc'). In all other cases, the actual series capacitance for the entire collection of BasicSections is calculated using equation 12.43 from DelVecchio (3rd Ed). The bottom-most and top-most BasicSections in the Segment are treated as "end-discs" and have their Cs calculated per equation 12.63.
-    func SegmentSeriesCapacitance() throws -> Double {
+    /// The series capacitance of the Segment.
+    func SeriesCapacitance(axialGaps:(above:Double, below:Double)?, radialGaps:(inside:Double, outside:Double)?, endDisc:(lowest:Bool, highest:Bool)?, adjStaticRing:(above:Bool, below:Bool)?) throws -> Double {
+        
+        guard axialGaps != nil || radialGaps != nil else {
+            
+            throw SegmentError(info: "", type: .AxialAndRadialGapsAreNil)
+        }
+        
+        guard axialGaps == nil || radialGaps == nil else {
+            
+            throw SegmentError(info: "", type: .AxialAndRadialGapsAreNonNil)
+        }
+        
+        guard axialGaps != nil && (self.wdgType == .disc || self.wdgType == .helical) else {
+            
+            throw SegmentError(info: "", type: .IllegalWindingType)
+        }
+        
+        do {
+        
+            let Cs = try self.SegmentInternalSeriesCapacitance()
+            
+            if self.wdgType == .sheet {
+                
+                return Cs
+            }
+            else if self.wdgType == .helical {
+                
+                // for helical coils, we ignore things like static rings and whether it's an end-turn
+                let aboveGap = axialGaps!.above
+                let belowGap = axialGaps!.below
+                
+                let gapToUse = max(aboveGap, belowGap)
+                let Cdd = Segment.DiscToDiscSeriesCapacitance(belowGap: gapToUse, aboveGap: gapToUse, basicSection: self.basicSections[0])
+                
+                return Cs + 4 / 3 * max(Cdd.below, Cdd.above)
+            }
+            else if self.wdgType == .disc {
+                
+                let aboveGap = axialGaps!.above
+                let belowGap = axialGaps!.below
+                
+                let bs = self.basicSections[0]
+                
+                let Cdd = Segment.DiscToDiscSeriesCapacitance(belowGap: belowGap, aboveGap: aboveGap, basicSection: bs)
+                
+                if let endDiscLoc = endDisc {
+                    
+                    if let staticRing = adjStaticRing {
+                        
+                        let useCdd = staticRing.below ? Cdd.above : Cdd.below
+                        let Ca = staticRing.below ? Cdd.below : Cdd.above
+                        
+                        let Csum = Ca + 2 * useCdd
+                        let Ya = Ca / Csum
+                        let Yb = 2 * useCdd / Csum
+                        
+                        let alpha = sqrt(Csum / Cs)
+                        
+                        let firstTerm = (Ya * Ya + Yb * Yb) * alpha / tanh(alpha)
+                        let secondTerm = 2 * Ya * Yb * alpha / sinh(alpha)
+                        let thirdTerm = Ya * Yb * alpha * alpha
+                        
+                        let Cgeneral = Cs * (firstTerm + secondTerm + thirdTerm)
+                        
+                        return Cgeneral
+                    }
+                    else {
+                    
+                        let useCdd = endDiscLoc.lowest ? Cdd.above : Cdd.below
+                        
+                        let alpha = sqrt(2 * useCdd / Cs)
+                        
+                        return Cs * alpha / tanh(alpha)
+                    }
+                }
+                else {
+                    
+                    var Ya:Double = 0.0
+                    var Yb:Double = 0.0
+                    var alpha:Double =  0.0
+                    
+                    if let staticRing = adjStaticRing {
+                    
+                        let useCdd = staticRing.below ? Cdd.above : Cdd.below
+                        let Ca = staticRing.below ? Cdd.below : Cdd.above
+                        
+                        let Csum = Ca + 2 * useCdd
+                        Ya = Ca / Csum
+                        Yb = 2 * useCdd / Csum
+                        
+                        alpha = sqrt(Csum / Cs)
+                    }
+                    else {
+                        
+                        let sumCdd = Cdd.above + Cdd.below
+                        Ya = Cdd.below / sumCdd
+                        Yb = Cdd.above / sumCdd
+                        
+                        alpha = sqrt(2 * sumCdd / Cs)
+                        
+                    }
+                    
+                    let firstTerm = (Ya * Ya + Yb * Yb) * alpha / tanh(alpha)
+                    let secondTerm = 2 * Ya * Yb * alpha / sinh(alpha)
+                    let thirdTerm = Ya * Yb * alpha * alpha
+                    
+                    let Cgeneral = Cs * (firstTerm + secondTerm + thirdTerm)
+                    
+                    return Cgeneral
+                }
+            }
+            else if self.wdgType == .layer {
+                
+            }
+            else {
+                
+                throw SegmentError(info: "", type: .UnimplementedWdgType)
+            }
+        }
+        catch {
+            
+            throw error
+        }
+        
+        throw SegmentError(info: "", type: .UnknownError)
+    }
+    
+    /// The 'internal' series capacitance of a Segment. In the case where the Segment is made up of a single BasicSection, this routine returns the Cs from the turns only (for interleaved discs, it returns the Cs of the 'double-disc'). In all other cases, the actual series capacitance for the entire collection of BasicSections is calculated using equation 12.43 from DelVecchio (3rd Ed). The bottom-most and top-most BasicSections in the Segment are treated as "end-discs" and have their Cs calculated per equation 12.63.
+    private func SegmentInternalSeriesCapacitance() throws -> Double {
         
         // only disc coils can be interleaved
         guard !self.interleaved || self.wdgType == .disc else {
@@ -566,6 +695,12 @@ class Segment: Codable, Equatable, Hashable {
                 
                 // simplest case, just one section (which may be a double-disc interleaved section)
                 if sectionCount == 1 {
+                    
+                    // take care of the helical case
+                    if Cs == 0.0 {
+                        
+                        return 0.0
+                    }
                     
                     sum = 1 / Cs
                 }
@@ -698,7 +833,7 @@ class Segment: Codable, Equatable, Hashable {
             throw SegmentError(info: "\(self.location)", type: .RadialShield)
         }
         
-        if self.wdgType == .helical || self.wdgType == .sheet {
+        if self.wdgType == .helical {
             
             return 0.0
         }
