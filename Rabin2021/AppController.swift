@@ -177,6 +177,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             
             // print("ProgIndicator exists: \(rb2021_progressIndicatorWindow != nil)")
             try model.CalculateInductanceMatrix()
+            
         }
         catch {
             
@@ -190,6 +191,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         print("Pretending to be recalculating Inductance & Capacitance matrices")
         
         #endif
+        
+        try? model.CalculateCapacitanceMatrix()
+        
+        print("Coil 1 Cs: \(try! model.CoilSeriesCapacitance(coil: 1))")
         
         if !reinitialize {
             

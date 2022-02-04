@@ -74,6 +74,7 @@ class PhaseModel:Codable {
             case IllegalLocation
             case IllegalConnector
             case TooManyConnectors
+            case CapacitanceNotCalculated
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -157,6 +158,10 @@ class PhaseModel:Codable {
                 else if self.type == .OnlyOneStaticRingAllowed {
                     
                     return "At this time, only one static ring is allowed to be adjacent to a disc (winding discs are not implemented). \(info)"
+                }
+                else if self.type == .CapacitanceNotCalculated {
+                    
+                    return "The capacitance for coil \(info) has not been calculated!"
                 }
                 
                 return "An unknown error occurred."
@@ -707,7 +712,7 @@ class PhaseModel:Codable {
                 }
                 else {
                     
-                    
+                    radialGaps = try self.RadialSpacesAboutSegment(segment: nextSegment)
                 }
                 
                 let serCap = try nextSegment.SeriesCapacitance(axialGaps: axialGaps, radialGaps: radialGaps, endDisc: endDisc, adjStaticRing: adjStaticRing)
@@ -719,6 +724,38 @@ class PhaseModel:Codable {
             
             throw error
         }
+        
+        self.C = C
+    }
+    
+    func CoilSeriesCapacitance(coil:Int) throws -> Double {
+        
+        guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+            
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
+        }
+        
+        guard let C = self.C else {
+            
+            throw PhaseModelError(info: "\(coil)", type: .CapacitanceNotCalculated)
+        }
+        
+        
+        var result = 0.0
+        
+        for i in 0..<self.segments.count {
+            
+            let nextSegment = self.segments[i]
+            
+            if nextSegment.radialPos == coil && nextSegment.axialPos >= 0 {
+                
+                print("\(C[i, i])")
+                result += 1.0 / C[i, i]
+            }
+        }
+        
+        return 1 / result
+        
     }
     
     func CalculateInductanceMatrix(useEVmodel:Bool = true) throws {
