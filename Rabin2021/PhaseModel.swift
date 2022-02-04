@@ -54,6 +54,7 @@ class PhaseModel:Codable {
         /// The different error types that are available
         enum errorType
         {
+            case UnknownError
             case UnimplementedInductanceMethod
             case EmptyModel
             case IllegalMatrix
@@ -63,6 +64,7 @@ class PhaseModel:Codable {
             case SegmentExists
             case SegmentNotInModel
             case ShieldingElementExists
+            case OnlyOneStaticRingAllowed
             case NoRoomForShieldingElement
             case NotAShieldingElement
             case ArgAIsNotAMultipleOfArgB
@@ -152,7 +154,10 @@ class PhaseModel:Codable {
                     
                     return "The segment at \(info) has too many connectors associated with it!"
                 }
-                
+                else if self.type == .OnlyOneStaticRingAllowed {
+                    
+                    return "At this time, only one static ring is allowed to be adjacent to a disc (winding discs are not implemented). \(info)"
+                }
                 
                 return "An unknown error occurred."
             }
@@ -667,11 +672,52 @@ class PhaseModel:Codable {
             throw PhaseModelError(info: "", type: .EmptyModel)
         }
         
-        self.C = PCH_BaseClass_Matrix(matrixType: .general, numType: .Double, rows: UInt(self.segments.count), columns: UInt(self.segments.count))
+        let C = PCH_BaseClass_Matrix(matrixType: .general, numType: .Double, rows: UInt(self.segments.count), columns: UInt(self.segments.count))
         
-        for i in 0..<self.segments.count {
+        do {
             
+            // start with the series capacitances
+            for i in 0..<self.segments.count {
+                
+                let nextSegment = self.segments[i]
+                
+                let isBottomSegment = nextSegment.location.axial == 0
+                let topSegmentIndex = try GetHighestSection(coil: nextSegment.location.radial)
+                let isTopSegment = nextSegment.location.axial == topSegmentIndex
+                
+                let endDisc:(lowest:Bool, highest:Bool)? = isBottomSegment || isTopSegment ? (isBottomSegment, isTopSegment) : nil
+                
+                let staticRingUnder = try StaticRingBelow(segment: nextSegment, recursiveCheck: false)
+                let staticRingOver = try StaticRingAbove(segment: nextSegment, recursiveCheck: false)
+                
+                if staticRingOver != nil && staticRingUnder != nil {
+                    
+                    let extraInfo = topSegmentIndex == 0 ? "(If this is a disc or helical coil, consider splitting it into at least 2 Segments.)" : ""
+                    throw PhaseModelError(info: extraInfo, type: .OnlyOneStaticRingAllowed)
+                }
+                
+                let adjStaticRing:(above:Bool, below:Bool)? = staticRingOver != nil || staticRingUnder != nil ? (staticRingOver != nil, staticRingUnder != nil) : nil
+                
+                var axialGaps:(above:Double, below:Double)? = nil
+                var radialGaps:(inside:Double, outside:Double)? = nil
+                
+                if nextSegment.wdgType == .disc || nextSegment.wdgType == .helical {
+                    
+                    axialGaps = try self.AxialSpacesAboutSegment(segment: nextSegment)
+                }
+                else {
+                    
+                    
+                }
+                
+                let serCap = try nextSegment.SeriesCapacitance(axialGaps: axialGaps, radialGaps: radialGaps, endDisc: endDisc, adjStaticRing: adjStaticRing)
+                
+                C[i, i] = serCap
+            }
+        }
+        catch {
             
+            throw error
         }
     }
     
@@ -796,6 +842,32 @@ class PhaseModel:Codable {
             }
             
             return coilInnerRadius - innerSegment.r2
+        }
+    }
+    
+    /// Return the radial spaces inside and outside the given segment. If the segment is not in the model, throw an error.
+    func RadialSpacesAboutSegment(segment:Segment) throws -> (inside:Double, outside:Double) {
+        
+        guard let _ = self.segmentStore.firstIndex(of: segment) else {
+            
+            throw PhaseModelError(info: "", type: .SegmentNotInModel)
+        }
+        
+        do {
+            
+            let insideResult:Double = try self.HiloUnder(coil: segment.location.radial)
+            var outsideResult:Double = -1.0
+            
+            if let nextCoilSegment = self.SegmentAt(location: LocStruct(radial: segment.radialPos + 1, axial: 0)) {
+                
+                outsideResult = try self.HiloUnder(coil: nextCoilSegment.radialPos)
+            }
+            
+            return (insideResult, outsideResult)
+        }
+        catch {
+            
+            throw error
         }
     }
     
