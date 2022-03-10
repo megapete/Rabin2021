@@ -48,6 +48,9 @@ class PhaseModel:Codable {
         return self.core.realWindowHeight
     }
     
+    // value needed for calculation of outermost coil shunt capacitances
+    let tankDepth:Double
+    
     /// Errors that can be thrown by some routines
     struct PhaseModelError:LocalizedError
     {
@@ -172,7 +175,7 @@ class PhaseModel:Codable {
     /// Designated initializer.
     /// - Parameter segments: The segments that make up the basis for the model
     /// - Parameter core: The core (duh)
-    init(segments:[Segment], core:Core) {
+    init(segments:[Segment], core:Core, tankDepth:Double) {
         
         self.segmentStore = segments.sorted(by: { lhs, rhs in
             
@@ -185,6 +188,8 @@ class PhaseModel:Codable {
         })
         
         self.core = core
+        
+        self.tankDepth = tankDepth
     }
     
     /// Return the index into the inductance matrix for the given Segment
@@ -726,6 +731,154 @@ class PhaseModel:Codable {
         }
         
         self.C = C
+    }
+    
+    // Calculate the capacitance to the tank and to the other coils of the outermost coil (per Kulkarne 7.15)
+    func OuterShuntCapacitance() throws -> Double {
+        
+        guard let lastCoilSeg = self.segmentStore.last else {
+            
+            throw PhaseModelError(info: "Outermost coil", type: .CoilDoesNotExist)
+        }
+        
+        do {
+            
+            let sTank = self.tankDepth / 2
+            let tSolidTank = 0.25 * 0.0254
+            let tOilTank = sTank - lastCoilSeg.r2 - tSolidTank
+            let H = try EffectiveHeight(coil: lastCoilSeg.radialPos)
+            let R = (lastCoilSeg.r1 + lastCoilSeg.r2) / 2
+            
+            let firstTermTank = 2 * π * ε0 * H / acosh(sTank / R)
+            let secondTermTank = (tOilTank + tSolidTank) / ((tOilTank / εOil) + (tSolidTank / εBoard))
+            
+            let Ctank = firstTermTank * secondTermTank
+            
+            let sCoils:Double = self.core.legCenters / 2
+            let tSolidCoils = 2 * tSolidTank
+            let tOilCoils:Double = self.core.legCenters - (lastCoilSeg.r2 * 2) - tSolidCoils
+            
+            let firstTermCoils = 2 * π * ε0 * H / acosh(sCoils / R)
+            let secondTermCoil = (tOilCoils + tSolidCoils) / ((tOilCoils / εOil) + (tSolidCoils / εBoard))
+            
+            let Ccoils = firstTermCoils * secondTermCoil
+            
+            return Ctank + Ccoils
+        }
+        catch {
+            
+            throw error
+        }
+        
+    }
+    
+    func CoilInnerShuntCapacitance(coil:Int) throws -> Double {
+        
+        guard let bottomCoilSeg = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+            
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
+        }
+        
+        let bs = bottomCoilSeg.basicSections[0];
+        
+        do {
+            
+            // start with the inner capacitance
+            var prevIR:Double = 0.0
+            if coil == 0 {
+                
+                prevIR = self.core.radius
+            }
+            else {
+                
+                guard let prevCoilSeg = self.SegmentAt(location: LocStruct(radial: coil - 1, axial: 0)) else {
+                    
+                    throw PhaseModelError(info: "\(coil-1)", type: .CoilDoesNotExist)
+                }
+                
+                prevIR = prevCoilSeg.r2
+            }
+            
+            let hilo = try HiloUnder(coil: coil)
+            let rGap = prevIR + hilo / 2.0
+            
+            let Ns = Double(bs.wdgData.discData.numAxialColumns)
+            // assume 3/4" sticks
+            let ws = 0.75 * 0.0254
+            let fs = Ns * ws / (2 * π * rGap)
+            let H = try CapacitiveHeightInner(coil: coil)
+            // assume standard radial spacers & tube thicknesses
+            let Npress = round(hilo / 0.0084 - 0.5)
+            let tPress = 0.08 * 0.0254 * Npress
+            let tStick = hilo - tPress
+            
+            let firstTerm = fs / ((tPress / εBoard) + (tStick / εBoard))
+            let secondTerm = (1 - fs) / ((tPress / εBoard) + (tStick / εOil))
+            
+            let Cinner = ε0 * 2 * π * rGap * H * (firstTerm - secondTerm)
+            
+            return Cinner
+        }
+        catch {
+            
+            throw error
+        }
+    }
+    
+    // Calculate the height that will be used for the shunt capacitance calculation to the coil/shield/core that is radially "inside" to the given coil.
+    func CapacitiveHeightInner(coil:Int) throws -> Double {
+        
+        guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+            
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
+        }
+        
+        do {
+            
+            let effCapHeight = try EffectiveHeight(coil: coil)
+            let hasRadialShieldInside = try RadialShieldInside(coil: coil) != nil
+            
+            if (coil == 0 || hasRadialShieldInside) {
+                
+                return effCapHeight
+            }
+            
+            let innerCoilEffCapHeight = try EffectiveHeight(coil: coil - 1)
+            
+            return (effCapHeight + innerCoilEffCapHeight) / 2
+        }
+        catch {
+            
+            throw error
+        }
+    }
+    
+    // The "effective height" of a coil is simply its electrical height minus any axial gaps that are larger than 75mm (yes, that is aribtrary).
+    func EffectiveHeight(coil:Int) throws -> Double {
+        
+        let MAX_GAP = 0.075
+        
+        guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+            
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
+        }
+        
+        let coilSections = self.segmentStore.filter({$0.radialPos == coil})
+        let coilBottom = coilSections[0].z1
+        let coilTop = coilSections.last!.z2
+        let coilHeight = coilTop - coilBottom
+        
+        var sumAxialGaps = 0.0
+        for i in 0..<coilSections.count - 1 {
+            
+            let nextGap = coilSections[i+1].z1 - coilSections[i].z2
+            if nextGap > MAX_GAP {
+                
+                sumAxialGaps += nextGap
+            }
+        }
+        
+        return coilHeight - sumAxialGaps
     }
     
     func CoilSeriesCapacitance(coil:Int) throws -> Double {

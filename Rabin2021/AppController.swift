@@ -307,7 +307,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
 
         
-        return PhaseModel(segments: result, core: self.currentCore!)
+        return PhaseModel(segments: result, core: self.currentCore!, tankDepth: self.tankDepth)
     }
     
     func createBasicSections(xlFile:PCH_ExcelDesignFile) -> [BasicSection] {
@@ -524,7 +524,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         let segment1 = try? Segment(basicSections: sections1, interleaved: false, realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentCore!.adjustedWindHt)
         let segment2 = try? Segment(basicSections: sections2, interleaved: false, realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentCore!.adjustedWindHt)
         
-        let model = PhaseModel(segments: [segment1!, segment2!], core: self.currentCore!)
+        let model = PhaseModel(segments: [segment1!, segment2!], core: self.currentCore!, tankDepth: self.tankDepth)
         
         let L = model.realWindowHeight
         

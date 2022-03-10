@@ -647,9 +647,9 @@ class Segment: Codable, Equatable, Hashable {
                     return Cgeneral
                 }
             }
-            else if self.wdgType == .layer {
+            /* else if self.wdgType == .layer {
                 
-            }
+            } */
             else {
                 
                 throw SegmentError(info: "", type: .UnimplementedWdgType)
@@ -797,7 +797,7 @@ class Segment: Codable, Equatable, Hashable {
         if belowGap > 0.0 {
             
             let firstTerm = fks / ((tp / εPaper) + (belowGap / εBoard))
-            let secondTerm = (1 - fks) / ((tp / εPaper) + (belowGap / εBoard))
+            let secondTerm = (1 - fks) / ((tp / εPaper) + (belowGap / εOil))
             Cdd_below *= (firstTerm + secondTerm)
         }
         else {
@@ -809,7 +809,7 @@ class Segment: Codable, Equatable, Hashable {
         if aboveGap > 0.0 {
             
             let firstTerm = fks / ((tp / εPaper) + (aboveGap / εBoard))
-            let secondTerm = (1 - fks) / ((tp / εPaper) + (aboveGap / εBoard))
+            let secondTerm = (1 - fks) / ((tp / εPaper) + (aboveGap / εOil))
             Cdd_above *= (firstTerm + secondTerm)
         }
         else {
