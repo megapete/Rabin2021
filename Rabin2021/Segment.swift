@@ -660,7 +660,7 @@ class Segment: Codable, Equatable, Hashable {
             throw error
         }
         
-        throw SegmentError(info: "", type: .UnknownError)
+        // throw SegmentError(info: "", type: .UnknownError)
     }
     
     /// The 'internal' series capacitance of a Segment. In the case where the Segment is made up of a single BasicSection, this routine returns the Cs from the turns only (for interleaved discs, it returns the Cs of the 'double-disc'). In all other cases, the actual series capacitance for the entire collection of BasicSections is calculated using equation 12.43 from DelVecchio (3rd Ed). The bottom-most and top-most BasicSections in the Segment are treated as "end-discs" and have their Cs calculated per equation 12.63.
