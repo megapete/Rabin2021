@@ -10,6 +10,7 @@
 		D30D3AD8270E2F2C00A39051 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30D3AD7270E2F2C00A39051 /* AppDelegate.swift */; };
 		D30D3ADA270E2F2D00A39051 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D30D3AD9270E2F2D00A39051 /* Assets.xcassets */; };
 		D30D3ADD270E2F2D00A39051 /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = D30D3ADB270E2F2D00A39051 /* MainMenu.xib */; };
+		D323F2CF27E14F3900D94DA1 /* Node.swift in Sources */ = {isa = PBXBuildFile; fileRef = D323F2CE27E14F3900D94DA1 /* Node.swift */; };
 		D3573252270E383F000CCCF9 /* PCH_Defs.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3573251270E383F000CCCF9 /* PCH_Defs.swift */; };
 		D3573254270E5DAE000CCCF9 /* AppController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3573253270E5DAE000CCCF9 /* AppController.swift */; };
 		D3926C08270F3D3C00D2D17C /* Core.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3926C07270F3D3C00D2D17C /* Core.swift */; };
@@ -24,7 +25,6 @@
 		D3C0AE83274D864800B45F9A /* PCH_ProgressIndicatorWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3C0AE81274D864800B45F9A /* PCH_ProgressIndicatorWindow.swift */; };
 		D3C0AE84274D864800B45F9A /* PCH_ProgressIndicatorWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = D3C0AE82274D864800B45F9A /* PCH_ProgressIndicatorWindow.xib */; };
 		D3FB7D6A2752B7A3009ACCB4 /* Connector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FB7D692752B7A3009ACCB4 /* Connector.swift */; };
-		F5000E8127DB9D4800266259 /* ShuntCapacitance.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5000E8027DB9D4800266259 /* ShuntCapacitance.swift */; };
 		F5BA813F2719B94100717C67 /* PCH_GraphingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5BA813D2719B94100717C67 /* PCH_GraphingWindow.swift */; };
 		F5BA81402719B94100717C67 /* PCH_GraphingWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = F5BA813E2719B94100717C67 /* PCH_GraphingWindow.xib */; };
 		F5BA81422719B9C800717C67 /* PCH_GraphingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5BA81412719B9C800717C67 /* PCH_GraphingView.swift */; };
@@ -40,6 +40,7 @@
 		D30D3AD9270E2F2D00A39051 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D30D3ADC270E2F2D00A39051 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
 		D30D3ADE270E2F2D00A39051 /* Rabin2021.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Rabin2021.entitlements; sourceTree = "<group>"; };
+		D323F2CE27E14F3900D94DA1 /* Node.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Node.swift; sourceTree = "<group>"; };
 		D3573251270E383F000CCCF9 /* PCH_Defs.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = PCH_Defs.swift; path = ../../../../Dropbox/MyProjects/PCH_Defs.swift; sourceTree = "<group>"; };
 		D3573253270E5DAE000CCCF9 /* AppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppController.swift; sourceTree = "<group>"; };
 		D3926C07270F3D3C00D2D17C /* Core.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core.swift; sourceTree = "<group>"; };
@@ -54,7 +55,6 @@
 		D3C0AE81274D864800B45F9A /* PCH_ProgressIndicatorWindow.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PCH_ProgressIndicatorWindow.swift; sourceTree = "<group>"; };
 		D3C0AE82274D864800B45F9A /* PCH_ProgressIndicatorWindow.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = PCH_ProgressIndicatorWindow.xib; sourceTree = "<group>"; };
 		D3FB7D692752B7A3009ACCB4 /* Connector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Connector.swift; sourceTree = "<group>"; };
-		F5000E8027DB9D4800266259 /* ShuntCapacitance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShuntCapacitance.swift; sourceTree = "<group>"; };
 		F5BA813D2719B94100717C67 /* PCH_GraphingWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PCH_GraphingWindow.swift; sourceTree = "<group>"; };
 		F5BA813E2719B94100717C67 /* PCH_GraphingWindow.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = PCH_GraphingWindow.xib; sourceTree = "<group>"; };
 		F5BA81412719B9C800717C67 /* PCH_GraphingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PCH_GraphingView.swift; sourceTree = "<group>"; };
@@ -114,7 +114,7 @@
 				F5ED29EE271709B0003E84CB /* PhaseModel.swift */,
 				D3926C07270F3D3C00D2D17C /* Core.swift */,
 				D3FB7D692752B7A3009ACCB4 /* Connector.swift */,
-				F5000E8027DB9D4800266259 /* ShuntCapacitance.swift */,
+				D323F2CE27E14F3900D94DA1 /* Node.swift */,
 				F5ED29EC270F1F9C003E84CB /* Segment.swift */,
 				D3B7FF21270E320E002537D3 /* BasicSection.swift */,
 				D39311BB2710C44200A29D65 /* TransformerView.swift */,
@@ -217,7 +217,7 @@
 				D3B7FF22270E320E002537D3 /* BasicSection.swift in Sources */,
 				D3FB7D6A2752B7A3009ACCB4 /* Connector.swift in Sources */,
 				F5D778FA2722FB2100B976AF /* EslamianVahidiModel.swift in Sources */,
-				F5000E8127DB9D4800266259 /* ShuntCapacitance.swift in Sources */,
+				D323F2CF27E14F3900D94DA1 /* Node.swift in Sources */,
 				D39311BC2710C44200A29D65 /* TransformerView.swift in Sources */,
 				D3573254270E5DAE000CCCF9 /* AppController.swift in Sources */,
 				D39444F72718D9C700206019 /* GetNumberDialog.swift in Sources */,

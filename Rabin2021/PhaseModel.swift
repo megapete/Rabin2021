@@ -21,6 +21,16 @@ class PhaseModel:Codable {
         }
     }
     
+    /// The set of nodes in the model
+    private var nodeStore:[Node] = []
+    
+    /// read-only access to the node store
+    var nodes:[Node] {
+        get {
+            return nodeStore
+        }
+    }
+    
     /// The core for the model
     let core:Core
     
@@ -673,6 +683,10 @@ class PhaseModel:Codable {
         
         // we've run the gauntlet, return true
         return true
+    }
+    
+    func SetNodes() {
+        
     }
     
     func CalculateCapacitanceMatrix() throws {
