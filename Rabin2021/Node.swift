@@ -13,10 +13,10 @@ struct Node:Codable {
     let number:Int
     
     let aboveSegment:Segment?
-    var aboveConnector:Connector
+    // var aboveConnector:Connector
     
     let belowSegment:Segment?
-    var belowConnector:Connector
+    // var belowConnector:Connector
     
     // note: shunt capacitances to ground must have toNode set to -1
     struct shuntCap:Codable {

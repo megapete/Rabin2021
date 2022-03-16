@@ -685,9 +685,83 @@ class PhaseModel:Codable {
         return true
     }
     
-    func SetNodes() {
+    /// Essentially, this function creates the Nodes that are attached to the top and bottom of each segment. A Node may be shared, as in when a Segment.Connection exists between two Segments, _particularly_ the top of one Segment that is connected to the bottom of the next axial Segment. All other Connections (ie: between different coils or non-contiguous Segments) will only be handled when refining the capacitance matrix prior to impulse simulation. The function returns an array of Ints that are the index (in the Nodes array) to  the LAST (uppermost) Node for each coil.
+    func SetNodes() throws -> [Int] {
         
+        guard self.segments.count > 0 else {
+            
+            throw PhaseModelError(info: "", type: .EmptyModel)
+        }
+        
+        // clear the Node array
+        self.nodeStore = []
+        var result:[Int] = []
+        
+        // split the Segment array into coils
+        var currentCoil = -1
+        var coils:[[Segment]] = []
+        var nextCoil:[Segment] = []
+        
+        for nextSegment in self.segments {
+            
+            if nextSegment.radialPos != currentCoil {
+                
+                if (currentCoil >= 0) {
+                    
+                    coils.append(nextCoil)
+                }
+                
+                currentCoil = nextSegment.radialPos
+                nextCoil = []
+            }
+            
+            nextCoil.append(nextSegment)
+        }
+        
+        coils.append(nextCoil)
+        
+        var nextNodeNum = 0
+        for nextCoil in coils {
+            
+            var prevSegment:Segment? = nil
+            
+            for i in 0..<nextCoil.count {
+                
+                let thisSegment = nextCoil[i]
+                
+                let newNode = Node(number: nextNodeNum, aboveSegment: thisSegment, belowSegment: prevSegment)
+                nextNodeNum += 1
+                self.nodeStore.append(newNode)
+                
+                if (i < nextCoil.count - 1) {
+                    
+                    let nextAxialSegment = nextCoil[i + 1]
+                    
+                    if thisSegment.connections.first(where: {$0.segment == nextAxialSegment}) == nil {
+                        
+                        let newNode = Node(number: nextNodeNum, aboveSegment: nil, belowSegment: thisSegment)
+                        nextNodeNum += 1
+                        self.nodeStore.append(newNode)
+                        prevSegment = nil
+                    }
+                    else {
+                        
+                        prevSegment = thisSegment
+                    }
+                }
+                else { // topmost segment of the coil
+                    
+                    let newNode = Node(number: nextNodeNum, aboveSegment: nil, belowSegment: thisSegment)
+                    result.append(nextNodeNum)
+                    nextNodeNum += 1
+                    self.nodeStore.append(newNode)
+                }
+            }
+        }
+        
+        return result
     }
+    
     
     func CalculateCapacitanceMatrix() throws {
         
@@ -738,6 +812,23 @@ class PhaseModel:Codable {
                 
                 C[i, i] = serCap
             }
+            
+            // Now we take care of the shunt capacitances
+            
+            // First, we update the Nodes array
+            let coilTopNodes = try SetNodes()
+            var currentBottomNode = 0
+            for i in 0..<coilTopNodes.count {
+                
+                let currentLastSegment = coilTopNodes[i]
+                let nodeCount = currentLastSegment - currentBottomNode + 1
+                
+                let capToInner = try CoilInnerShuntCapacitance(coil: i)
+                
+                
+            }
+            
+            
         }
         catch {
             
