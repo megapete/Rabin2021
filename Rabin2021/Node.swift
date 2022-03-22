@@ -9,14 +9,17 @@ import Foundation
 
 struct Node:Codable {
     
-    // The identifying number for the Node. This is also used as the index into the capaciance matrix, so it is 0-based
+    /// The identifying number for the Node. This is also used as the index into the capaciance matrix, so it is 0-based
     let number:Int
     
+    /// The Segment immediately above that is actually connected to the Node (this will be nil for the highest Node of a coil)
     let aboveSegment:Segment?
-    // var aboveConnector:Connector
     
+    /// The Segment immediately below that is actually connected to the Node (this will be nil for the lowest Node of a coil)
     let belowSegment:Segment?
-    // var belowConnector:Connector
+    
+    /// The z-dimension of the Node
+    let z:Double
     
     // note: shunt capacitances to ground must have toNode set to -1
     struct shuntCap:Codable {

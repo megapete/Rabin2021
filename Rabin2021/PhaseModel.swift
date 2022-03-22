@@ -685,7 +685,7 @@ class PhaseModel:Codable {
         return true
     }
     
-    /// Essentially, this function creates the Nodes that are attached to the top and bottom of each segment. A Node may be shared, as in when a Segment.Connection exists between two Segments, _particularly_ the top of one Segment that is connected to the bottom of the next axial Segment. All other Connections (ie: between different coils or non-contiguous Segments) will only be handled when refining the capacitance matrix prior to impulse simulation. The function returns an array of Ints that are the index (in the Nodes array) to  the LAST (uppermost) Node for each coil.
+    /// Essentially, this function creates (overwrites) the Nodes that are attached to the top and bottom of each segment in the current model. A Node may be shared, as in when a Segment.Connection exists between two Segments, _particularly_ the top of one Segment that is connected to the bottom of the next axial Segment. All other Connections (ie: between different coils or non-contiguous Segments) will only be handled when refining the capacitance matrix prior to impulse simulation. The function returns an array of Ints that are the index (in the Nodes array) to  the LAST (uppermost) Node for each *coil*.
     func SetNodes() throws -> [Int] {
         
         guard self.segments.count > 0 else {
@@ -729,7 +729,8 @@ class PhaseModel:Codable {
                 
                 let thisSegment = nextCoil[i]
                 
-                let newNode = Node(number: nextNodeNum, aboveSegment: thisSegment, belowSegment: prevSegment)
+                let nodeZ = prevSegment == nil ? thisSegment.z1 : (prevSegment!.z2 + thisSegment.z1) / 2.0
+                let newNode = Node(number: nextNodeNum, aboveSegment: thisSegment, belowSegment: prevSegment, z: nodeZ)
                 nextNodeNum += 1
                 self.nodeStore.append(newNode)
                 
@@ -739,7 +740,7 @@ class PhaseModel:Codable {
                     
                     if thisSegment.connections.first(where: {$0.segment == nextAxialSegment}) == nil {
                         
-                        let newNode = Node(number: nextNodeNum, aboveSegment: nil, belowSegment: thisSegment)
+                        let newNode = Node(number: nextNodeNum, aboveSegment: nil, belowSegment: thisSegment, z: thisSegment.z2)
                         nextNodeNum += 1
                         self.nodeStore.append(newNode)
                         prevSegment = nil
@@ -751,7 +752,7 @@ class PhaseModel:Codable {
                 }
                 else { // topmost segment of the coil
                     
-                    let newNode = Node(number: nextNodeNum, aboveSegment: nil, belowSegment: thisSegment)
+                    let newNode = Node(number: nextNodeNum, aboveSegment: nil, belowSegment: thisSegment, z: thisSegment.z2)
                     result.append(nextNodeNum)
                     nextNodeNum += 1
                     self.nodeStore.append(newNode)
@@ -817,14 +818,38 @@ class PhaseModel:Codable {
             
             // First, we update the Nodes array
             let coilTopNodes = try SetNodes()
-            var currentBottomNode = 0
+            
+            var outerFirstNode = 0
+            var innerNodeCount = 2
+            var innerCoilHt = 0.0
             for i in 0..<coilTopNodes.count {
                 
-                let currentLastSegment = coilTopNodes[i]
-                let nodeCount = currentLastSegment - currentBottomNode + 1
+                let outerLastNode = coilTopNodes[i]
+                let outerNodeCount = outerLastNode - outerFirstNode + 1
+                let outerCoilHt = self.nodeStore[outerLastNode].belowSegment!.z2 - self.nodeStore[outerFirstNode].aboveSegment!.z1
                 
-                let capToInner = try CoilInnerShuntCapacitance(coil: i)
+                let totalCapacitance = try CoilInnerShuntCapacitance(coil: i)
                 
+                let referenceHt = max(innerCoilHt, outerCoilHt)
+                
+                let faradsPerMeter = totalCapacitance / referenceHt
+                
+                struct nodeCap {
+                    
+                    let z:Double
+                    let cap:Double
+                }
+                
+                var innerNodeCaps:[nodeCap] = []
+                if (i == 0) {
+                    
+                    // take care of the special case where it's the first coil (ie: the 'inner coil' is actually the core
+                    innerNodeCaps = [nodeCap(z: 0.0, cap: totalCapacitance / 2.0), nodeCap(z: referenceHt, cap: totalCapacitance / 2.0)]
+                }
+                else {
+                    
+                    
+                }
                 
             }
             
