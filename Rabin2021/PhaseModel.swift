@@ -838,6 +838,7 @@ class PhaseModel:Codable {
                 
                 struct nodeCap {
                     
+                    let nodeIndex:Int
                     let z:Double
                     let cap:Double
                 }
@@ -846,7 +847,7 @@ class PhaseModel:Codable {
                 if (i == 0) {
                     
                     // take care of the special case where it's the first coil (ie: the 'inner coil' is actually the core)
-                    innerNodeCaps = [nodeCap(z: 0.0, cap: totalCapacitance / 2.0), nodeCap(z: referenceHt, cap: totalCapacitance / 2.0)]
+                    innerNodeCaps = [nodeCap(nodeIndex: -1, z: 0.0, cap: totalCapacitance / 2.0), nodeCap(nodeIndex: -1, z: referenceHt, cap: totalCapacitance / 2.0)]
                 }
                 else {
                     
@@ -858,7 +859,7 @@ class PhaseModel:Codable {
                         let lastCcum = j == innerFirstNode ? 0.0 : self.nodeStore[j - 1].z * faradsPerMeter
                         let nextCcum = j == innerLastNode ? totalCapacitance : self.nodeStore[j + 1].z * faradsPerMeter
                         
-                        let nextNodeCap = nodeCap(z: self.nodeStore[j].z, cap: (nextCcum - lastCcum) / 2.0)
+                        let nextNodeCap = nodeCap(nodeIndex: j, z: self.nodeStore[j].z, cap: (nextCcum - lastCcum) / 2.0)
                         innerNodeCaps.append(nextNodeCap)
                     }
                 }
@@ -870,11 +871,39 @@ class PhaseModel:Codable {
                     let lastCcum = j == outerFirstNode ? 0.0 : self.nodeStore[j - 1].z * faradsPerMeter
                     let nextCcum = j == outerLastNode ? totalCapacitance : self.nodeStore[j + 1].z * faradsPerMeter
                     
-                    let nextNodeCap = nodeCap(z: self.nodeStore[j].z, cap: (nextCcum - lastCcum) / 2.0)
+                    let nextNodeCap = nodeCap(nodeIndex: j, z: self.nodeStore[j].z, cap: (nextCcum - lastCcum) / 2.0)
                     outerNodeCaps.append(nextNodeCap)
                 }
                 
-                // At this point, the two sets of node capacitances are set up.
+                // At this point, the two sets of node capacitances are set up. Take care of the trivial case first, where the shunt capacitances from the innermost coil are to the core (a ground plane).
+                if i == 0 {
+                    
+                    for nextNodeCap in outerNodeCaps {
+                        
+                        self.nodeStore[nextNodeCap.nodeIndex].shuntCapacitances.append(Node.shuntCap(toNode: -1, capacitance: nextNodeCap.cap))
+                    }
+                }
+                else {
+                    
+                    // Apply the Super Duper Shunt Capacitance Algorithm™ by PCH
+                    
+                    // set the indices into the various arrays
+                    let inner = 0
+                    let outer = 1
+                    
+                    // initialize arrays & variables
+                    let nodeCaps = [innerNodeCaps, outerNodeCaps]
+                    var currentNodeIndex = [0, 0]
+                    var cumCap = [innerNodeCaps[0].cap, outerNodeCaps[0].cap]
+                    var refCoil = nodeCaps[inner][0].cap <= nodeCaps[outer][0].cap ? inner : outer
+                    var otherCoil = refCoil == inner ? outer : inner
+                    
+                    while currentNodeIndex[inner] < nodeCaps[inner].count && currentNodeIndex[outer] < nodeCaps[outer].count {
+                    
+                        let nextAveZ = (nodeCaps[inner][currentNodeIndex[inner]].z + nodeCaps[outer][currentNodeIndex[outer]].z) / 2.0
+                        
+                    }
+                }
                 
                 // set some variables for the next time through the loop
                 innerCoilHt = outerCoilHt
