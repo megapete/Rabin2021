@@ -819,13 +819,15 @@ class PhaseModel:Codable {
             // First, we update the Nodes array
             let coilTopNodes = try SetNodes()
             
+            var innerFirstNode = 0
             var outerFirstNode = 0
-            var innerNodeCount = 2
             var innerCoilHt = 0.0
+            
             for i in 0..<coilTopNodes.count {
                 
+                outerFirstNode = i == 0 ? 0 : coilTopNodes[i - 1] + 1
                 let outerLastNode = coilTopNodes[i]
-                let outerNodeCount = outerLastNode - outerFirstNode + 1
+                // let outerNodeCount = outerLastNode - outerFirstNode + 1
                 let outerCoilHt = self.nodeStore[outerLastNode].belowSegment!.z2 - self.nodeStore[outerFirstNode].aboveSegment!.z1
                 
                 let totalCapacitance = try CoilInnerShuntCapacitance(coil: i)
@@ -843,16 +845,44 @@ class PhaseModel:Codable {
                 var innerNodeCaps:[nodeCap] = []
                 if (i == 0) {
                     
-                    // take care of the special case where it's the first coil (ie: the 'inner coil' is actually the core
+                    // take care of the special case where it's the first coil (ie: the 'inner coil' is actually the core)
                     innerNodeCaps = [nodeCap(z: 0.0, cap: totalCapacitance / 2.0), nodeCap(z: referenceHt, cap: totalCapacitance / 2.0)]
                 }
                 else {
                     
+                    let innerLastNode = coilTopNodes[i - 1]
+                    innerCoilHt = self.nodeStore[innerLastNode].z
                     
+                    for j in innerFirstNode...innerLastNode {
+                        
+                        let lastCcum = j == innerFirstNode ? 0.0 : self.nodeStore[j - 1].z * faradsPerMeter
+                        let nextCcum = j == innerLastNode ? totalCapacitance : self.nodeStore[j + 1].z * faradsPerMeter
+                        
+                        let nextNodeCap = nodeCap(z: self.nodeStore[j].z, cap: (nextCcum - lastCcum) / 2.0)
+                        innerNodeCaps.append(nextNodeCap)
+                    }
                 }
+                
+                var outerNodeCaps:[nodeCap] = []
+                
+                for j in outerFirstNode...outerLastNode {
+                    
+                    let lastCcum = j == outerFirstNode ? 0.0 : self.nodeStore[j - 1].z * faradsPerMeter
+                    let nextCcum = j == outerLastNode ? totalCapacitance : self.nodeStore[j + 1].z * faradsPerMeter
+                    
+                    let nextNodeCap = nodeCap(z: self.nodeStore[j].z, cap: (nextCcum - lastCcum) / 2.0)
+                    outerNodeCaps.append(nextNodeCap)
+                }
+                
+                // At this point, the two sets of node capacitances are set up.
+                
+                // set some variables for the next time through the loop
+                innerCoilHt = outerCoilHt
+                innerFirstNode = outerFirstNode
                 
             }
             
+            // TODO: add the shunt capacitances to ground for the outermost coil
             
         }
         catch {
