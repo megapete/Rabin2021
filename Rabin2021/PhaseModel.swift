@@ -887,6 +887,13 @@ class PhaseModel:Codable {
                     
                     // Apply the Super Duper Shunt Capacitance Algorithm™ by PCH
                     
+                    struct capLink {
+                        
+                        let innerNode:Int
+                        let outerNode:Int
+                        let aveCap:Double
+                    }
+                    
                     // set the indices into the various arrays
                     let inner = 0
                     let outer = 1
@@ -897,11 +904,63 @@ class PhaseModel:Codable {
                     var cumCap = [innerNodeCaps[0].cap, outerNodeCaps[0].cap]
                     var refCoil = nodeCaps[inner][0].cap <= nodeCaps[outer][0].cap ? inner : outer
                     var otherCoil = refCoil == inner ? outer : inner
+                    var capLinks:[capLink] = []
                     
                     while currentNodeIndex[inner] < nodeCaps[inner].count && currentNodeIndex[outer] < nodeCaps[outer].count {
                     
-                        let nextAveZ = (nodeCaps[inner][currentNodeIndex[inner]].z + nodeCaps[outer][currentNodeIndex[outer]].z) / 2.0
+                        let averageZ = (nodeCaps[inner][currentNodeIndex[inner]].z + nodeCaps[outer][currentNodeIndex[outer]].z) / 2.0
+                        let averageC = averageZ / referenceHt * totalCapacitance
+                        capLinks.append(capLink(innerNode: nodeCaps[inner][currentNodeIndex[inner]].nodeIndex, outerNode: nodeCaps[outer][currentNodeIndex[outer]].nodeIndex, aveCap: averageC))
+                         
+                        let refValue = nodeCaps[refCoil][currentNodeIndex[refCoil]].cap / 2.0
                         
+                        if abs(cumCap[inner] - cumCap[outer]) > refValue {
+                                
+                            currentNodeIndex[refCoil] += 1
+                            cumCap[refCoil] += nodeCaps[refCoil][currentNodeIndex[refCoil]].cap
+                        }
+                        else {
+                            
+                            currentNodeIndex[refCoil] += 1
+                            currentNodeIndex[otherCoil] += 1
+                            
+                            if currentNodeIndex[inner] >= nodeCaps[inner].count && currentNodeIndex[outer] >= nodeCaps[outer].count {
+                                
+                                break
+                            }
+                            
+                            if currentNodeIndex[refCoil] < nodeCaps[refCoil].count {
+                                
+                                cumCap[refCoil] += nodeCaps[refCoil][currentNodeIndex[refCoil]].cap
+                            }
+                            else {
+                                
+                                currentNodeIndex[refCoil] = nodeCaps[refCoil].count - 1
+                            }
+                            
+                            if currentNodeIndex[otherCoil] < nodeCaps[otherCoil].count {
+                                
+                                cumCap[otherCoil] += nodeCaps[otherCoil][currentNodeIndex[otherCoil]].cap
+                            }
+                            else {
+                                
+                                currentNodeIndex[otherCoil] = nodeCaps[otherCoil].count - 1
+                            }
+                        }
+                        
+                        refCoil = nodeCaps[inner][currentNodeIndex[inner]].cap <= nodeCaps[outer][currentNodeIndex[outer]].cap ? inner : outer
+                        otherCoil = refCoil == inner ? outer : inner
+                    }
+                    
+                    // convert the capLinks to shunt capacitances
+                    for j in 0..<capLinks.count {
+                        
+                        let lowIndex = max(0, j - 1)
+                        let hiIndex = min(capLinks.count - 1, j + 1)
+                        let shuntCap = (capLinks[hiIndex].aveCap - capLinks[lowIndex].aveCap) / 2.0
+                        
+                        self.nodeStore[capLinks[j].innerNode].shuntCapacitances.append(Node.shuntCap(toNode: capLinks[j].outerNode, capacitance: shuntCap))
+                        self.nodeStore[capLinks[j].outerNode].shuntCapacitances.append(Node.shuntCap(toNode: capLinks[j].innerNode, capacitance: shuntCap))
                     }
                 }
                 
@@ -911,7 +970,18 @@ class PhaseModel:Codable {
                 
             }
             
-            // TODO: add the shunt capacitances to ground for the outermost coil
+            // Add the shunt capacitances to ground for the outermost coil
+            let outerCapacitance = try OuterShuntCapacitance()
+            let referenceHt = self.nodeStore[coilTopNodes.last!].z - self.nodeStore[innerFirstNode].z
+            let faradsPerMeter = outerCapacitance / referenceHt
+            
+            for j in innerFirstNode...coilTopNodes.last! {
+                
+                let lastCcum = j == innerFirstNode ? 0.0 : self.nodeStore[j - 1].z * faradsPerMeter
+                let nextCcum = j == coilTopNodes.last! ? outerCapacitance : self.nodeStore[j + 1].z * faradsPerMeter
+                
+                self.nodeStore[j].shuntCapacitances.append(Node.shuntCap(toNode: -1, capacitance: (nextCcum - lastCcum) / 2.0))
+            }
             
         }
         catch {
