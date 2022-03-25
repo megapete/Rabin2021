@@ -88,6 +88,7 @@ class PhaseModel:Codable {
             case IllegalConnector
             case TooManyConnectors
             case CapacitanceNotCalculated
+            case NodeHasNoSegments
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -175,6 +176,10 @@ class PhaseModel:Codable {
                 else if self.type == .CapacitanceNotCalculated {
                     
                     return "The capacitance for coil \(info) has not been calculated!"
+                }
+                else if self.type == .NodeHasNoSegments {
+                    
+                    return "The node \(info) has no Segments associated with it!"
                 }
                 
                 return "An unknown error occurred."
@@ -771,12 +776,9 @@ class PhaseModel:Codable {
             throw PhaseModelError(info: "", type: .EmptyModel)
         }
         
-        let C = PCH_BaseClass_Matrix(matrixType: .general, numType: .Double, rows: UInt(self.segments.count), columns: UInt(self.segments.count))
-        
         do {
             
             // start with the series capacitances
-            // TODO: NEED TO CHECK FOR RADIAL SHIELDS!!!
             for i in 0..<self.segments.count {
                 
                 let nextSegment = self.segments[i]
@@ -812,7 +814,7 @@ class PhaseModel:Codable {
                 
                 let serCap = try nextSegment.SeriesCapacitance(axialGaps: axialGaps, radialGaps: radialGaps, endDisc: endDisc, adjStaticRing: adjStaticRing)
                 
-                C[i, i] = serCap
+                nextSegment.seriesCapacitance = serCap
             }
             
             // Now we take care of the shunt capacitances
@@ -1013,13 +1015,46 @@ class PhaseModel:Codable {
                 self.nodeStore[j].shuntCapacitances.append(Node.shuntCap(toNode: -1, capacitance: (nextCcum - lastCcum) / 2.0))
             }
             
+            // At this point, all of the series and shunt capacitances have been calculated, so we can create the C-matrix. Note that at this point, the matrix has not taken into consideration any cross connections, nodal connections to ground, etc.
+            
+            let C = PCH_BaseClass_Matrix(matrixType: .general, numType: .Double, rows: UInt(self.nodeStore.count), columns: UInt(self.nodeStore.count))
+            
+            for nextNode in self.nodes {
+                
+                let Cj = nextNode.belowSegment != nil ? nextNode.belowSegment!.seriesCapacitance : 0.0
+                let Cj1 = nextNode.aboveSegment != nil ? nextNode.aboveSegment!.seriesCapacitance : 0.0
+                
+                guard Cj > 0.0 || Cj1 > 0.0 else {
+                    
+                    throw PhaseModelError(info: "\(nextNode.number)", type: .NodeHasNoSegments)
+                }
+                
+                var sumK = 0.0
+                for nextShuntCap in nextNode.shuntCapacitances {
+                    
+                    C[nextNode.number, nextShuntCap.toNode] = -nextShuntCap.capacitance
+                    sumK += nextShuntCap.capacitance
+                }
+                
+                C[nextNode.number, nextNode.number] = Cj + Cj1 + sumK
+                
+                if Cj != 0.0 {
+                    
+                    C[nextNode.number, nextNode.number - 1] = -Cj
+                }
+                
+                if Cj1 != 0.0 {
+                    
+                    C[nextNode.number, nextNode.number + 1] = -Cj1
+                }
+            }
+            
+            self.C = C
         }
         catch {
             
             throw error
         }
-        
-        self.C = C
     }
     
     // Calculate the capacitance to the tank and to the other coils of the outermost coil (per Kulkarne 7.15)

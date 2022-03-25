@@ -293,6 +293,9 @@ class Segment: Codable, Equatable, Hashable {
         return self.r2 - coreRadius
     }
     
+    /// The series capacitance of the segment when it is considered within a coil (this property is set elsewhere)
+    var seriesCapacitance:Double = 0.0
+    
     /// Constructor for a Segment. The array of BasicSections that is passed in is checked to make sure that all sections are part of the same coil, and that they are adjacent and in order from lowest Z to highest Z.
     /// - Note: This initiializer may fail and throw an error.
     /// - Parameter basicSections: An array of BasicSections. The sections must be part of the same Winding, be adjacent, and in order from lowest Z to highest Z.
