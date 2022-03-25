@@ -776,6 +776,7 @@ class PhaseModel:Codable {
         do {
             
             // start with the series capacitances
+            // TODO: NEED TO CHECK FOR RADIAL SHIELDS!!!
             for i in 0..<self.segments.count {
                 
                 let nextSegment = self.segments[i]
@@ -843,8 +844,10 @@ class PhaseModel:Codable {
                     let cap:Double
                 }
                 
+                let currentCoil = self.nodeStore[outerFirstNode].aboveSegment!.radialPos
+                let hasShieldInside = try self.RadialShieldInside(coil: currentCoil) != nil
                 var innerNodeCaps:[nodeCap] = []
-                if (i == 0) {
+                if i == 0 || hasShieldInside {
                     
                     // take care of the special case where it's the first coil (ie: the 'inner coil' is actually the core)
                     innerNodeCaps = [nodeCap(nodeIndex: -1, z: 0.0, cap: totalCapacitance / 2.0), nodeCap(nodeIndex: -1, z: referenceHt, cap: totalCapacitance / 2.0)]
@@ -875,8 +878,8 @@ class PhaseModel:Codable {
                     outerNodeCaps.append(nextNodeCap)
                 }
                 
-                // At this point, the two sets of node capacitances are set up. Take care of the trivial case first, where the shunt capacitances from the innermost coil are to the core (a ground plane).
-                if i == 0 {
+                // At this point, the two sets of node capacitances are set up. Take care of the trivial cases first, where the shunt capacitances from the innermost coil are to the core or a radial shield (a ground plane).
+                if i == 0 || hasShieldInside {
                     
                     for nextNodeCap in outerNodeCaps {
                         
@@ -964,6 +967,33 @@ class PhaseModel:Codable {
                     }
                 }
                 
+                // We now need to check if there is a radial shield OUTSIDE the coil
+                if let radialShieldOutside = try self.RadialShieldOutside(coil: currentCoil) {
+                    
+                    let rsCoil = radialShieldOutside.radialPos
+                    let rsCapacitance = try self.CoilInnerShuntCapacitance(coil: rsCoil)
+                    
+                    let coilLastNode = outerLastNode
+                    let coilFirstNode = outerFirstNode
+                    
+                    let rsFaradsPerMeter = rsCapacitance / referenceHt
+                    
+                    var rsNodeCaps:[nodeCap] = []
+                    for j in coilFirstNode...coilLastNode {
+                        
+                        let lastCcum = j == coilFirstNode ? 0.0 : self.nodeStore[j - 1].z * rsFaradsPerMeter
+                        let nextCcum = j == coilLastNode ? rsCapacitance : self.nodeStore[j + 1].z * rsFaradsPerMeter
+                        
+                        let nextNodeCap = nodeCap(nodeIndex: j, z: self.nodeStore[j].z, cap: (nextCcum - lastCcum) / 2.0)
+                        rsNodeCaps.append(nextNodeCap)
+                    }
+                    
+                    for nextNodeCap in rsNodeCaps {
+                        
+                        self.nodeStore[nextNodeCap.nodeIndex].shuntCapacitances.append(Node.shuntCap(toNode: -1, capacitance: nextNodeCap.cap))
+                    }
+                }
+                
                 // set some variables for the next time through the loop
                 innerCoilHt = outerCoilHt
                 innerFirstNode = outerFirstNode
@@ -1042,11 +1072,23 @@ class PhaseModel:Codable {
         
         do {
             
-            // start with the inner capacitance
+            // start with the inner radius
             var prevIR:Double = 0.0
             if coil == 0 {
                 
-                prevIR = self.core.radius
+                // check if there's a shield OVER the core (can't imagine why this would be needed, but...)
+                if let coreShield = self.SegmentAt(location: LocStruct(radial: Segment.negativeZeroPosition, axial: 0)) {
+                    
+                    prevIR = coreShield.r2
+                }
+                else {
+                    
+                    prevIR = self.core.radius
+                }
+            }
+            else if let innerShield = self.SegmentAt(location: LocStruct(radial: -coil, axial: 0)) {
+                
+                prevIR = innerShield.r2
             }
             else {
                 
@@ -1061,6 +1103,7 @@ class PhaseModel:Codable {
             let hilo = try HiloUnder(coil: coil)
             let rGap = prevIR + hilo / 2.0
             
+            // TODO: This should probably be dependent on whether 'coil' is actually a radial shield
             let Ns = Double(bs.wdgData.discData.numAxialColumns)
             // assume 3/4" sticks
             let ws = 0.75 * 0.0254
@@ -1269,7 +1312,7 @@ class PhaseModel:Codable {
         return self.SegmentAt(location: LocStruct(radial: -(coil + 1), axial: 0))
     }
     
-    /// Get the Hilo under the given coil
+    /// Get the Hilo under the given coil (or shield)
     func HiloUnder(coil:Int) throws -> Double {
         
         guard let segment = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
@@ -1279,9 +1322,28 @@ class PhaseModel:Codable {
         
         let coilInnerRadius = segment.r1
         
-        if segment.radialPos == 0 {
+        if coil < 0 {
+            
+            guard let innerSegment = self.SegmentAt(location: LocStruct(radial: (-coil) - 1, axial: 0)) else {
+                
+                throw PhaseModelError(info: "\(coil - 1)", type: .CoilDoesNotExist)
+            }
+            
+            return coilInnerRadius - innerSegment.r2
+        }
+        else if segment.radialPos == 0 {
+            
+            if let coreShield = SegmentAt(location: LocStruct(radial: Segment.negativeZeroPosition, axial: 0)) {
+                
+                return coilInnerRadius - coreShield.r2
+            }
             
             return coilInnerRadius - self.core.radius
+        }
+        // check for a radial shield inside the coil
+        else if let innerShield = self.SegmentAt(location: LocStruct(radial: -coil, axial: 0)) {
+            
+            return coilInnerRadius - innerShield.r2
         }
         else {
             
