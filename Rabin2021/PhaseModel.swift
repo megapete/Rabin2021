@@ -783,6 +783,11 @@ class PhaseModel:Codable {
                 
                 let nextSegment = self.segments[i]
                 
+                if nextSegment.radialPos < 0 || nextSegment.axialPos < 0 {
+                    
+                    continue
+                }
+                
                 let isBottomSegment = nextSegment.location.axial == 0
                 let topSegmentIndex = try GetHighestSection(coil: nextSegment.location.radial)
                 let isTopSegment = nextSegment.location.axial == topSegmentIndex
@@ -1218,6 +1223,7 @@ class PhaseModel:Codable {
         return coilHeight - sumAxialGaps
     }
     
+    /// This is (currently) a simple (ie: useless) calculation of series capacitance (simple because it does not consider things like interconnections, line in the middle, etc.). It gives the same result as the Excel-design sheet.
     func CoilSeriesCapacitance(coil:Int) throws -> Double {
         
         guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
@@ -1225,7 +1231,7 @@ class PhaseModel:Codable {
             throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
         
-        guard let C = self.C else {
+        guard let _ = self.C else {
             
             throw PhaseModelError(info: "\(coil)", type: .CapacitanceNotCalculated)
         }
@@ -1239,8 +1245,8 @@ class PhaseModel:Codable {
             
             if nextSegment.radialPos == coil && nextSegment.axialPos >= 0 {
                 
-                print("\(C[i, i])")
-                result += 1.0 / C[i, i]
+                print("\(nextSegment.seriesCapacitance)")
+                result += 1.0 / nextSegment.seriesCapacitance
             }
         }
         
@@ -1339,7 +1345,7 @@ class PhaseModel:Codable {
     /// Check if there a radial shield  outside the given coil and if so, return it as a Segment
     func RadialShieldOutside(coil:Int) throws -> Segment? {
         
-        guard let _ = self.SegmentAt(location: LocStruct(radial: coil + 1, axial: 0)) else {
+        guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
             throw PhaseModelError(info: "\(coil + 1)", type: .CoilDoesNotExist)
         }

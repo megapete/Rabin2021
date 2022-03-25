@@ -149,10 +149,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             
             do {
                 
-                
-                
                 try model.UpdateConnectors(oldSegments: oldSegments, newSegments: newSegments)
-                
                 
                 try model.AddSegments(newSegments: newSegments)
             }
@@ -192,10 +189,17 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         #endif
         
-        try? model.CalculateCapacitanceMatrix()
+        do {
         
-        
-        print("Coil 1 Cs: \(try! model.CoilSeriesCapacitance(coil: 1))")
+            try model.CalculateCapacitanceMatrix()
+            print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: 1))")
+        }
+        catch {
+            
+            let alert = NSAlert(error: error)
+            let _ = alert.runModal()
+            return
+        }
         
         if !reinitialize {
             
@@ -1057,6 +1061,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             let newStaticRing = try model.AddStaticRing(adjacentSegment: currentSegment.segment, above: true)
             
             try model.InsertSegment(newSegment: newStaticRing)
+            
+            try model.CalculateCapacitanceMatrix()
+            print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: currentSegment.segment.radialPos))")
+            
             self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segmentColor: currentSegment.segmentColor))
             self.txfoView.currentSegments = [self.txfoView.segments.last!]
             
@@ -1090,6 +1098,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             let newStaticRing = try model.AddStaticRing(adjacentSegment: currentSegment.segment, above: false)
             
             try model.InsertSegment(newSegment: newStaticRing)
+            
+            try model.CalculateCapacitanceMatrix()
+            print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: currentSegment.segment.radialPos))")
+            
             self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segmentColor: currentSegment.segmentColor))
             self.txfoView.currentSegments = [self.txfoView.segments.last!]
             
