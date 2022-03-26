@@ -702,7 +702,7 @@ class PhaseModel:Codable {
         self.nodeStore = []
         var result:[Int] = []
         
-        // split the Segment array into coils
+        // split the Segment array into coils (without shielding elements)
         var currentCoil = -1
         var coils:[[Segment]] = []
         var nextCoil:[Segment] = []
@@ -720,7 +720,11 @@ class PhaseModel:Codable {
                 nextCoil = []
             }
             
-            nextCoil.append(nextSegment)
+            // don't add static rings
+            if nextSegment.axialPos >= 0 {
+            
+                nextCoil.append(nextSegment)
+            }
         }
         
         coils.append(nextCoil)
@@ -787,12 +791,33 @@ class PhaseModel:Codable {
                     
                     continue
                 }
+                /*
+                if nextSegment.radialPos == 1 && nextSegment.axialPos == 0 {
+                    
+                    print("Stop here")
+                    
+                    let first = true
+                    let second = false
+
+                    let third:(one:Bool, two:Bool)? = first || second ? (first, second) : nil
+                    
+                    if let test = third {
+                        
+                        print("It is \(test.one) and \(test.two)")
+                    }
+                } */
                 
-                let isBottomSegment = nextSegment.location.axial == 0
+                let isBottomSegment:Bool = nextSegment.location.axial == 0
                 let topSegmentIndex = try GetHighestSection(coil: nextSegment.location.radial)
-                let isTopSegment = nextSegment.location.axial == topSegmentIndex
+                let isTopSegment:Bool = nextSegment.location.axial == topSegmentIndex
                 
-                let endDisc:(lowest:Bool, highest:Bool)? = isBottomSegment || isTopSegment ? (isBottomSegment, isTopSegment) : nil
+                let endDisc:(lowest:Bool, highest:Bool)? = (isBottomSegment || isTopSegment) ? (isBottomSegment, isTopSegment) : nil
+                
+                /*
+                if let check = endDisc {
+                    
+                    print("It works here...")
+                } */
                 
                 let staticRingUnder = try StaticRingBelow(segment: nextSegment, recursiveCheck: false)
                 let staticRingOver = try StaticRingAbove(segment: nextSegment, recursiveCheck: false)
@@ -1585,7 +1610,7 @@ class PhaseModel:Codable {
         var staticRingAbove:Segment? = nil
         
         // check the easy thing first, looking for a direct reference to a static ring
-        let srAxial = segment.axialPos == 0 ? Int.min : -segment.axialPos
+        let srAxial = segment.axialPos == 0 ? Segment.negativeZeroPosition : -segment.axialPos
         let srLocation = LocStruct(radial: segment.radialPos, axial: srAxial)
         if let srSegment = self.SegmentAt(location: srLocation) {
             
@@ -1623,7 +1648,7 @@ class PhaseModel:Codable {
         var staticRingBelow:Segment? = nil
         
         // check the easy thing first, looking for a direct reference to a static ring
-        let srAxial = segment.axialPos == 0 ? Int.min : -segment.axialPos
+        let srAxial = segment.axialPos == 0 ? Segment.negativeZeroPosition : -segment.axialPos
         let srLocation = LocStruct(radial: segment.radialPos, axial: srAxial)
         if let srSegment = self.SegmentAt(location: srLocation) {
             

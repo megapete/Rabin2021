@@ -926,7 +926,7 @@ class Segment: Codable, Equatable, Hashable {
         throw SegmentError(info: "", type: .UnimplementedWdgType)
     }
     
-    /// Class function to create a radial shield. The Segment has its 'isRadialShield' property set to true. The radial location of the shield is equal to the _negative_ of the 'adjacentSegment' argument unless the adjacent segment is in coil '0', in which case the radial location of the shield is Int.min. The adjacent segment must be the FIRST (lowest) Segment in the NEXT coil position from the core.  That is, the radial shield will be placed in the hilo UNDER the adjacent Segment. The thickness of the shield is fixed at 2mm. The radial shield should be set to have  the full electrical height of the coil to which adjacentSegment belongs.
+    /// Class function to create a radial shield. The Segment has its 'isRadialShield' property set to true. The radial location of the shield is equal to the _negative_ of the 'adjacentSegment' argument unless the adjacent segment is in coil '0', in which case the radial location of the shield is Segment.negativeZeroPosition. The adjacent segment must be the FIRST (lowest) Segment in the NEXT coil position from the core.  That is, the radial shield will be placed in the hilo UNDER the adjacent Segment. The thickness of the shield is fixed at 2mm. The radial shield should be set to have  the full electrical height of the coil to which adjacentSegment belongs.
     /// - Parameter adjacentSegment: The segment that is immediately outside the radial shield..
     /// - Parameter hiloToSegment: The radial gap between the shield and the adjacent Segment.
     /// - Parameter elecHt: The height of the radial shield
