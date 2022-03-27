@@ -1062,7 +1062,12 @@ class PhaseModel:Codable {
                 var sumK = 0.0
                 for nextShuntCap in nextNode.shuntCapacitances {
                     
-                    C[nextNode.number, nextShuntCap.toNode] = -nextShuntCap.capacitance
+                    // ground nodes are not included in the capacitance matrix
+                    if nextShuntCap.toNode >= 0 {
+                    
+                        C[nextNode.number, nextShuntCap.toNode] = -nextShuntCap.capacitance
+                    }
+                    
                     sumK += nextShuntCap.capacitance
                 }
                 
