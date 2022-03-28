@@ -49,6 +49,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     @IBOutlet weak var addConnectionMenuItem: NSMenuItem!
     @IBOutlet weak var removeConnectionMenuItem: NSMenuItem!
     
+    /// Save matrices
+    @IBOutlet weak var saveMmatrixMenuItem: NSMenuItem!
+    @IBOutlet weak var saveBaseCmatrixMenuItem: NSMenuItem!
+    @IBOutlet weak var saveFixedCmatrixMenuItem: NSMenuItem!
+    
+    
     /// R and Z indication on the main window
     @IBOutlet weak var rLocationTextField: NSTextField!
     @IBOutlet weak var zLocationTextField: NSTextField!
@@ -710,6 +716,46 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
     }
     
+    @IBAction func handleSaveMmatrix(_ sender: Any) {
+        
+        guard let model = self.currentModel, let Mmatrix = model.M else {
+            
+            return
+        }
+        
+        let csvFileString = Mmatrix.csv
+        
+        let savePanel = NSSavePanel()
+        savePanel.title = "Inductance Matrix"
+        savePanel.message = "Save Inductance Matrix as CSV file"
+        savePanel.allowedFileTypes = ["txt"]
+        savePanel.allowsOtherFileTypes = false
+        
+        if savePanel.runModal() == .OK
+        {
+            if let fileUrl = savePanel.url
+            {
+                do {
+                    
+                    try csvFileString.write(to: fileUrl, atomically: false, encoding: .utf8)
+                }
+                catch {
+                    
+                    let alert = NSAlert(error: error)
+                    let _ = alert.runModal()
+                    return
+                }
+            }
+        }
+    }
+    
+    @IBAction func handleSaveBaseCmatrix(_ sender: Any) {
+    }
+    
+    @IBAction func handleSaveFixedCmatrix(_ sender: Any) {
+    }
+    
+    
     // MARK: Zoom functions
     @IBAction func handleZoomIn(_ sender: Any) {
         
@@ -1322,6 +1368,21 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         if menuItem == self.splitSegmentToBasicSectionsMenuItem {
             
             return self.currentModel != nil && currentSegsCount == 1 && currentSegs[0].segment.basicSections.count > 1 && !currentSegs.contains(where: {$0.segment.isStaticRing}) && !currentSegs.contains(where: {$0.segment.isRadialShield})
+        }
+        
+        if menuItem == self.saveMmatrixMenuItem {
+            
+            return self.currentModel != nil && self.currentModel!.M != nil
+        }
+        
+        if menuItem == self.saveBaseCmatrixMenuItem {
+            
+            return self.currentModel != nil && self.currentModel!.C != nil
+        }
+        
+        if menuItem == self.saveFixedCmatrixMenuItem {
+            
+            return self.currentModel != nil && self.currentModel!.fixedC != nil
         }
         
         // default to true

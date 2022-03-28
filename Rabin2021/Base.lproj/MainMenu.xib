@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="19529" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="20037" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
     <dependencies>
         <deployment identifier="macosx"/>
-        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="19529"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="20037"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
     <objects>
@@ -34,6 +34,9 @@
                 <outlet property="removeConnectionMenuItem" destination="VZ8-kL-Dja" id="in8-h8-Gl3"/>
                 <outlet property="removeRadialShieldMenuItem" destination="xXj-L6-RCw" id="PQm-pG-7IL"/>
                 <outlet property="removeStaticRingMenuItem" destination="4HP-v0-HBk" id="Y4d-TJ-nm9"/>
+                <outlet property="saveBaseCmatrixMenuItem" destination="X1L-Wz-3EW" id="h9Y-Xj-oQR"/>
+                <outlet property="saveFixedCmatrixMenuItem" destination="5eK-yU-3ra" id="efd-Ze-oBc"/>
+                <outlet property="saveMmatrixMenuItem" destination="I9o-un-V1m" id="GXy-pI-eYq"/>
                 <outlet property="showWdgAsSingleSegmentMenuItem" destination="Aqp-v7-qka" id="wWQ-tl-Wef"/>
                 <outlet property="splitSegmentToBasicSectionsMenuItem" destination="hmW-Yq-C8J" id="aNg-xP-L1a"/>
                 <outlet property="staticRingBelowMenuItem" destination="yYJ-bL-mnq" id="u77-aA-iGG"/>
@@ -532,6 +535,31 @@
                                 <modifierMask key="keyEquivalentModifierMask" control="YES" command="YES"/>
                                 <connections>
                                     <action selector="toggleFullScreen:" target="-1" id="dU3-MA-1Rq"/>
+                                </connections>
+                            </menuItem>
+                        </items>
+                    </menu>
+                </menuItem>
+                <menuItem title="Matrices" id="lMg-HJ-Vry">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                    <menu key="submenu" title="Matrices" id="V5a-fc-ttx">
+                        <items>
+                            <menuItem title="Save M-matrix..." id="I9o-un-V1m">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleSaveMmatrix:" target="XWq-sU-B2V" id="lxI-wl-Wam"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Save Base C-matrix..." id="X1L-Wz-3EW">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleBaseCmatrix:" target="XWq-sU-B2V" id="bC0-gW-mSU"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Save Fixed C-matrix..." id="5eK-yU-3ra">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleSaveFixedCmatrix:" target="XWq-sU-B2V" id="ZqY-Il-Hnq"/>
                                 </connections>
                             </menuItem>
                         </items>

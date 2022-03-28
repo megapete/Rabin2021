@@ -46,6 +46,9 @@ class PhaseModel:Codable {
     /// The basic (unmodified) capacitance matrix for the model
     var C:PCH_BaseClass_Matrix? = nil
     
+    /// The 'fixed' capacitance matrix (used by the actual simulation)
+    var fixedC:PCH_BaseClass_Matrix? = nil
+    
     /// The window height to actually use
     var useWindowHeight:Double {
         
