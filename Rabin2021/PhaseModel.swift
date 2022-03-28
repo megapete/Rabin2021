@@ -40,7 +40,7 @@ class PhaseModel:Codable {
     /// An array of Eslamian Vahidi segments. Ultimately, there will probably be no reason to keep this around and it should be removed from the class.
     var evSegments:[EslamianVahidiSegment] = []
     
-    /// The inductance matrix for the model
+    /// The inductance matrix for the model. **NOTE: This matrix is in Cholesky-factorized form
     var M:PCH_BaseClass_Matrix? = nil
     
     /// The basic (unmodified) capacitance matrix for the model
@@ -865,6 +865,8 @@ class PhaseModel:Codable {
                 let outerLastNode = coilTopNodes[i]
                 // let outerNodeCount = outerLastNode - outerFirstNode + 1
                 let outerCoilHt = self.nodeStore[outerLastNode].belowSegment!.z2 - self.nodeStore[outerFirstNode].aboveSegment!.z1
+                
+                ZAssert(outerCoilHt > 0.0, message: "Got negative height!")
                 
                 let totalCapacitance = try CoilInnerShuntCapacitance(coil: i)
                 

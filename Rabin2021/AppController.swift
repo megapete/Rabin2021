@@ -750,9 +750,69 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     }
     
     @IBAction func handleSaveBaseCmatrix(_ sender: Any) {
+        
+        guard let model = self.currentModel, let Cmatrix = model.C else {
+            
+            return
+        }
+        
+        let csvFileString = Cmatrix.csv
+        
+        let savePanel = NSSavePanel()
+        savePanel.title = "Base Capacitance Matrix"
+        savePanel.message = "Save Capacitance Matrix as CSV file"
+        savePanel.allowedFileTypes = ["txt"]
+        savePanel.allowsOtherFileTypes = false
+        
+        if savePanel.runModal() == .OK
+        {
+            if let fileUrl = savePanel.url
+            {
+                do {
+                    
+                    try csvFileString.write(to: fileUrl, atomically: false, encoding: .utf8)
+                }
+                catch {
+                    
+                    let alert = NSAlert(error: error)
+                    let _ = alert.runModal()
+                    return
+                }
+            }
+        }
     }
     
     @IBAction func handleSaveFixedCmatrix(_ sender: Any) {
+        
+        guard let model = self.currentModel, let Cmatrix = model.fixedC else {
+            
+            return
+        }
+        
+        let csvFileString = Cmatrix.csv
+        
+        let savePanel = NSSavePanel()
+        savePanel.title = "Fixed Capacitance Matrix"
+        savePanel.message = "Save Capacitance Matrix as CSV file"
+        savePanel.allowedFileTypes = ["txt"]
+        savePanel.allowsOtherFileTypes = false
+        
+        if savePanel.runModal() == .OK
+        {
+            if let fileUrl = savePanel.url
+            {
+                do {
+                    
+                    try csvFileString.write(to: fileUrl, atomically: false, encoding: .utf8)
+                }
+                catch {
+                    
+                    let alert = NSAlert(error: error)
+                    let _ = alert.runModal()
+                    return
+                }
+            }
+        }
     }
     
     

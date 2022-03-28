@@ -544,7 +544,7 @@
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <menu key="submenu" title="Matrices" id="V5a-fc-ttx">
                         <items>
-                            <menuItem title="Save M-matrix..." id="I9o-un-V1m">
+                            <menuItem title="Save Cholesky M-matrix..." id="I9o-un-V1m">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
                                     <action selector="handleSaveMmatrix:" target="XWq-sU-B2V" id="lxI-wl-Wam"/>
@@ -553,7 +553,7 @@
                             <menuItem title="Save Base C-matrix..." id="X1L-Wz-3EW">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
-                                    <action selector="handleBaseCmatrix:" target="XWq-sU-B2V" id="bC0-gW-mSU"/>
+                                    <action selector="handleSaveBaseCmatrix:" target="XWq-sU-B2V" id="gd4-UF-atb"/>
                                 </connections>
                             </menuItem>
                             <menuItem title="Save Fixed C-matrix..." id="5eK-yU-3ra">
