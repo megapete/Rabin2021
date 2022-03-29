@@ -858,6 +858,7 @@ class PhaseModel:Codable {
             var innerFirstNode = 0
             var outerFirstNode = 0
             var innerCoilHt = 0.0
+            var referenceZero = self.nodeStore[0].aboveSegment!.z1
             
             for i in 0..<coilTopNodes.count {
                 
@@ -865,6 +866,7 @@ class PhaseModel:Codable {
                 let outerLastNode = coilTopNodes[i]
                 // let outerNodeCount = outerLastNode - outerFirstNode + 1
                 let outerCoilHt = self.nodeStore[outerLastNode].belowSegment!.z2 - self.nodeStore[outerFirstNode].aboveSegment!.z1
+                referenceZero = min(referenceZero, self.nodeStore[outerFirstNode].aboveSegment!.z1)
                 
                 ZAssert(outerCoilHt > 0.0, message: "Got negative height!")
                 
@@ -896,8 +898,8 @@ class PhaseModel:Codable {
                     
                     for j in innerFirstNode...innerLastNode {
                         
-                        let lastCcum = j == innerFirstNode ? 0.0 : self.nodeStore[j - 1].z * faradsPerMeter
-                        let nextCcum = j == innerLastNode ? totalCapacitance : self.nodeStore[j + 1].z * faradsPerMeter
+                        let lastCcum = j == innerFirstNode ? 0.0 : (self.nodeStore[j - 1].z - referenceZero) * faradsPerMeter
+                        let nextCcum = j == innerLastNode ? totalCapacitance : (self.nodeStore[j + 1].z - referenceZero) * faradsPerMeter
                         
                         let nextNodeCap = nodeCap(nodeIndex: j, z: self.nodeStore[j].z, cap: (nextCcum - lastCcum) / 2.0)
                         innerNodeCaps.append(nextNodeCap)
@@ -908,8 +910,8 @@ class PhaseModel:Codable {
                 
                 for j in outerFirstNode...outerLastNode {
                     
-                    let lastCcum = j == outerFirstNode ? 0.0 : self.nodeStore[j - 1].z * faradsPerMeter
-                    let nextCcum = j == outerLastNode ? totalCapacitance : self.nodeStore[j + 1].z * faradsPerMeter
+                    let lastCcum = j == outerFirstNode ? 0.0 : (self.nodeStore[j - 1].z - referenceZero) * faradsPerMeter
+                    let nextCcum = j == outerLastNode ? totalCapacitance : (self.nodeStore[j + 1].z - referenceZero) * faradsPerMeter
                     
                     let nextNodeCap = nodeCap(nodeIndex: j, z: self.nodeStore[j].z, cap: (nextCcum - lastCcum) / 2.0)
                     outerNodeCaps.append(nextNodeCap)
@@ -956,8 +958,17 @@ class PhaseModel:Codable {
                         
                         if abs(cumCap[inner] - cumCap[outer]) > refValue {
                                 
-                            currentNodeIndex[refCoil] += 1
                             cumCap[refCoil] += nodeCaps[refCoil][currentNodeIndex[refCoil]].cap
+                            /*
+                            currentNodeIndex[refCoil] += 1
+                            if currentNodeIndex[refCoil] < nodeCaps[refCoil].count {
+                                
+                                cumCap[refCoil] += nodeCaps[refCoil][currentNodeIndex[refCoil]].cap
+                            }
+                            else {
+                                
+                                currentNodeIndex[refCoil] = nodeCaps[refCoil].count - 1
+                            }*/
                         }
                         else {
                             
@@ -1018,8 +1029,8 @@ class PhaseModel:Codable {
                     var rsNodeCaps:[nodeCap] = []
                     for j in coilFirstNode...coilLastNode {
                         
-                        let lastCcum = j == coilFirstNode ? 0.0 : self.nodeStore[j - 1].z * rsFaradsPerMeter
-                        let nextCcum = j == coilLastNode ? rsCapacitance : self.nodeStore[j + 1].z * rsFaradsPerMeter
+                        let lastCcum = j == coilFirstNode ? 0.0 : (self.nodeStore[j - 1].z - referenceZero) * rsFaradsPerMeter
+                        let nextCcum = j == coilLastNode ? rsCapacitance : (self.nodeStore[j + 1].z - referenceZero) * rsFaradsPerMeter
                         
                         let nextNodeCap = nodeCap(nodeIndex: j, z: self.nodeStore[j].z, cap: (nextCcum - lastCcum) / 2.0)
                         rsNodeCaps.append(nextNodeCap)
@@ -1040,12 +1051,13 @@ class PhaseModel:Codable {
             // Add the shunt capacitances to ground for the outermost coil
             let outerCapacitance = try OuterShuntCapacitance()
             let referenceHt = self.nodeStore[coilTopNodes.last!].z - self.nodeStore[innerFirstNode].z
+            referenceZero = self.nodeStore[innerFirstNode].z
             let faradsPerMeter = outerCapacitance / referenceHt
             
             for j in innerFirstNode...coilTopNodes.last! {
                 
-                let lastCcum = j == innerFirstNode ? 0.0 : self.nodeStore[j - 1].z * faradsPerMeter
-                let nextCcum = j == coilTopNodes.last! ? outerCapacitance : self.nodeStore[j + 1].z * faradsPerMeter
+                let lastCcum = j == innerFirstNode ? 0.0 : (self.nodeStore[j - 1].z - referenceZero) * faradsPerMeter
+                let nextCcum = j == coilTopNodes.last! ? outerCapacitance : (self.nodeStore[j + 1].z - referenceZero) * faradsPerMeter
                 
                 self.nodeStore[j].shuntCapacitances.append(Node.shuntCap(toNode: -1, capacitance: (nextCcum - lastCcum) / 2.0))
             }
@@ -1192,7 +1204,7 @@ class PhaseModel:Codable {
             let firstTerm = fs / ((tPress / εBoard) + (tStick / εBoard))
             let secondTerm = (1 - fs) / ((tPress / εBoard) + (tStick / εOil))
             
-            let Cinner = ε0 * 2 * π * rGap * H * (firstTerm - secondTerm)
+            let Cinner = ε0 * 2 * π * rGap * H * (firstTerm + secondTerm)
             
             return Cinner
         }
