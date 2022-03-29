@@ -947,28 +947,24 @@ class PhaseModel:Codable {
                     var refCoil = nodeCaps[inner][0].cap <= nodeCaps[outer][0].cap ? inner : outer
                     var otherCoil = refCoil == inner ? outer : inner
                     var capLinks:[capLink] = []
+                    var prevAverageC = 0.0
                     
                     while currentNodeIndex[inner] < nodeCaps[inner].count && currentNodeIndex[outer] < nodeCaps[outer].count {
                     
-                        let averageZ = (nodeCaps[inner][currentNodeIndex[inner]].z + nodeCaps[outer][currentNodeIndex[outer]].z) / 2.0
-                        let averageC = averageZ / referenceHt * totalCapacitance
-                        capLinks.append(capLink(innerNode: nodeCaps[inner][currentNodeIndex[inner]].nodeIndex, outerNode: nodeCaps[outer][currentNodeIndex[outer]].nodeIndex, aveCap: averageC))
+                        let thisAverageZ = (nodeCaps[inner][currentNodeIndex[inner]].z + nodeCaps[outer][currentNodeIndex[outer]].z) / 2.0
+                        let thisAverageC = (thisAverageZ - referenceZero) / referenceHt * totalCapacitance
+                        
+                        let innerNode = nodeCaps[inner][currentNodeIndex[inner]].nodeIndex
+                        let outerNode = nodeCaps[outer][currentNodeIndex[outer]].nodeIndex
+                        
+                        // capLinks.append(capLink(innerNode: nodeCaps[inner][currentNodeIndex[inner]].nodeIndex, outerNode: nodeCaps[outer][currentNodeIndex[outer]].nodeIndex, aveCap: averageC))
                          
                         let refValue = nodeCaps[refCoil][currentNodeIndex[refCoil]].cap / 2.0
                         
                         if abs(cumCap[inner] - cumCap[outer]) > refValue {
                                 
-                            cumCap[refCoil] += nodeCaps[refCoil][currentNodeIndex[refCoil]].cap
-                            /*
                             currentNodeIndex[refCoil] += 1
-                            if currentNodeIndex[refCoil] < nodeCaps[refCoil].count {
-                                
-                                cumCap[refCoil] += nodeCaps[refCoil][currentNodeIndex[refCoil]].cap
-                            }
-                            else {
-                                
-                                currentNodeIndex[refCoil] = nodeCaps[refCoil].count - 1
-                            }*/
+                            cumCap[refCoil] += nodeCaps[refCoil][currentNodeIndex[refCoil]].cap
                         }
                         else {
                             
@@ -999,6 +995,15 @@ class PhaseModel:Codable {
                             }
                         }
                         
+                        let nextAverageZ = (nodeCaps[inner][currentNodeIndex[inner]].z + nodeCaps[outer][currentNodeIndex[outer]].z) / 2.0
+                        let nextAverageC = (nextAverageZ - referenceZero) / referenceHt * totalCapacitance
+                        
+                        let averageC = (nextAverageC - prevAverageC) / 2
+                        
+                        prevAverageC = thisAverageC
+                        
+                        capLinks.append(capLink(innerNode: innerNode, outerNode: outerNode, aveCap: averageC))
+                        
                         refCoil = nodeCaps[inner][currentNodeIndex[inner]].cap <= nodeCaps[outer][currentNodeIndex[outer]].cap ? inner : outer
                         otherCoil = refCoil == inner ? outer : inner
                     }
@@ -1006,10 +1011,11 @@ class PhaseModel:Codable {
                     // convert the capLinks to shunt capacitances
                     for j in 0..<capLinks.count {
                         
-                        let lowIndex = max(0, j - 1)
-                        let hiIndex = min(capLinks.count - 1, j + 1)
-                        let shuntCap = (capLinks[hiIndex].aveCap - capLinks[lowIndex].aveCap) / 2.0
+                        // let lowIndex = max(0, j - 1)
+                        // let hiIndex = min(capLinks.count - 1, j + 1)
+                        // let shuntCap = (capLinks[hiIndex].aveCap - capLinks[lowIndex].aveCap) / 2.0
                         
+                        let shuntCap = capLinks[j].aveCap
                         self.nodeStore[capLinks[j].innerNode].shuntCapacitances.append(Node.shuntCap(toNode: capLinks[j].outerNode, capacitance: shuntCap))
                         self.nodeStore[capLinks[j].outerNode].shuntCapacitances.append(Node.shuntCap(toNode: capLinks[j].innerNode, capacitance: shuntCap))
                     }
