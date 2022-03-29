@@ -794,33 +794,12 @@ class PhaseModel:Codable {
                     
                     continue
                 }
-                /*
-                if nextSegment.radialPos == 1 && nextSegment.axialPos == 0 {
-                    
-                    print("Stop here")
-                    
-                    let first = true
-                    let second = false
-
-                    let third:(one:Bool, two:Bool)? = first || second ? (first, second) : nil
-                    
-                    if let test = third {
-                        
-                        print("It is \(test.one) and \(test.two)")
-                    }
-                } */
                 
                 let isBottomSegment:Bool = nextSegment.location.axial == 0
                 let topSegmentIndex = try GetHighestSection(coil: nextSegment.location.radial)
                 let isTopSegment:Bool = nextSegment.location.axial == topSegmentIndex
                 
                 let endDisc:(lowest:Bool, highest:Bool)? = (isBottomSegment || isTopSegment) ? (isBottomSegment, isTopSegment) : nil
-                
-                /*
-                if let check = endDisc {
-                    
-                    print("It works here...")
-                } */
                 
                 let staticRingUnder = try StaticRingBelow(segment: nextSegment, recursiveCheck: false)
                 let staticRingOver = try StaticRingAbove(segment: nextSegment, recursiveCheck: false)
@@ -1007,6 +986,9 @@ class PhaseModel:Codable {
                         refCoil = nodeCaps[inner][currentNodeIndex[inner]].cap <= nodeCaps[outer][currentNodeIndex[outer]].cap ? inner : outer
                         otherCoil = refCoil == inner ? outer : inner
                     }
+                    
+                    // add the final shunt capacitance
+                    capLinks.append(capLink(innerNode: nodeCaps[inner].last!.nodeIndex, outerNode: nodeCaps[outer].last!.nodeIndex, aveCap: (totalCapacitance - prevAverageC) / 2))
                     
                     // convert the capLinks to shunt capacitances
                     for j in 0..<capLinks.count {
