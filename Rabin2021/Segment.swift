@@ -792,7 +792,7 @@ class Segment: Codable, Equatable, Hashable {
     static func DiscToDiscSeriesCapacitance(belowGap:Double, aboveGap:Double, basicSection:BasicSection) -> (below:Double, above:Double) {
         
         let fks = Double(basicSection.wdgData.discData.numAxialColumns) * basicSection.wdgData.discData.axialColumnWidth / (π * (basicSection.r1 + basicSection.r2))
-        let tp = 2.0 * basicSection.wdgData.turn.turnInsulation
+        let tp = /* 2.0 * */ basicSection.wdgData.turn.turnInsulation
         
         var Cdd_below = ε0 * π * (basicSection.r2 * basicSection.r2 - basicSection.r1 * basicSection.r1)
         var Cdd_above = Cdd_below
@@ -898,7 +898,7 @@ class Segment: Codable, Equatable, Hashable {
         
         if self.wdgType == .disc || self.wdgType == .layer {
             
-            let tau = 2.0 * self.basicSections[0].wdgData.turn.turnInsulation
+            let tau = /* 2.0 * */ self.basicSections[0].wdgData.turn.turnInsulation
             
             // the calculation of the turn thickness of layer windings does not account for ducts in the winding
             let h = self.wdgType == .disc ? self.basicSections[0].height - tau : self.basicSections[0].width / Double(self.basicSections[0].wdgData.layers.numLayers)

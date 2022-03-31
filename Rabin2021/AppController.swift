@@ -191,7 +191,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         #else
         
-        print("Pretending to be recalculating Inductance & Capacitance matrices")
+        print("Pretending to be recalculating Inductance matrix")
         
         #endif
         
