@@ -198,6 +198,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         do {
         
             try model.CalculateCapacitanceMatrix()
+            print("Coil 0 Cs: \(try model.CoilSeriesCapacitance(coil: 0))")
             print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: 1))")
         }
         catch {

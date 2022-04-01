@@ -666,7 +666,7 @@ class Segment: Codable, Equatable, Hashable {
         // throw SegmentError(info: "", type: .UnknownError)
     }
     
-    /// The 'internal' series capacitance of a Segment. In the case where the Segment is made up of a single BasicSection, this routine returns the Cs from the turns only (for interleaved discs, it returns the Cs of the 'double-disc'). In all other cases, the actual series capacitance for the entire collection of BasicSections is calculated using equation 12.43 from DelVecchio (3rd Ed). The bottom-most and top-most BasicSections in the Segment are treated as "end-discs" and have their Cs calculated per equation 12.63.
+    /// The 'internal' series capacitance of a Segment. In the case where the Segment is made up of a single BasicSection, this routine returns the Cs from the turns only (for interleaved discs, it returns the Cs of the 'double-disc'). In all other cases, the actual series capacitance for the entire collection of BasicSections is calculated using equation 12.43 from DelVecchio (3rd Ed). The bottom-most and top-most BasicSections in the Segment are treated as "end-discs" and have their Cs calculated per equation 12.63. Unfortunately, this does not actually work. 
     private func SegmentInternalSeriesCapacitance() throws -> Double {
         
         // only disc coils can be interleaved
@@ -709,7 +709,6 @@ class Segment: Codable, Equatable, Hashable {
                 }
                 else {
                     
-                    // we'll set the above-gap amount outside of the loop for reasons we'll see inside the loop
                     var aboveGap = 0.0
                     for i in 0..<sectionCount {
                         
@@ -756,7 +755,7 @@ class Segment: Codable, Equatable, Hashable {
                             let CddSum = Cdd.below + Cdd.above
                             let Ya = Cdd.above / CddSum
                             let Yb = Cdd.below / CddSum
-                            let alpha = sqrt(2 * (Cdd.above + Cdd.below) / Cs)
+                            let alpha = sqrt(2 * CddSum / Cs)
                             
                             let firstTerm = (Ya * Ya + Yb * Yb) * alpha / tanh(alpha)
                             let secondTerm = 2 * Ya * Yb * alpha / sinh(alpha)
@@ -844,25 +843,26 @@ class Segment: Codable, Equatable, Hashable {
         do {
             
             let Ctt = try self.CapacitanceTurnToTurn()
+            let N = self.basicSections[0].N
             
             if self.wdgType == .disc && self.interleaved {
                 
                 // Veverka method (equation 6.4). This should probably be made more precise using the logic given in DelVecchio where they say that the turn-turn capacitances do not see the full disc voltage (it's actually one turn less voltage per disc). Note that as mentioned in the comment for the function, this is actually double the amount of the double-disc.
-                let Cs = Ctt * (self.N - 1) // divide by 2 to get the double-disc series capacitance value
+                let Cs = Ctt * (N - 1) // divide by 2 to get the double-disc series capacitance value
                 
                 return Cs
             }
             else if self.wdgType == .disc || self.wdgType == .sheet {
                 
                 // Del Vecchio method
-                let Cs = Ctt * (self.N - 1) / (self.N * self.N)
+                let Cs = Ctt * (N - 1) / (N * N)
                 
                 return Cs
             }
             else if self.wdgType == .layer {
                 
                 // Huber method. Basically, this uses the Del Vecchio method for discs, but turns it on its side, so that the series capacitance goes in the axial direction and the disc-disc capacitance becomes the layer-layer capacitance. 
-                let turnsPerLayer = self.N / Double(self.basicSections[0].wdgData.layers.numLayers)
+                let turnsPerLayer = N / Double(self.basicSections[0].wdgData.layers.numLayers)
                 let Cs = Ctt * (turnsPerLayer - 1) / (turnsPerLayer * turnsPerLayer)
                 
                 return Cs
