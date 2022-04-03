@@ -1558,7 +1558,7 @@ class PhaseModel:Codable {
         }
     }
     
-    /// Try to add a static ring either above or below the adjacent Segment. If unsuccessful, this function throws an error.
+    /// Try to add a static ring either above or below the adjacent Segment. If unsuccessful, this function throws an error. Note that this rountien does not actually add the static ring to the model's segmentStore
     func AddStaticRing(adjacentSegment:Segment, above:Bool, staticRingThickness:Double? = nil, gapToStaticRing:Double? = nil) throws -> Segment {
         
         guard let _ = self.segmentStore.firstIndex(of: adjacentSegment) else {

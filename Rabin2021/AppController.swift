@@ -952,6 +952,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         if model.SegmentsAreContiguous(segments: segments) {
             
             var newBasicSectionArray:[BasicSection] = []
+            
+            
+            
             for nextSegment in segments {
                 
                 newBasicSectionArray.append(contentsOf: nextSegment.basicSections)
@@ -959,9 +962,38 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                         
             do {
                 
+                // we need to keep track of static rings that are at the ends of new (combined) Segments
+                let bottomStaticRing = try model.StaticRingBelow(segment: segments.first!, recursiveCheck: false)
+                let topStaticRing = try model.StaticRingAbove(segment: segments.last!, recursiveCheck: false)
+                
                 let combinedSegment = try Segment(basicSections: newBasicSectionArray, realWindowHeight: model.core.realWindowHeight, useWindowHeight: model.core.adjustedWindHt)
                 
                 self.updateModel(oldSegments: segments, newSegments: [combinedSegment], xlFile: nil, reinitialize: false)
+                
+                var capMatrixNeedsUpdate = false
+                
+                if bottomStaticRing != nil {
+                    
+                    let bSR = try model.AddStaticRing(adjacentSegment: combinedSegment, above: false)
+                    try model.InsertSegment(newSegment: bSR)
+                    try model.RemoveStaticRing(staticRing: bottomStaticRing!)
+                    capMatrixNeedsUpdate = true
+                }
+                
+                if topStaticRing != nil {
+                    
+                    let tSR = try model.AddStaticRing(adjacentSegment: combinedSegment, above: true)
+                    try model.InsertSegment(newSegment: tSR)
+                    try model.RemoveStaticRing(staticRing: topStaticRing!)
+                    capMatrixNeedsUpdate = true
+                }
+                
+                if capMatrixNeedsUpdate {
+                    
+                    try model.CalculateCapacitanceMatrix()
+                    print("Coil 0 Cs: \(try model.CoilSeriesCapacitance(coil: 0))")
+                    print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: 1))")
+                }
             }
             catch {
                 
