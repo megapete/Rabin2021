@@ -538,7 +538,7 @@ class Segment: Codable, Equatable, Hashable {
         }
     }
     
-    /// The series capacitance of the Segment.
+    /// The series capacitance of the Segment. For Segments that are made up of more than one (or two, for interleaved windings) axial BasicSections, the routine calls itself for each BasicSection.
     func SeriesCapacitance(axialGaps:(above:Double, below:Double)?, radialGaps:(inside:Double, outside:Double)?, endDisc:(lowest:Bool, highest:Bool)?, adjStaticRing:(above:Bool, below:Bool)?) throws -> Double {
         
         guard axialGaps != nil || radialGaps != nil else {
@@ -558,7 +558,78 @@ class Segment: Codable, Equatable, Hashable {
         
         do {
         
-            let Cs = try self.SegmentInternalSeriesCapacitance()
+            if self.wdgType == .disc || self.wdgType == .helical {
+                
+                let numBasicSections = self.interleaved ? self.basicSections.count / 2 : self.basicSections.count
+                let bsStride = self.interleaved ? 2 : 1
+                
+                var result = 0.0
+                
+                if numBasicSections > 1 {
+                    
+                    for i in 0..<numBasicSections {
+                        
+                        let thisBasicSection = self.basicSections[i]
+                        
+                        if (i == 0) {
+                            
+                            let nextBasicSection = self.basicSections[i + bsStride]
+                            
+                            let axGaps = (above:nextBasicSection.z1 - thisBasicSection.z2, below:axialGaps!.below)
+                            let endD:(lowest:Bool, highest:Bool)? = endDisc != nil ? (endDisc!.lowest, false) : nil
+                            let staticRing:(above:Bool, below:Bool)? = adjStaticRing != nil ? (false, adjStaticRing!.below) : nil
+                            
+                            let bs:[BasicSection] = self.interleaved ? Array(self.basicSections[i...i+1]) : [self.basicSections[i]]
+                            
+                            let tmpSeg = try Segment(basicSections: bs, interleaved: self.interleaved, isStaticRing: false, isRadialShield: false, realWindowHeight: self.realWindowHeight, useWindowHeight: self.useWindowHeight)
+                            
+                            let serCap = try tmpSeg.SeriesCapacitance(axialGaps: axGaps, radialGaps: nil, endDisc: endD, adjStaticRing: staticRing)
+                            
+                            result += 1 / serCap
+                        }
+                        else if (i == numBasicSections - 1) {
+                            
+                            let prevBasicSection = self.basicSections[i - 1]
+                            
+                            let axGaps = (above:axialGaps!.above, below:thisBasicSection.z1 - prevBasicSection.z2)
+                            let endD:(lowest:Bool, highest:Bool)? = endDisc != nil ? (false, endDisc!.highest) : nil
+                            let staticRing:(above:Bool, below:Bool)? = adjStaticRing != nil ? (adjStaticRing!.above, false) : nil
+                            
+                            let bs:[BasicSection] = self.interleaved ? Array(self.basicSections[0...i+1]) : [self.basicSections[i]]
+                            
+                            let tmpSeg = try Segment(basicSections: bs, interleaved: self.interleaved, isStaticRing: false, isRadialShield: false, realWindowHeight: self.realWindowHeight, useWindowHeight: self.useWindowHeight)
+                            
+                            let serCap = try tmpSeg.SeriesCapacitance(axialGaps: axGaps, radialGaps: nil, endDisc: endD, adjStaticRing: staticRing)
+                            
+                            result += 1 / serCap
+                        }
+                        else {
+                            
+                            let prevBasicSection = self.basicSections[i - 1]
+                            let nextBasicSection = self.basicSections[i + bsStride]
+                            
+                            let axGaps = (above:nextBasicSection.z1 - thisBasicSection.z2, below:thisBasicSection.z1 - prevBasicSection.z2)
+                            
+                            let bs:[BasicSection] = self.interleaved ? Array(self.basicSections[0...i+1]) : [self.basicSections[i]]
+                            
+                            let tmpSeg = try Segment(basicSections: bs, interleaved: self.interleaved, isStaticRing: false, isRadialShield: false, realWindowHeight: self.realWindowHeight, useWindowHeight: self.useWindowHeight)
+                            
+                            let serCap = try tmpSeg.SeriesCapacitance(axialGaps: axGaps, radialGaps: nil, endDisc: nil, adjStaticRing: nil)
+                            
+                            result += 1 / serCap
+                        }
+                        
+                    }
+                    
+                    return 1 / result
+                }
+            }
+            
+            var Cs = try self.BasicSectionSeriesCapacitance()
+            if self.interleaved {
+                
+                Cs /= 2
+            }
             
             if self.wdgType == .sheet {
                 
@@ -584,9 +655,9 @@ class Segment: Codable, Equatable, Hashable {
                 
                 let Cdd = Segment.DiscToDiscSeriesCapacitance(belowGap: belowGap, aboveGap: aboveGap, basicSection: bs)
                 
-                if let endDiscLoc = endDisc {
+                if let endDiscLoc = endDisc, endDiscLoc != (false, false) {
                     
-                    if let staticRing = adjStaticRing {
+                    if let staticRing = adjStaticRing, staticRing != (false, false) {
                         
                         let useCdd = staticRing.below ? Cdd.above : Cdd.below
                         let Ca = staticRing.below ? Cdd.below : Cdd.above
@@ -666,126 +737,6 @@ class Segment: Codable, Equatable, Hashable {
         // throw SegmentError(info: "", type: .UnknownError)
     }
     
-    /// The 'internal' series capacitance of a Segment. In the case where the Segment is made up of a single BasicSection, this routine returns the Cs from the turns only (for interleaved discs, it returns the Cs of the 'double-disc'). In all other cases, the actual series capacitance for the entire collection of BasicSections is calculated using equation 12.43 from DelVecchio (3rd Ed). The bottom-most and top-most BasicSections in the Segment are treated as "end-discs" and have their Cs calculated per equation 12.63. Unfortunately, this does not actually work. 
-    private func SegmentInternalSeriesCapacitance() throws -> Double {
-        
-        // only disc coils can be interleaved
-        guard !self.interleaved || self.wdgType == .disc else {
-            
-            throw SegmentError(info: "", type: .IllegalInterleavedType)
-        }
-        
-        var result = 0.0
-        
-        do {
-            
-            var Cs = try self.BasicSectionSeriesCapacitance()
-            if self.interleaved {
-                
-                Cs /= 2
-            }
-            
-            if self.wdgType == .sheet {
-                
-                result = Cs
-            }
-            else if self.wdgType == .disc || self.wdgType == .helical {
-                
-                // the actual number of sections to check depends on if this is an interleaved coil
-                let sectionCount = self.interleaved ? self.basicSections.count / 2 : self.basicSections.count
-                
-                var sum = 0.0
-                
-                // simplest case, just one section (which may be a double-disc interleaved section)
-                if sectionCount == 1 {
-                    
-                    // take care of the helical case
-                    if Cs == 0.0 {
-                        
-                        return 0.0
-                    }
-                    
-                    sum = 1 / Cs
-                }
-                else {
-                    
-                    var aboveGap = 0.0
-                    for i in 0..<sectionCount {
-                        
-                        // the actual BasicSection index depends on whether this is an interleaved winding
-                        let bsIndex = self.interleaved ? i * 2 + 1 : i
-                        let nextIndex = bsIndex + 1
-                        
-                        // we set the gap below the section to be equal to the previous "aboveGap" (which is why we set it to 0 outside the loop)
-                        let belowGap = aboveGap
-                        // set the aboveGap, depending on whether this is the top-most section, in which case we set it to 0
-                        aboveGap = i < sectionCount - 1 ? self.basicSections[nextIndex].z1 - self.basicSections[bsIndex].z2 : 0.0
-                        // get Cdd
-                        let Cdd = Segment.DiscToDiscSeriesCapacitance(belowGap: belowGap, aboveGap: aboveGap, basicSection: self.basicSections[bsIndex])
-                        
-                        // helical windings are treated very simply (eq 12.41 in DelVecchio 3rd Ed)
-                        if self.wdgType == .helical {
-                            
-                            let useCdd = max(Cdd.below, Cdd.above)
-                            
-                            if useCdd > 0.0 {
-                            
-                                sum += 1.0 / (4.0 / 3.0 * useCdd)
-                            }
-                        }
-                        // The first section is treated as an "end-disc"
-                        else if i == 0 {
-                            
-                            let alpha = sqrt(2 * Cdd.above / Cs)
-                            let Cend = Cs * alpha / tanh(alpha)
-                        
-                            sum += 1 / Cend
-                        }
-                        // the last section is treated as an "end-disc"
-                        else if i == sectionCount - 1 {
-                            
-                            let alpha = sqrt(2 * Cdd.below / Cs)
-                            let Cend = Cs * alpha / tanh(alpha)
-                        
-                            sum += 1 / Cend
-                        }
-                        // everything else is treated as a "general disc" (eq 12.53 in DelVecchio 3rd Ed)
-                        else {
-                            
-                            let CddSum = Cdd.below + Cdd.above
-                            let Ya = Cdd.above / CddSum
-                            let Yb = Cdd.below / CddSum
-                            let alpha = sqrt(2 * CddSum / Cs)
-                            
-                            let firstTerm = (Ya * Ya + Yb * Yb) * alpha / tanh(alpha)
-                            let secondTerm = 2 * Ya * Yb * alpha / sinh(alpha)
-                            let thirdTerm = Ya * Yb * alpha * alpha
-                            
-                            let Cgeneral = Cs * (firstTerm + secondTerm + thirdTerm)
-                            
-                            sum += 1 / Cgeneral
-                        }
-                    }
-                }
-                
-                result = 1 / sum
-            }
-            /* else if self.wdgType == .layer {
-                
-                
-            } */
-            else {
-                
-                throw SegmentError(info: "", type: .UnimplementedWdgType)
-            }
-        }
-        catch {
-            
-            throw error
-        }
-        
-        return result
-    }
     
     /// Return the Cdd values per DelVecchio equation 12.52 (3rd edition) for the gap above an below the given BasicSection.
     static func DiscToDiscSeriesCapacitance(belowGap:Double, aboveGap:Double, basicSection:BasicSection) -> (below:Double, above:Double) {
