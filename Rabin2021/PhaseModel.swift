@@ -804,13 +804,26 @@ class PhaseModel:Codable {
                 let staticRingUnder = try StaticRingBelow(segment: nextSegment, recursiveCheck: false)
                 let staticRingOver = try StaticRingAbove(segment: nextSegment, recursiveCheck: false)
                 
+                if staticRingOver != nil {
+                    
+                    print("Stop here")
+                }
+                
                 if staticRingOver != nil && staticRingUnder != nil {
                     
                     let extraInfo = topSegmentIndex == 0 ? "(If this is a disc or helical coil, consider splitting it into at least 2 Segments.)" : ""
                     throw PhaseModelError(info: extraInfo, type: .OnlyOneStaticRingAllowed)
                 }
                 
-                let adjStaticRing:(above:Bool, below:Bool)? = staticRingOver != nil || staticRingUnder != nil ? (staticRingOver != nil, staticRingUnder != nil) : nil
+                var adjStaticRing:(above:Bool, below:Bool)? = nil
+                if staticRingOver != nil {
+                    
+                    adjStaticRing = (above:true, below:false)
+                }
+                else if staticRingUnder != nil {
+                    
+                    adjStaticRing = (above:false, below:true)
+                }
                 
                 var axialGaps:(above:Double, below:Double)? = nil
                 var radialGaps:(inside:Double, outside:Double)? = nil
