@@ -815,7 +815,7 @@ class PhaseModel:Codable {
                     throw PhaseModelError(info: extraInfo, type: .OnlyOneStaticRingAllowed)
                 }
                 
-                var adjStaticRing:(above:Bool, below:Bool)? = nil
+                var adjStaticRing:(above:Bool, below:Bool)? = (false, false)
                 if staticRingOver != nil {
                     
                     adjStaticRing = (above:true, below:false)
@@ -823,6 +823,10 @@ class PhaseModel:Codable {
                 else if staticRingUnder != nil {
                     
                     adjStaticRing = (above:false, below:true)
+                }
+                else {
+                    
+                    adjStaticRing = nil
                 }
                 
                 var axialGaps:(above:Double, below:Double)? = nil
