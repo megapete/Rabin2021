@@ -97,8 +97,9 @@ class EslamianVahidiSegment:Codable {
     /// Convenient class routine to create the inductance matrix  from an array of EslamianVahidiSegments. If successful, the returned matrix is in Cholesky factorization form and it can be used in a call to SolveForDoublePositiveDefinite(::) from PCH_BaseClass_Matrix.
     /// - Parameter evSegments: An array of EslamianVahidiSegments
     /// - Parameter inWindowWeighting: An optional value between 0 and 1 indicating the weighting value for the "in the window" contribution to the inductance calculation. This value will be clamped to [0,1]. The contribution of the "outside the window" will be equal to (1 - inWindowWeighting). If this value is nil, the standard Weighting() function is used to calculate the inductance.
-    /// - Returns: The inductance matrix (as a Cholesky factorization) 
-    static func InductanceMatrix(evSegments:[EslamianVahidiSegment], inWindowWeighting:Double? = nil) throws -> PCH_BaseClass_Matrix {
+    /// - Parameter convertToCholesky: A Boolean to indicate whether the returned matrix should be returned as a Cholesky factorization (the default) or a general matrix
+    /// - Returns: The inductance matrix (either as a Cholesky factorization or a general matrix, depending on the convertToCholesky parameter)
+    static func InductanceMatrix(evSegments:[EslamianVahidiSegment], inWindowWeighting:Double? = nil, convertToCholesky:Bool = true) throws -> PCH_BaseClass_Matrix {
         
         guard evSegments.count > 0 else {
             
@@ -142,7 +143,7 @@ class EslamianVahidiSegment:Codable {
             }
         }
         
-        guard result.TestPositiveDefinite(overwriteExistingMatrix: true) else {
+        guard result.TestPositiveDefinite(overwriteExistingMatrix: convertToCholesky) else {
             
             throw EvModelError(info: "", type: .InductanceMatrixNotPositiveDefinite)
         }
