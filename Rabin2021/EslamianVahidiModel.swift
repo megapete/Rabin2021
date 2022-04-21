@@ -96,8 +96,9 @@ class EslamianVahidiSegment:Codable {
     
     /// Convenient class routine to create the inductance matrix  from an array of EslamianVahidiSegments. If successful, the returned matrix is in Cholesky factorization form and it can be used in a call to SolveForDoublePositiveDefinite(::) from PCH_BaseClass_Matrix.
     /// - Parameter evSegments: An array of EslamianVahidiSegments
+    /// - Parameter inWindowWeighting: An optional value between 0 and 1 indicating the weighting value for the "in the window" contribution to the inductance calculation. This value will be clamped to [0,1]. The contribution of the "outside the window" will be equal to (1 - inWindowWeighting). If this value is nil, the standard Weighting() function is used to calculate the inductance.
     /// - Returns: The inductance matrix (as a Cholesky factorization) 
-    static func InductanceMatrix(evSegments:[EslamianVahidiSegment]) throws -> PCH_BaseClass_Matrix {
+    static func InductanceMatrix(evSegments:[EslamianVahidiSegment], inWindowWeighting:Double? = nil) throws -> PCH_BaseClass_Matrix {
         
         guard evSegments.count > 0 else {
             
@@ -114,6 +115,7 @@ class EslamianVahidiSegment:Codable {
             }
         }
         
+        let weighting = inWindowWeighting != nil ? min(0.0, max(inWindowWeighting!, 1.0)) : 0.0
         
         // for i in 0..<dim {
         
@@ -128,11 +130,12 @@ class EslamianVahidiSegment:Codable {
                 // print(i)
             }
             
-            result[i, i] = evSegments[i].M(otherSegment: nil, useWeighting: true, adjustForSkinEffect: false)
+            
+            result[i, i] = evSegments[i].M(otherSegment: nil, inWindowWeighting: inWindowWeighting == nil ? nil : weighting, adjustForSkinEffect: false)
             
             for j in (i+1)..<dim {
                 
-                let newM = evSegments[i].M(otherSegment: evSegments[j], useWeighting: true, adjustForSkinEffect: false)
+                let newM = evSegments[i].M(otherSegment: evSegments[j], inWindowWeighting: inWindowWeighting == nil ? nil : weighting, adjustForSkinEffect: false)
                 
                 result[i, j] = newM
                 result[j, i] = newM
@@ -224,27 +227,28 @@ class EslamianVahidiSegment:Codable {
         guard result <= 1.0 else {
             
             DLog("Illegal weighting value!")
-            return -1.0
+            return -Double.greatestFiniteMagnitude
         }
         
         return result
     }
     
-    /// Get the mutual (or self) inductance of this EslamianVahidiSegment to another one (or itself). The default is to use the result of the Weighting function to calculate the inductance, but the user can choose to just get the "outside the window" result.  The paper calls for subtracting µ0/(8π) from the calculated values of self-inductance to account for  the skin effect. It is not clear to me whether that amount is in Henries/meter (I'm pretty sure it is), nor whether it should be used for the sizes of conductors used in power transformers. For now, a Boolean needs to be specified as true to have the amount deducted from the calculation (for self-inductance only).
+    /// Get the mutual (or self) inductance of this EslamianVahidiSegment to another one (or itself). The user may pass a value in inWindowWeighting to set the weighting of the "in the window" contribution to the inductance calculation (pass nil to use the "standard" Weighting() function). The paper calls for subtracting µ0/(8π) from the calculated values of self-inductance to account for  the skin effect. It is not clear to me whether that amount is in Henries/meter (I'm pretty sure it is), nor whether it should be used for the sizes of conductors used in power transformers. For now, a Boolean needs to be specified as true to have the amount deducted from the calculation (for self-inductance only).
     /// - Parameter otherSegment: An optional EslamianVahidiSegment. If this parameter is nil, the routine calculates self-inductance. It is not an error to set this parameter to self to explicitly ask for the self-inductance
-    /// - Parameter useWeighting: If true (the default), the routine uses the Weighting function to calculate the inductance. If this parameter is false, only the "Outside the Window" calculation is used.
+    /// - Parameter inWindowWeighting: An optional value between 0 and 1 indicating the weighting value for the "in the window" contribution to the inductance calculation. This value will be clamped to [0,1]. The contribution of the "outside the window" will be equal to (1 - inWindowWeighting). If this value is nil, the standard Weighting() function is used to calculate the inductance.
     /// - Parameter adjustForSkinEffect: If true, deduct µ0/(8π) from the per-unit-length calculations for self inductance. The default is false.
     /// - Returns: The inductance in Henries
-    func M(otherSegment:EslamianVahidiSegment?, useWeighting:Bool = true, adjustForSkinEffect:Bool = false) -> Double
+    func M(otherSegment:EslamianVahidiSegment?, inWindowWeighting:Double? = nil, adjustForSkinEffect:Bool = false) -> Double
     {
         let other:EslamianVahidiSegment = otherSegment == nil ? self : otherSegment!
         
         let inWindow = M_pu_InWindow(otherSegment: other)
         let outWindow = M_pu_OutsideWindow(otherSegment: other)
         
-        let weighting = useWeighting ? self.Weighting(otherSegment: other) : 1.0
+        let useStdWeighting = inWindowWeighting == nil
+        let weighting = useStdWeighting ? self.Weighting(otherSegment: other) : max(0.0, min(inWindowWeighting!, 1.0))
         
-        var M_pu = outWindow * weighting + inWindow * (1.0 - weighting)
+        var M_pu = inWindow * weighting + outWindow * (1.0 - weighting)
         
         let selfCenterX = self.segment.r1 + self.segment.rect.width / 2.0
         let otherCenterX = other.segment.r1 + other.segment.rect.width / 2.0
