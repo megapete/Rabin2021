@@ -34,6 +34,7 @@
                 <outlet property="removeConnectionMenuItem" destination="VZ8-kL-Dja" id="in8-h8-Gl3"/>
                 <outlet property="removeRadialShieldMenuItem" destination="xXj-L6-RCw" id="PQm-pG-7IL"/>
                 <outlet property="removeStaticRingMenuItem" destination="4HP-v0-HBk" id="Y4d-TJ-nm9"/>
+                <outlet property="saveAsCirFileMenuItem" destination="SJg-48-XWQ" id="GSK-ZP-juG"/>
                 <outlet property="saveBaseCmatrixMenuItem" destination="X1L-Wz-3EW" id="h9Y-Xj-oQR"/>
                 <outlet property="saveFixedCmatrixMenuItem" destination="5eK-yU-3ra" id="efd-Ze-oBc"/>
                 <outlet property="saveMmatrixMenuItem" destination="I9o-un-V1m" id="GXy-pI-eYq"/>
@@ -136,6 +137,12 @@
                             <menuItem title="Save As…" keyEquivalent="S" id="Bw7-FT-i3A">
                                 <connections>
                                     <action selector="saveDocumentAs:" target="-1" id="mDf-zr-I0C"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Save As CIR File…" id="SJg-48-XWQ">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="HandleSaveAsCIRfile:" target="XWq-sU-B2V" id="2FN-WA-CYe"/>
                                 </connections>
                             </menuItem>
                             <menuItem title="Revert to Saved" keyEquivalent="r" id="KaW-ft-85H">

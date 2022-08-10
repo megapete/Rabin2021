@@ -11,6 +11,8 @@ private let LAST_OPENED_INPUT_FILE_KEY = "PCH_RABIN2021_LastInputFile"
 
 let PCH_RABIN2021_IterationCount = 200
 
+let PCH_CIR_FILETYPE = "cir"
+
 var rb2021_progressIndicatorWindow:PCH_ProgressIndicatorWindow? = nil
 
 import Cocoa
@@ -53,6 +55,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     @IBOutlet weak var saveMmatrixMenuItem: NSMenuItem!
     @IBOutlet weak var saveBaseCmatrixMenuItem: NSMenuItem!
     @IBOutlet weak var saveFixedCmatrixMenuItem: NSMenuItem!
+    
+    /// Saving files
+    @IBOutlet weak var saveAsCirFileMenuItem: NSMenuItem!
     
     
     /// R and Z indication on the main window
@@ -1410,10 +1415,42 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
     }
     
+    @IBAction func HandleSaveAsCIRfile(_ sender: Any) {
+        
+        let saveAsPanel = NSSavePanel()
+        saveAsPanel.title = "SPICE File"
+        saveAsPanel.message = "Save SPICE (.cir) File"
+        saveAsPanel.allowedFileTypes = [PCH_CIR_FILETYPE]
+        saveAsPanel.allowsOtherFileTypes = false
+        
+        if saveAsPanel.runModal() == .OK
+        {
+            if let fileURL = saveAsPanel.url
+            {
+                if let fileString = self.doCreateCirFile() {
+                    
+                }
+                else {
+                    
+                    
+                }
+            }
+        }
+        
+    }
+    
+    func doCreateCirFile() -> String? {
+        
+        var result = ""
+        
+        return result
+    }
+    
+    
     // MARK: Menu Validation
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         
-        if menuItem == self.zoomInMenuItem || menuItem == self.zoomOutMenuItem || menuItem == self.zoomRectMenuItem || menuItem == self.zoomRectMenuItem || menuItem == self.addGroundMenuItem || menuItem == self.addImpulseMenuItem || menuItem == self.addConnectionMenuItem || menuItem == self.removeConnectionMenuItem {
+        if menuItem == self.zoomInMenuItem || menuItem == self.zoomOutMenuItem || menuItem == self.zoomRectMenuItem || menuItem == self.zoomRectMenuItem || menuItem == self.addGroundMenuItem || menuItem == self.addImpulseMenuItem || menuItem == self.addConnectionMenuItem || menuItem == self.removeConnectionMenuItem || menuItem == self.saveAsCirFileMenuItem {
             
             return self.currentModel != nil
         }
