@@ -106,6 +106,12 @@ class EslamianVahidiSegment:Codable {
             throw EvModelError(info: "", type: .EvArrayIsEmpty)
         }
         
+        // we want to save these inductance values into the base Segments, so we start by clearing anything that might already be in there
+        for nextEvSegment in evSegments {
+            
+            nextEvSegment.segment.inductances = []
+        }
+        
         let dim = evSegments.count
         let result = PCH_BaseClass_Matrix(matrixType: .general, numType: .Double, rows: UInt(dim), columns: UInt(dim))
         
@@ -130,13 +136,20 @@ class EslamianVahidiSegment:Codable {
                 
                 // print(i)
             }
+             
+            let selfInd = evSegments[i].M(otherSegment: nil, inWindowWeighting: inWindowWeighting == nil ? nil : weighting, adjustForSkinEffect: false)
+            result[i, i] = selfInd
             
-            
-            result[i, i] = evSegments[i].M(otherSegment: nil, inWindowWeighting: inWindowWeighting == nil ? nil : weighting, adjustForSkinEffect: false)
+            let thisSegment = evSegments[i].segment
+            thisSegment.inductances.append(Segment.MutualInductance(toSegment: nil, inductance: selfInd))
             
             for j in (i+1)..<dim {
                 
                 let newM = evSegments[i].M(otherSegment: evSegments[j], inWindowWeighting: inWindowWeighting == nil ? nil : weighting, adjustForSkinEffect: false)
+                
+                let otherSegment = evSegments[j].segment
+                thisSegment.inductances.append(Segment.MutualInductance(toSegment: otherSegment, inductance: newM))
+                otherSegment.inductances.append(Segment.MutualInductance(toSegment: thisSegment, inductance: newM))
                 
                 result[i, j] = newM
                 result[j, i] = newM

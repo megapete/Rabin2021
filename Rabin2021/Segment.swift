@@ -296,6 +296,15 @@ class Segment: Codable, Equatable, Hashable {
     /// The series capacitance of the segment when it is considered within a coil (this property is set elsewhere)
     var seriesCapacitance:Double = 0.0
     
+    /// A struct to define mutual inductance to other Segments (note: the self-inductance can be defined using this struc with the 'toSegment' poroperty set to 'nil')
+    struct MutualInductance:Codable {
+        
+        let toSegment:Segment?
+        let inductance:Double
+    }
+    
+    var inductances:[MutualInductance] = []
+    
     /// Constructor for a Segment. The array of BasicSections that is passed in is checked to make sure that all sections are part of the same coil, and that they are adjacent and in order from lowest Z to highest Z.
     /// - Note: This initiializer may fail and throw an error.
     /// - Parameter basicSections: An array of BasicSections. The sections must be part of the same Winding, be adjacent, and in order from lowest Z to highest Z.

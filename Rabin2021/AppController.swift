@@ -1427,21 +1427,95 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         {
             if let fileURL = saveAsPanel.url
             {
-                if let fileString = self.doCreateCirFile() {
+                if let fileString = self.doCreateCirFile(filename: fileURL.path) {
                     
+                    do {
+                        
+                        try fileString.write(to: fileURL, atomically: false, encoding: .utf8)
+                    }
+                    catch {
+                        
+                        let alert = NSAlert(error: error)
+                        let _ = alert.runModal()
+                        return
+                    }
                 }
                 else {
                     
-                    
+                    let alert = NSAlert()
+                    alert.messageText = "Could not create CIR file from the current model!"
+                    alert.alertStyle = .warning
+                    let _ = alert.runModal()
+                    return
                 }
+            }
+            else {
+                
+                let alert = NSAlert()
+                alert.messageText = "Illegal URL when creating CIR file."
+                alert.alertStyle = .warning
+                let _ = alert.runModal()
+                return
             }
         }
         
     }
     
-    func doCreateCirFile() -> String? {
+    func doCreateCirFile(filename:String) -> String? {
         
-        var result = ""
+        guard let model = self.currentModel else {
+            
+            DLog("No model is currently defined!")
+            return nil
+        }
+        
+        var result:String = "FILE: " + filename.uppercased() + "\n"
+        
+        // The initial resistance-to-self-inductance id index is 40000
+        var resistanceToInductanceIndexID = 40000
+        // The initial shunt capacitance id index is 50000
+        var shuntIndexID = 50000
+        
+        for nextNode in model.nodes {
+            
+            // Start with shunt capacitances from this node
+            for nextShuntCap in nextNode.shuntCapacitances {
+                
+                // make sure we only define the shunt capacitance in one direction
+                if nextShuntCap.toNode > nextNode.number {
+                    
+                    let shuntCap = String(format: "C%d %d %d %.4E\n", shuntIndexID, nextNode.number, nextShuntCap.toNode, nextShuntCap.capacitance)
+                    shuntIndexID += 1
+                    result += shuntCap
+                }
+            }
+            
+            let Cj = nextNode.belowSegment != nil ? nextNode.belowSegment!.seriesCapacitance : 0.0
+            let Cj1 = nextNode.aboveSegment != nil ? nextNode.aboveSegment!.seriesCapacitance : 0.0
+            
+            guard Cj > 0.0 || Cj1 > 0.0 else {
+                
+                let alert = NSAlert()
+                alert.messageText = "The node has no segments!"
+                alert.alertStyle = .warning
+                let _ = alert.runModal()
+                return nil
+            }
+            
+            if let belowSeg = nextNode.belowSegment {
+                
+                let prevNodeNumber = nextNode.number - 1
+                
+                // The series capacitance
+                let seriesCap = String(format: "C%d %d %d %.4E\n", belowSeg.serialNumber, prevNodeNumber, nextNode.number, Cj)
+                
+                // The series resistance
+                let seriesRes = String(format: "R%d %d %d %.4E\n", belowSeg.serialNumber, prevNodeNumber, nextNode.number, belowSeg.resistance())
+                
+            }
+        }
+        
+        result += ".end\n"
         
         return result
     }
