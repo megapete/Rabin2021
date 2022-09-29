@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="20037" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="21225" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
     <dependencies>
         <deployment identifier="macosx"/>
-        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="20037"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="21225"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
     <objects>
@@ -27,6 +27,8 @@
                 <outlet property="addImpulseMenuItem" destination="i9N-bc-tbw" id="TJU-Oo-SB8"/>
                 <outlet property="combineSegmentsIntoSingleSegmentMenuItem" destination="bwi-RW-boG" id="dY2-kP-Zy8"/>
                 <outlet property="interleaveSelectionMenuItem" destination="Msd-Z1-NJO" id="iTF-13-8vY"/>
+                <outlet property="mainWdgImpedanceMenuItem" destination="BE9-jw-FCN" id="e8W-sD-aBG"/>
+                <outlet property="mainWdgInductanceMenuItem" destination="Fzu-VS-4Yf" id="dWv-1q-YaF"/>
                 <outlet property="mainWindow" destination="QvC-M9-y7g" id="99a-gB-L5N"/>
                 <outlet property="modeIndicatorTextField" destination="zvY-4g-7mg" id="Wl9-uU-VYo"/>
                 <outlet property="rLocationTextField" destination="NTX-as-kOd" id="arL-Ge-79x"/>
@@ -493,6 +495,22 @@
                         </items>
                     </menu>
                 </menuItem>
+                <menuItem title="Inductance" id="pcL-vc-XoW">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                    <menu key="submenu" title="Inductance" id="5My-BP-PBE">
+                        <items>
+                            <menuItem title="Main Winding Inductances..." id="Fzu-VS-4Yf">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleMainWdgInductances:" target="XWq-sU-B2V" id="eVs-Rf-q71"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Main Winding Impedance Pairs..." id="BE9-jw-FCN">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                            </menuItem>
+                        </items>
+                    </menu>
+                </menuItem>
                 <menuItem title="View" id="H8h-7b-M4v">
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <menu key="submenu" title="View" id="HyV-fh-RgO">
@@ -665,7 +683,7 @@
             <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" resizable="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
             <rect key="contentRect" x="335" y="390" width="601" height="682"/>
-            <rect key="screenRect" x="0.0" y="0.0" width="1680" height="1025"/>
+            <rect key="screenRect" x="0.0" y="0.0" width="2560" height="1415"/>
             <view key="contentView" id="EiT-Mj-1SZ">
                 <rect key="frame" x="0.0" y="0.0" width="601" height="682"/>
                 <autoresizingMask key="autoresizingMask"/>
@@ -674,11 +692,11 @@
                         <rect key="frame" x="-1" y="32" width="603" height="651"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <clipView key="contentView" id="SDg-ft-U91">
-                            <rect key="frame" x="1" y="1" width="601" height="649"/>
+                            <rect key="frame" x="1" y="1" width="586" height="634"/>
                             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                             <subviews>
                                 <view id="ebn-Op-mWN" customClass="TransformerView" customModule="ImpulseDistribution" customModuleProvider="target">
-                                    <rect key="frame" x="0.0" y="0.0" width="602" height="650"/>
+                                    <rect key="frame" x="0.0" y="0.0" width="587" height="635"/>
                                     <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                     <connections>
                                         <outlet property="addRadialShieldMenuItem" destination="kmi-xS-wRk" id="JqN-Ra-ha9"/>
@@ -693,11 +711,11 @@
                             </subviews>
                         </clipView>
                         <scroller key="horizontalScroller" wantsLayer="YES" verticalHuggingPriority="750" horizontal="YES" id="ZNq-Kw-tyS">
-                            <rect key="frame" x="1" y="634" width="601" height="16"/>
+                            <rect key="frame" x="1" y="635" width="586" height="15"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </scroller>
                         <scroller key="verticalScroller" wantsLayer="YES" verticalHuggingPriority="750" doubleValue="1" horizontal="NO" id="aVc-m1-gzr">
-                            <rect key="frame" x="586" y="1" width="16" height="649"/>
+                            <rect key="frame" x="587" y="1" width="15" height="634"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </scroller>
                     </scrollView>

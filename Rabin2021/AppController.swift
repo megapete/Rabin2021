@@ -59,6 +59,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     /// Saving files
     @IBOutlet weak var saveAsCirFileMenuItem: NSMenuItem!
     
+    /// Inductance Calculations
+    @IBOutlet weak var mainWdgInductanceMenuItem: NSMenuItem!
+    @IBOutlet weak var mainWdgImpedanceMenuItem: NSMenuItem!
+    
+    
     
     /// R and Z indication on the main window
     @IBOutlet weak var rLocationTextField: NSTextField!
@@ -1520,6 +1525,22 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         return result
     }
     
+    @IBAction func handleMainWdgInductances(_ sender: Any) {
+        
+        
+    }
+    
+    /// Function to calculate the self-inductance of each main winding (as defined by the XL file) as well as the mutual inductance to every other main winding. It is assumed that all Segments of all Windings are in the circuit 
+    func doMainWindingInductance() -> PCH_BaseClass_Matrix? {
+        
+        guard let model = self.currentModel, let xlFile = currentXLfile else {
+            
+            DLog("Both a valid model and a valid XL file must be defined!")
+            return nil
+        }
+        
+        
+    }
     
     // MARK: Menu Validation
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
@@ -1527,6 +1548,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         if menuItem == self.zoomInMenuItem || menuItem == self.zoomOutMenuItem || menuItem == self.zoomRectMenuItem || menuItem == self.zoomRectMenuItem || menuItem == self.addGroundMenuItem || menuItem == self.addImpulseMenuItem || menuItem == self.addConnectionMenuItem || menuItem == self.removeConnectionMenuItem || menuItem == self.saveAsCirFileMenuItem {
             
             return self.currentModel != nil
+        }
+        
+        if menuItem == self.mainWdgInductanceMenuItem || menuItem == self.mainWdgImpedanceMenuItem {
+            
+            return self.currentModel != nil && self.currentXLfile != nil
         }
         
         // get local copies of variables that we access often
