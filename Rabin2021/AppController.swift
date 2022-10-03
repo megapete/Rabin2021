@@ -1540,8 +1540,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             return nil
         }
         
-        
+        return nil
     }
+    
+    
     
     // MARK: Menu Validation
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {

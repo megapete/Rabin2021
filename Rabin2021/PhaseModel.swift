@@ -273,7 +273,7 @@ class PhaseModel:Codable {
         }
     }
     
-    /// Function to return the total magnetic energy between two coils in the model. A coil's radial position (0 is closest to the core) is used to define it. If one of the coil designations that are passed to the routine does not exist, the function throws an error
+    /// Function to return the total magnetic energy between two coils in the model. A coil's radial position (0 is closest to the core) is used to define it. The energy is calculated using the higher of the two NI (if they are different). If one of the coil designations that are passed to the routine does not exist, the function throws an error.
     func TotalMagneticEnergy(coil1:Int, coil2:Int) throws -> Double {
         
         let bottomCoil1Seg = self.SegmentAt(location: LocStruct(radial: coil1, axial: 0))
@@ -286,9 +286,60 @@ class PhaseModel:Codable {
             throw PhaseModelError(info: "\(badCoil)", type: .CoilDoesNotExist)
         }
         
+        var N1 = 0.0
+        var N2 = 0.0
+        for nextSegment in self.segments {
+            
+            if nextSegment.radialPos == coil1 {
+                
+                N1 += nextSegment.N
+            }
+            else if nextSegment.radialPos == coil2 {
+                
+                N2 += nextSegment.N
+            }
+        }
         
+        let NIref = N1 * bottomCoil1Seg!.I >= N2 * bottomCoil2Seg!.I ? N1 * bottomCoil1Seg!.I : N2 * bottomCoil2Seg!.I
         
-        return 0.0
+        let I1 = NIref / N1
+        let I2 = -NIref / N2 // one of the two currents is negative in our calculation of energy
+        
+        var result = 0.0
+        
+        for nextSegment in self.segments {
+            
+            if nextSegment.radialPos == coil1 {
+                
+                for nextInductance in nextSegment.inductances {
+                    
+                    if nextInductance.toSegment == nil || nextInductance.toSegment!.radialPos == coil1 {
+                        
+                        result += nextInductance.inductance * I1 * I1
+                    }
+                    else if nextInductance.toSegment!.radialPos == coil2 {
+                        
+                        result += nextInductance.inductance * I1 * I2
+                    }
+                }
+            }
+            else if nextSegment.radialPos == coil2 {
+                
+                for nextInductance in nextSegment.inductances {
+                    
+                    if nextInductance.toSegment == nil || nextInductance.toSegment!.radialPos == coil2 {
+                        
+                        result += nextInductance.inductance * I2 * I2
+                    }
+                    else if nextInductance.toSegment!.radialPos == coil1 {
+                        
+                        result += nextInductance.inductance * I1 * I2
+                    }
+                }
+            }
+        }
+        
+        return result / 2.0
     }
     
     /// A routine to change the connectors in the model when newSegment(s) take(s) the place of oldSegment(s). It is assumed that the Segment arrays are contiguous and in order. The count of oldSegments must be a multiple of newSegments or the count of newSegmenst must be a multiple of oldSegments.  If both arguments only have a single Segment, it is assumed that the one in newSegment replaces the one in oldSegment. It is further assumed that the new Segments have _NOT_ been added to the model yet, but will be soon after calling this function. Any connector references to oldSegments that should be set to newSegments will be replaced in the model - however, the model itself (ie: the array of Segments in segmentStore) will not be changed.
