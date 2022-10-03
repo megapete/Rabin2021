@@ -273,6 +273,24 @@ class PhaseModel:Codable {
         }
     }
     
+    /// Function to return the total magnetic energy between two coils in the model. A coil's radial position (0 is closest to the core) is used to define it. If one of the coil designations that are passed to the routine does not exist, the function throws an error
+    func TotalMagneticEnergy(coil1:Int, coil2:Int) throws -> Double {
+        
+        let bottomCoil1Seg = self.SegmentAt(location: LocStruct(radial: coil1, axial: 0))
+        let bottomCoil2Seg = self.SegmentAt(location: LocStruct(radial: coil2, axial: 0))
+        
+        guard bottomCoil1Seg != nil && bottomCoil2Seg != nil else {
+            
+            let badCoil = bottomCoil1Seg == nil ? coil1 : coil2
+            
+            throw PhaseModelError(info: "\(badCoil)", type: .CoilDoesNotExist)
+        }
+        
+        
+        
+        return 0.0
+    }
+    
     /// A routine to change the connectors in the model when newSegment(s) take(s) the place of oldSegment(s). It is assumed that the Segment arrays are contiguous and in order. The count of oldSegments must be a multiple of newSegments or the count of newSegmenst must be a multiple of oldSegments.  If both arguments only have a single Segment, it is assumed that the one in newSegment replaces the one in oldSegment. It is further assumed that the new Segments have _NOT_ been added to the model yet, but will be soon after calling this function. Any connector references to oldSegments that should be set to newSegments will be replaced in the model - however, the model itself (ie: the array of Segments in segmentStore) will not be changed.
     ///  - Note: If there is only a single oldSegment, only adjacent-segment connections are retained, and connections to non-Segments (like ground, etc) are trashed.
     func UpdateConnectors(oldSegments:[Segment], newSegments:[Segment]) throws {

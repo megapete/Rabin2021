@@ -1530,8 +1530,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
     }
     
-    /// Function to calculate the self-inductance of each main winding (as defined by the XL file) as well as the mutual inductance to every other main winding. It is assumed that all Segments of all Windings are in the circuit 
-    func doMainWindingInductance() -> PCH_BaseClass_Matrix? {
+    /// Function to calculate the self-inductance of each main winding (as defined by the XL file) as well as the mutual inductance to every other main winding. It is assumed that all Segments of all Windings are in the circuit. The amp values are those calculated using the highest kVA in the XL file.
+    /// - Returns: A matrix where entry i,i is the self-inductance of the winding in the 'i' radial position (0 closest to the core), and entry i,j (and j,i) is the mutual inductance beyween coil i and coil j
+    func doMainWindingInductances() -> PCH_BaseClass_Matrix? {
         
         guard let model = self.currentModel, let xlFile = currentXLfile else {
             
