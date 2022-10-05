@@ -1528,6 +1528,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     @IBAction func handleMainWdgInductances(_ sender: Any) {
         
         
+        
     }
     
     /// Function to calculate the self-inductance of each main winding (as defined by the XL file) as well as the mutual inductance to every other main winding. It is assumed that all Segments of all Windings are in the circuit. The amp values are those calculated using the highest kVA in the XL file.
@@ -1543,7 +1544,35 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         return nil
     }
     
+    @IBAction func handleWdgImpedancePairs(_ sender: Any) {
+    }
     
+    /// Function to get the impedance (in p.u. of the winding with the higher VA) between two coils. If the VA of the two windings is different, the higher of the two is used to do the calculation. Note that if an error occurs (like if coil1 = coil2 or one of the coils does not exist), the tuple (0,0) is returned.
+    /// - Parameter coil1: One of the two coils of the calculation, as referred to by its radial position in the phase (0-based)
+    /// - Parameter coil2: The other coil in the calculation
+    /// - Returns: A tuple where 'baseVA' is the VA upon which the impedance is based; where impedancePU is the impedance in p.u. between the windings at that base
+    func doWindingImpedance(coil1:Int, coil2:Int) -> (baseVA:Double, impedancePU:Double) {
+        
+        guard let model = self.currentModel, let xlFile = currentXLfile else {
+            
+            DLog("Both a valid model and a valid XL file must be defined!")
+            return (0, 0)
+        }
+        
+        guard let energy = try? model.TotalMagneticEnergy(coil1: coil1, coil2: coil2) else {
+            
+            DLog("Could not calculate energy! (Bad coil designation(s)")
+            return (0 , 0)
+        }
+        
+        // if we get here, then coil1 and coil2 are valid and the energy calculation has been successfully done
+        let baseVA = 1000.0 * (xlFile.windings[coil1].terminal.kVA >= xlFile.windings[coil2].terminal.kVA ? xlFile.windings[coil1].terminal.kVA : xlFile.windings[coil2].terminal.kVA)
+        
+        // this comes from the Andersen paper for transformer flux calculation using finite elements
+        let impedance = (2.0 * π * xlFile.frequency) / baseVA * energy
+        
+        return (baseVA, impedance)
+    }
     
     // MARK: Menu Validation
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {

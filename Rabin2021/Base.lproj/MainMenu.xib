@@ -505,8 +505,11 @@
                                     <action selector="handleMainWdgInductances:" target="XWq-sU-B2V" id="eVs-Rf-q71"/>
                                 </connections>
                             </menuItem>
-                            <menuItem title="Main Winding Impedance Pairs..." id="BE9-jw-FCN">
+                            <menuItem title="Winding Impedance Pairs..." id="BE9-jw-FCN">
                                 <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleWdgImpedancePairs:" target="XWq-sU-B2V" id="IE7-gi-cum"/>
+                                </connections>
                             </menuItem>
                         </items>
                     </menu>

@@ -92,6 +92,7 @@ class PhaseModel:Codable {
             case TooManyConnectors
             case CapacitanceNotCalculated
             case NodeHasNoSegments
+            case SameCoilTwice
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -184,6 +185,10 @@ class PhaseModel:Codable {
                     
                     return "The node \(info) has no Segments associated with it!"
                 }
+                else if self.type == .SameCoilTwice {
+                    
+                    return "The same coil has been used for both parameters (they must be different)."
+                }
                 
                 return "An unknown error occurred."
             }
@@ -273,8 +278,13 @@ class PhaseModel:Codable {
         }
     }
     
-    /// Function to return the total magnetic energy between two coils in the model. A coil's radial position (0 is closest to the core) is used to define it. The energy is calculated using the higher of the two NI (if they are different). If one of the coil designations that are passed to the routine does not exist, the function throws an error.
+    /// Function to return the total magnetic energy between two coils in the model. A coil's radial position (0 is closest to the core) is used to define it. The energy is calculated using the higher of the two NI (if they are different). If one of the coil designations that are passed to the routine does not exist, the function throws an error. If coil1 == coil2 then the function throws an error.
     func TotalMagneticEnergy(coil1:Int, coil2:Int) throws -> Double {
+        
+        if coil1 == coil2 {
+            
+            throw PhaseModelError(info: "", type: .SameCoilTwice)
+        }
         
         let bottomCoil1Seg = self.SegmentAt(location: LocStruct(radial: coil1, axial: 0))
         let bottomCoil2Seg = self.SegmentAt(location: LocStruct(radial: coil2, axial: 0))
