@@ -201,6 +201,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         #else
         
+        try? model.CalculateInductanceMatrix()
         print("Pretending to be recalculating Inductance matrix")
         
         #endif
@@ -1545,6 +1546,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     }
     
     @IBAction func handleWdgImpedancePairs(_ sender: Any) {
+        
+        let kvaImp = doWindingImpedance(coil1: 0, coil2: 1)
+        
+        if kvaImp.baseVA != 0 && kvaImp.impedancePU != 0 {
+            
+            print("Impedance: \(kvaImp.impedancePU * 100)% at \(kvaImp.baseVA) kVA")
+        }
     }
     
     /// Function to get the impedance (in p.u. of the winding with the higher VA) between two coils. If the VA of the two windings is different, the higher of the two is used to do the calculation. Note that if an error occurs (like if coil1 = coil2 or one of the coils does not exist), the tuple (0,0) is returned.
@@ -1566,7 +1574,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
         
         // if we get here, then coil1 and coil2 are valid and the energy calculation has been successfully done
-        let baseVA = 1000.0 * (xlFile.windings[coil1].terminal.kVA >= xlFile.windings[coil2].terminal.kVA ? xlFile.windings[coil1].terminal.kVA : xlFile.windings[coil2].terminal.kVA)
+        let baseVA = 1000.0 / Double(xlFile.numPhases) * (xlFile.windings[coil1].terminal.kVA >= xlFile.windings[coil2].terminal.kVA ? xlFile.windings[coil1].terminal.kVA : xlFile.windings[coil2].terminal.kVA)
         
         // this comes from the Andersen paper for transformer flux calculation using finite elements
         let impedance = (2.0 * π * xlFile.frequency) / baseVA * energy

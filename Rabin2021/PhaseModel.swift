@@ -321,29 +321,34 @@ class PhaseModel:Codable {
             
             if nextSegment.radialPos == coil1 {
                 
+                let NI1 = nextSegment.N * I1
                 for nextInductance in nextSegment.inductances {
                     
                     if nextInductance.toSegment == nil || nextInductance.toSegment!.radialPos == coil1 {
                         
-                        result += nextInductance.inductance * I1 * I1
+                        result += nextInductance.inductance * NI1 * NI1
+                        
                     }
                     else if nextInductance.toSegment!.radialPos == coil2 {
                         
-                        result += nextInductance.inductance * I1 * I2
+                        let NI2 = nextInductance.toSegment!.N * I2
+                        result += nextInductance.inductance * NI1 * NI2
                     }
                 }
             }
             else if nextSegment.radialPos == coil2 {
                 
+                let NI2 = nextSegment.N * I2
                 for nextInductance in nextSegment.inductances {
                     
                     if nextInductance.toSegment == nil || nextInductance.toSegment!.radialPos == coil2 {
                         
-                        result += nextInductance.inductance * I2 * I2
+                        result += nextInductance.inductance * NI2 * NI2
                     }
                     else if nextInductance.toSegment!.radialPos == coil1 {
                         
-                        result += nextInductance.inductance * I1 * I2
+                        let NI1 = nextInductance.toSegment!.N * I1
+                        result += nextInductance.inductance * NI1 * NI2
                     }
                 }
             }
@@ -1410,9 +1415,9 @@ class PhaseModel:Codable {
             
             mutIndQueue.async {
                     
-                    let evArray = EslamianVahidiSegment.Create_EV_Array(segments: self.segments, core: self.core)
+                let evArray = EslamianVahidiSegment.Create_EV_Array(segments: self.segments, core: self.core)
                     
-                    guard let indArray = try? EslamianVahidiSegment.InductanceMatrix(evSegments: evArray) else {
+                guard let indArray = try? EslamianVahidiSegment.InductanceMatrix(evSegments: evArray, inWindowWeighting: 1.0) else {
                         
                         PCH_ErrorAlert(message: "Error while creating Inductance Matrix!", info: "You are well and truly fucked!")
                         return

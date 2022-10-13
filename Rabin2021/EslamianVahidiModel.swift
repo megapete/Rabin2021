@@ -155,6 +155,22 @@ class EslamianVahidiSegment:Codable {
                 result[j, i] = newM
             }
         }
+        /*
+        for i in 0..<dim {
+            
+            let thisSegment = evSegments[i].segment
+            thisSegment.inductances.append(Segment.MutualInductance(toSegment: nil, inductance: result[i, i]))
+            
+            for j in (i+1)..<dim {
+                
+                let otherSegment = evSegments[j].segment
+                
+                thisSegment.inductances.append(Segment.MutualInductance(toSegment: otherSegment, inductance: result[i, j]))
+                otherSegment.inductances.append(Segment.MutualInductance(toSegment: thisSegment, inductance: result[i, j]))
+            }
+            
+        }
+        */
         
         guard result.TestPositiveDefinite(overwriteExistingMatrix: convertToCholesky) else {
             
