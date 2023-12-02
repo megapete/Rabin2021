@@ -38,16 +38,16 @@ class PhaseModel:Codable {
     var J:[[Double]] = []
     
     /// An array of Eslamian Vahidi segments. Ultimately, there will probably be no reason to keep this around and it should be removed from the class.
-    var evSegments:[EslamianVahidiSegment] = []
+    //var evSegments:[EslamianVahidiSegment] = []
     
     /// The inductance matrix for the model. **NOTE: This matrix is in Cholesky-factorized form
-    var M:PCH_BaseClass_Matrix? = nil
+    var M:PchMatrix? = nil
     
     /// The basic (unmodified) capacitance matrix for the model
-    var C:PCH_BaseClass_Matrix? = nil
+    var C:PchMatrix? = nil
     
     /// The 'fixed' capacitance matrix (used by the actual simulation)
-    var fixedC:PCH_BaseClass_Matrix? = nil
+    var fixedC:PchMatrix? = nil
     
     /// The window height to actually use
     var useWindowHeight:Double {
@@ -1153,7 +1153,7 @@ class PhaseModel:Codable {
             
             // At this point, all of the series and shunt capacitances have been calculated, so we can create the C-matrix. Note that at this point, the matrix has not taken into consideration any cross connections, nodal connections to ground, etc.
             
-            let C = PCH_BaseClass_Matrix(matrixType: .general, numType: .Double, rows: UInt(self.nodeStore.count), columns: UInt(self.nodeStore.count))
+            let C = PchMatrix(matrixType: .general, numType: .Double, rows: UInt(self.nodeStore.count), columns: UInt(self.nodeStore.count))
             
             for nextNode in self.nodes {
                 
@@ -1171,7 +1171,7 @@ class PhaseModel:Codable {
                     // ground nodes are not included in the capacitance matrix
                     if nextShuntCap.toNode >= 0 {
                     
-                        C[nextNode.number, nextShuntCap.toNode] = -nextShuntCap.capacitance
+                        // C[nextNode.number, nextShuntCap.toNode] = -nextShuntCap.capacitance
                     }
                     
                     sumK += nextShuntCap.capacitance
@@ -1398,7 +1398,7 @@ class PhaseModel:Codable {
         }
         
         if useEVmodel {
-            
+            /*
             // We need to grab the main window pointer here, while we're still in the main loop
             let theMainWindow = NSApplication.shared.mainWindow
             
@@ -1431,6 +1431,7 @@ class PhaseModel:Codable {
                     DispatchQueue.main.sync { mainWindow.endSheet(progIndicator.window!) }
                 }
             }
+            */
         }
         else {
             

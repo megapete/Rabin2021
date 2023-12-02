@@ -586,7 +586,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     @IBAction func handleTestEVMethod(_ sender: Any) {
         
-        let core = Core(diameter: 0.15, realWindowHeight: 0.3, legCenters: 0.25)
+        /* let core = Core(diameter: 0.15, realWindowHeight: 0.3, legCenters: 0.25)
         let N1 = 1.0
         let I1 = 1.0
         let N4 = 2.0
@@ -625,10 +625,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         print("Self-inductance (per-unit-length, outside window) #1: \(EVLtest1.M_pu_OutsideWindow(otherSegment: EVLtest1))")
         print("Mutual inductance (per-unit-length, outside window) 1-2: \(EVLtest1.M_pu_OutsideWindow(otherSegment: EVLtest2))")
+         */
     }
     
     @IBAction func handleGetInductances(_ sender: Any) {
-        
+        /*
         guard let model = self.currentModel, model.segments.count > 0, let core = self.currentCore else {
             
             return
@@ -671,10 +672,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         print("Done!")
         
         print("Inductance array is positive definite: \(M.TestPositiveDefinite())")
+         */
     }
     
     @IBAction func handleGetIndMatrix(_ sender: Any) {
-        
+        /*
         guard let model = self.currentModel, model.segments.count > 0, let core = self.currentCore else {
             
             return
@@ -690,6 +692,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
         
         print("Done!")
+         */
     }
     
     // MARK: File routines
@@ -729,7 +732,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     }
     
     @IBAction func handleSaveMmatrix(_ sender: Any) {
-        
+        /*
         guard let model = self.currentModel, let Mmatrix = model.M else {
             
             return
@@ -759,10 +762,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                 }
             }
         }
+         */
     }
     
     @IBAction func handleSaveBaseCmatrix(_ sender: Any) {
-        
+        /*
         guard let model = self.currentModel, let Cmatrix = model.C else {
             
             return
@@ -792,10 +796,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                 }
             }
         }
+         */
     }
     
     @IBAction func handleSaveFixedCmatrix(_ sender: Any) {
-        
+        /*
         guard let model = self.currentModel, let Cmatrix = model.fixedC else {
             
             return
@@ -825,6 +830,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                 }
             }
         }
+         */
     }
     
     
@@ -1534,15 +1540,15 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     /// Function to calculate the self-inductance of each main winding (as defined by the XL file) as well as the mutual inductance to every other main winding. It is assumed that all Segments of all Windings are in the circuit. The amp values are those calculated using the highest kVA in the XL file.
     /// - Returns: A matrix where entry i,i is the self-inductance of the winding in the 'i' radial position (0 closest to the core), and entry i,j (and j,i) is the mutual inductance beyween coil i and coil j
-    func doMainWindingInductances() -> PCH_BaseClass_Matrix? {
+    func doMainWindingInductances() /* -> PCH_BaseClass_Matrix? */ {
         
         guard let model = self.currentModel, let xlFile = currentXLfile else {
             
             DLog("Both a valid model and a valid XL file must be defined!")
-            return nil
+            return // nil
         }
         
-        return nil
+        return // nil
     }
     
     @IBAction func handleWdgImpedancePairs(_ sender: Any) {

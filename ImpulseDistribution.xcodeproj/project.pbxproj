@@ -24,12 +24,14 @@
 		D3BE820127330E9600EF964D /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D3BE820027330E9600EF964D /* Accelerate.framework */; platformFilter = maccatalyst; };
 		D3C0AE83274D864800B45F9A /* PCH_ProgressIndicatorWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3C0AE81274D864800B45F9A /* PCH_ProgressIndicatorWindow.swift */; };
 		D3C0AE84274D864800B45F9A /* PCH_ProgressIndicatorWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = D3C0AE82274D864800B45F9A /* PCH_ProgressIndicatorWindow.xib */; };
+		D3F0200E2B1BBED500CBD0F0 /* PchMatrix.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3F0200D2B1BBED500CBD0F0 /* PchMatrix.swift */; };
+		D3F020112B1BBF4200CBD0F0 /* ComplexModule in Frameworks */ = {isa = PBXBuildFile; productRef = D3F020102B1BBF4200CBD0F0 /* ComplexModule */; };
+		D3F020132B1BBF4200CBD0F0 /* Numerics in Frameworks */ = {isa = PBXBuildFile; productRef = D3F020122B1BBF4200CBD0F0 /* Numerics */; };
+		D3F020152B1BBF4200CBD0F0 /* RealModule in Frameworks */ = {isa = PBXBuildFile; productRef = D3F020142B1BBF4200CBD0F0 /* RealModule */; };
 		D3FB7D6A2752B7A3009ACCB4 /* Connector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FB7D692752B7A3009ACCB4 /* Connector.swift */; };
 		F5BA813F2719B94100717C67 /* PCH_GraphingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5BA813D2719B94100717C67 /* PCH_GraphingWindow.swift */; };
 		F5BA81402719B94100717C67 /* PCH_GraphingWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = F5BA813E2719B94100717C67 /* PCH_GraphingWindow.xib */; };
 		F5BA81422719B9C800717C67 /* PCH_GraphingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5BA81412719B9C800717C67 /* PCH_GraphingView.swift */; };
-		F5D778FA2722FB2100B976AF /* EslamianVahidiModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5D778F92722FB2100B976AF /* EslamianVahidiModel.swift */; };
-		F5D778FC272468FF00B976AF /* PCH_BaseClass_Matrix.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5D778FB272468FF00B976AF /* PCH_BaseClass_Matrix.swift */; };
 		F5ED29ED270F1F9C003E84CB /* Segment.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED29EC270F1F9C003E84CB /* Segment.swift */; };
 		F5ED29EF271709B0003E84CB /* PhaseModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED29EE271709B0003E84CB /* PhaseModel.swift */; };
 /* End PBXBuildFile section */
@@ -54,12 +56,11 @@
 		D3BE820027330E9600EF964D /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		D3C0AE81274D864800B45F9A /* PCH_ProgressIndicatorWindow.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PCH_ProgressIndicatorWindow.swift; sourceTree = "<group>"; };
 		D3C0AE82274D864800B45F9A /* PCH_ProgressIndicatorWindow.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = PCH_ProgressIndicatorWindow.xib; sourceTree = "<group>"; };
+		D3F0200D2B1BBED500CBD0F0 /* PchMatrix.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PchMatrix.swift; sourceTree = "<group>"; };
 		D3FB7D692752B7A3009ACCB4 /* Connector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Connector.swift; sourceTree = "<group>"; };
 		F5BA813D2719B94100717C67 /* PCH_GraphingWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PCH_GraphingWindow.swift; sourceTree = "<group>"; };
 		F5BA813E2719B94100717C67 /* PCH_GraphingWindow.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = PCH_GraphingWindow.xib; sourceTree = "<group>"; };
 		F5BA81412719B9C800717C67 /* PCH_GraphingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PCH_GraphingView.swift; sourceTree = "<group>"; };
-		F5D778F92722FB2100B976AF /* EslamianVahidiModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EslamianVahidiModel.swift; sourceTree = "<group>"; };
-		F5D778FB272468FF00B976AF /* PCH_BaseClass_Matrix.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = PCH_BaseClass_Matrix.swift; path = "../../../../Dropbox/MyProjects/Base Classes/PCH_BaseClass_Matrix.swift"; sourceTree = "<group>"; };
 		F5ED29EC270F1F9C003E84CB /* Segment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Segment.swift; sourceTree = "<group>"; };
 		F5ED29EE271709B0003E84CB /* PhaseModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -69,7 +70,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D3F020152B1BBF4200CBD0F0 /* RealModule in Frameworks */,
 				D3BE820127330E9600EF964D /* Accelerate.framework in Frameworks */,
+				D3F020132B1BBF4200CBD0F0 /* Numerics in Frameworks */,
+				D3F020112B1BBF4200CBD0F0 /* ComplexModule in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -107,10 +111,9 @@
 				D3C0AE82274D864800B45F9A /* PCH_ProgressIndicatorWindow.xib */,
 				D3573253270E5DAE000CCCF9 /* AppController.swift */,
 				D3B7FF25270E3704002537D3 /* PCH_ExcelDesignFileReader.swift */,
+				D3F0200D2B1BBED500CBD0F0 /* PchMatrix.swift */,
 				D39444F42718D9C700206019 /* GetNumber.xib */,
 				D39444F52718D9C700206019 /* GetNumberDialog.swift */,
-				F5D778F92722FB2100B976AF /* EslamianVahidiModel.swift */,
-				F5D778FB272468FF00B976AF /* PCH_BaseClass_Matrix.swift */,
 				F5ED29EE271709B0003E84CB /* PhaseModel.swift */,
 				D3926C07270F3D3C00D2D17C /* Core.swift */,
 				D3FB7D692752B7A3009ACCB4 /* Connector.swift */,
@@ -149,6 +152,11 @@
 			dependencies = (
 			);
 			name = ImpulseDistribution;
+			packageProductDependencies = (
+				D3F020102B1BBF4200CBD0F0 /* ComplexModule */,
+				D3F020122B1BBF4200CBD0F0 /* Numerics */,
+				D3F020142B1BBF4200CBD0F0 /* RealModule */,
+			);
 			productName = Rabin2021;
 			productReference = D30D3AD4270E2F2C00A39051 /* ImpulseDistribution.app */;
 			productType = "com.apple.product-type.application";
@@ -161,7 +169,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1300;
-				LastUpgradeCheck = 1310;
+				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					D30D3AD3270E2F2C00A39051 = {
 						CreatedOnToolsVersion = 13.0;
@@ -177,6 +185,9 @@
 				Base,
 			);
 			mainGroup = D30D3ACB270E2F2C00A39051;
+			packageReferences = (
+				D3F0200F2B1BBF4200CBD0F0 /* XCRemoteSwiftPackageReference "swift-numerics" */,
+			);
 			productRefGroup = D30D3AD5270E2F2C00A39051 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -210,13 +221,11 @@
 				F5ED29EF271709B0003E84CB /* PhaseModel.swift in Sources */,
 				D3573252270E383F000CCCF9 /* PCH_Defs.swift in Sources */,
 				D3B7FF26270E3704002537D3 /* PCH_ExcelDesignFileReader.swift in Sources */,
-				F5D778FC272468FF00B976AF /* PCH_BaseClass_Matrix.swift in Sources */,
 				D39444F32718D7B600206019 /* PCH_BaseClass_DialogBox.swift in Sources */,
 				D3C0AE83274D864800B45F9A /* PCH_ProgressIndicatorWindow.swift in Sources */,
 				D3B7FF28270E3769002537D3 /* GlobalDefs.swift in Sources */,
 				D3B7FF22270E320E002537D3 /* BasicSection.swift in Sources */,
 				D3FB7D6A2752B7A3009ACCB4 /* Connector.swift in Sources */,
-				F5D778FA2722FB2100B976AF /* EslamianVahidiModel.swift in Sources */,
 				D323F2CF27E14F3900D94DA1 /* Node.swift in Sources */,
 				D39311BC2710C44200A29D65 /* TransformerView.swift in Sources */,
 				D3573254270E5DAE000CCCF9 /* AppController.swift in Sources */,
@@ -224,6 +233,7 @@
 				F5BA81422719B9C800717C67 /* PCH_GraphingView.swift in Sources */,
 				F5BA813F2719B94100717C67 /* PCH_GraphingWindow.swift in Sources */,
 				D3926C08270F3D3C00D2D17C /* Core.swift in Sources */,
+				D3F0200E2B1BBED500CBD0F0 /* PchMatrix.swift in Sources */,
 				F5ED29ED270F1F9C003E84CB /* Segment.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -276,9 +286,11 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -286,6 +298,8 @@
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"DEBUG=1",
 					"$(inherited)",
+					"ACCELERATE_NEW_LAPACK=1",
+					"ACCELERATE_LAPACK_ILP64=1",
 				);
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
@@ -293,7 +307,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 11.3;
+				MACOSX_DEPLOYMENT_TARGET = 13.5;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -338,18 +352,24 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"ACCELERATE_NEW_LAPACK=1",
+					"ACCELERATE_LAPACK_ILP64=1",
+				);
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
 				GCC_WARN_UNDECLARED_SELECTOR = YES;
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 11.3;
+				MACOSX_DEPLOYMENT_TARGET = 13.5;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_SWIFT_FLAGS = "";
@@ -370,6 +390,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 3R3HXUUS44;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -399,6 +420,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 3R3HXUUS44;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -439,6 +461,35 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D3F0200F2B1BBF4200CBD0F0 /* XCRemoteSwiftPackageReference "swift-numerics" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-numerics.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D3F020102B1BBF4200CBD0F0 /* ComplexModule */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D3F0200F2B1BBF4200CBD0F0 /* XCRemoteSwiftPackageReference "swift-numerics" */;
+			productName = ComplexModule;
+		};
+		D3F020122B1BBF4200CBD0F0 /* Numerics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D3F0200F2B1BBF4200CBD0F0 /* XCRemoteSwiftPackageReference "swift-numerics" */;
+			productName = Numerics;
+		};
+		D3F020142B1BBF4200CBD0F0 /* RealModule */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D3F0200F2B1BBF4200CBD0F0 /* XCRemoteSwiftPackageReference "swift-numerics" */;
+			productName = RealModule;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = D30D3ACC270E2F2C00A39051 /* Project object */;
 }
