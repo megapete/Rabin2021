@@ -6,6 +6,7 @@
 //
 
 import Cocoa
+import PchBasePackage
 
 class PCH_GraphingView: NSView {
     

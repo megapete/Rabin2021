@@ -9,6 +9,7 @@
 // Generic dialog box to get a single number
 
 import Cocoa
+import PchDialogBoxPackage
 
 class GetNumberDialog: PCH_DialogBox {
 

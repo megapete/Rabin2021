@@ -16,6 +16,10 @@ let PCH_CIR_FILETYPE = "cir"
 var rb2021_progressIndicatorWindow:PCH_ProgressIndicatorWindow? = nil
 
 import Cocoa
+import PchBasePackage
+import PchExcelDesignFilePackage
+import PchDialogBoxPackage
+import PchProgressIndicatorPackage
 
 class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     

@@ -9,6 +9,7 @@
 // The original file for this class comes from AndersenFE_2020. It has been adapted to this program.
 
 import Cocoa
+import PchBasePackage
 
 // Through trial and error, I have discovered that NSView does not like small (<1) dimensions. Since the main units used in transformer design are in meters, I multiply all dimensions that are drawn by 1000 so that the NSView is using numbers that it likes more.
 fileprivate let dimensionMultiplier = 1000.0

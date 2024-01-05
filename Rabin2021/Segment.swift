@@ -8,6 +8,7 @@
 // This file defines the most basic segment that is used for calculations of inductance and capacitance for the model. A Segment is made up of one or more BasicSections.
 
 import Foundation
+import PchBasePackage
 
 /// A Segment is, at its most basic, a collection of BasicSections. The collection MUST be from the same Winding and it must represent an axially contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (for disc coils, only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed). Static rings and radial shields are special Segments - creation routines (class functions) are provided for each.
 class Segment: Codable, Equatable, Hashable {
