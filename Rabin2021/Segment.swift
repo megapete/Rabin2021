@@ -955,6 +955,7 @@ class Segment: Codable, Equatable, Hashable {
         Segment.nextSerialNumberStore = 0
     }
     
+    /*
     /// Create the Fourier series representation of the current density for the segment. Note that the "useWindowHeight" property of the segment is used to create the series. This is used by DelVecchio.
     func CreateFourierJ() -> [Double]
     {
@@ -966,8 +967,9 @@ class Segment: Codable, Equatable, Hashable {
         }
         
         return result
-    }
+    } */
     
+    /*
     /// Private function to create the n-th entry into the Fourier series representation of the current density, using the max of the real and 'use'  window height as the 'L' variable.
     private func J(n:Int) -> Double
     {
@@ -986,5 +988,5 @@ class Segment: Codable, Equatable, Hashable {
         let result:Double = 2.0 * self.ActualJ / (nn * π) * (sin(nn * π * z2 / L) - sin(nn * π * z1 / L))
         
         return result
-    }
+    } */
 }

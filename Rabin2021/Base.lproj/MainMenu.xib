@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="22155" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="22505" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
     <dependencies>
         <deployment identifier="macosx"/>
-        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="22155"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="22505"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
     <objects>
@@ -588,55 +588,6 @@
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
                                     <action selector="handleSaveFixedCmatrix:" target="XWq-sU-B2V" id="ZqY-Il-Hnq"/>
-                                </connections>
-                            </menuItem>
-                        </items>
-                    </menu>
-                </menuItem>
-                <menuItem title="Test" id="CVY-Kw-ekf">
-                    <modifierMask key="keyEquivalentModifierMask"/>
-                    <menu key="submenu" title="Test" id="385-Dl-vRU">
-                        <items>
-                            <menuItem title="Get Coil1 J..." id="9SA-9O-QjW">
-                                <modifierMask key="keyEquivalentModifierMask"/>
-                                <connections>
-                                    <action selector="handleGetCoil1J:" target="XWq-sU-B2V" id="h9e-9y-C4C"/>
-                                </connections>
-                            </menuItem>
-                            <menuItem title="Show Coil J..." id="Yud-UB-Qcs">
-                                <modifierMask key="keyEquivalentModifierMask"/>
-                                <connections>
-                                    <action selector="handleShowCoil1J:" target="XWq-sU-B2V" id="DLN-T1-kx1"/>
-                                </connections>
-                            </menuItem>
-                            <menuItem title="Show Graph" id="5MJ-Oc-RZo">
-                                <modifierMask key="keyEquivalentModifierMask"/>
-                                <connections>
-                                    <action selector="handleShowGraph:" target="XWq-sU-B2V" id="D0r-32-ADf"/>
-                                </connections>
-                            </menuItem>
-                            <menuItem title="Change Coil1 to 2 segments" id="B32-Hw-Y31">
-                                <modifierMask key="keyEquivalentModifierMask"/>
-                                <connections>
-                                    <action selector="handleChangeCoil1:" target="XWq-sU-B2V" id="kAn-i3-Igk"/>
-                                </connections>
-                            </menuItem>
-                            <menuItem title="Test New Method" id="Mcp-Gz-6Zn">
-                                <modifierMask key="keyEquivalentModifierMask"/>
-                                <connections>
-                                    <action selector="handleTestEVMethod:" target="XWq-sU-B2V" id="R1n-fd-n2M"/>
-                                </connections>
-                            </menuItem>
-                            <menuItem title="Get Inductances" id="lj3-ZC-nVn">
-                                <modifierMask key="keyEquivalentModifierMask"/>
-                                <connections>
-                                    <action selector="handleGetInductances:" target="XWq-sU-B2V" id="NQx-Eg-UEW"/>
-                                </connections>
-                            </menuItem>
-                            <menuItem title="Get Inductance Matrix" id="nLe-zk-NYW">
-                                <modifierMask key="keyEquivalentModifierMask"/>
-                                <connections>
-                                    <action selector="handleGetIndMatrix:" target="XWq-sU-B2V" id="mfq-Yf-fcG"/>
                                 </connections>
                             </menuItem>
                         </items>

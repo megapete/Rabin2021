@@ -280,6 +280,7 @@ class PhaseModel:Codable {
         }
     }
     
+    /*
     /// Function to return the total magnetic energy between two coils in the model. A coil's radial position (0 is closest to the core) is used to define it. The energy is calculated using the higher of the two NI (if they are different). If one of the coil designations that are passed to the routine does not exist, the function throws an error. If coil1 == coil2 then the function throws an error.
     func TotalMagneticEnergy(coil1:Int, coil2:Int) throws -> Double {
         
@@ -357,7 +358,7 @@ class PhaseModel:Codable {
         }
         
         return result / 2.0
-    }
+    } */
     
     /// A routine to change the connectors in the model when newSegment(s) take(s) the place of oldSegment(s). It is assumed that the Segment arrays are contiguous and in order. The count of oldSegments must be a multiple of newSegments or the count of newSegmenst must be a multiple of oldSegments.  If both arguments only have a single Segment, it is assumed that the one in newSegment replaces the one in oldSegment. It is further assumed that the new Segments have _NOT_ been added to the model yet, but will be soon after calling this function. Any connector references to oldSegments that should be set to newSegments will be replaced in the model - however, the model itself (ie: the array of Segments in segmentStore) will not be changed.
     ///  - Note: If there is only a single oldSegment, only adjacent-segment connections are retained, and connections to non-Segments (like ground, etc) are trashed.
@@ -1392,6 +1393,7 @@ class PhaseModel:Codable {
         
     }
     
+    /*
     func CalculateInductanceMatrix(useEVmodel:Bool = true) throws {
         
         guard self.segments.count > 0 else {
@@ -1440,6 +1442,7 @@ class PhaseModel:Codable {
             throw PhaseModelError(info: "", type: .UnimplementedInductanceMethod)
         }
     }
+    */
     
     /// Insert a new Segment into the correct spot in the model to keep the segmentStore array sorted. If there is an existing Segment with the same LocStruct as the new one, this function throws an error.
     func InsertSegment(newSegment:Segment) throws {
@@ -1902,7 +1905,7 @@ class PhaseModel:Codable {
         return result
     }
     
-    
+    /*
     /// Get the current density of the given coil at the given height, using equation 9.10 of DelVecchio
     func J(radialPos:Int, realZ:Double) -> Double {
         
@@ -1935,8 +1938,9 @@ class PhaseModel:Codable {
         }
         
         return result
-    }
+    } */
     
+    /*
     /// Get the Fourier series representation of the current density for the coil (DelVecchio)
     func CoilJ(radialPos:Int) -> [Double]
     {
@@ -1954,5 +1958,5 @@ class PhaseModel:Codable {
         }
         
         return result
-    }
+    } */
 }

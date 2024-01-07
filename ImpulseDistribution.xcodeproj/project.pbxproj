@@ -28,9 +28,6 @@
 		F561C3CE2B4838AF00C9CEDE /* PchMatrixPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3CD2B4838AF00C9CEDE /* PchMatrixPackage */; };
 		F561C3D02B4838AF00C9CEDE /* PchProgressIndicatorPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3CF2B4838AF00C9CEDE /* PchProgressIndicatorPackage */; };
 		F561C3D32B4B528800C9CEDE /* PchFiniteElementPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3D22B4B528800C9CEDE /* PchFiniteElementPackage */; };
-		F5BA813F2719B94100717C67 /* PCH_GraphingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5BA813D2719B94100717C67 /* PCH_GraphingWindow.swift */; };
-		F5BA81402719B94100717C67 /* PCH_GraphingWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = F5BA813E2719B94100717C67 /* PCH_GraphingWindow.xib */; };
-		F5BA81422719B9C800717C67 /* PCH_GraphingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5BA81412719B9C800717C67 /* PCH_GraphingView.swift */; };
 		F5ED29ED270F1F9C003E84CB /* Segment.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED29EC270F1F9C003E84CB /* Segment.swift */; };
 		F5ED29EF271709B0003E84CB /* PhaseModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED29EE271709B0003E84CB /* PhaseModel.swift */; };
 /* End PBXBuildFile section */
@@ -50,9 +47,6 @@
 		D3B7FF21270E320E002537D3 /* BasicSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BasicSection.swift; sourceTree = "<group>"; };
 		D3BE820027330E9600EF964D /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		D3FB7D692752B7A3009ACCB4 /* Connector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Connector.swift; sourceTree = "<group>"; };
-		F5BA813D2719B94100717C67 /* PCH_GraphingWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PCH_GraphingWindow.swift; sourceTree = "<group>"; };
-		F5BA813E2719B94100717C67 /* PCH_GraphingWindow.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = PCH_GraphingWindow.xib; sourceTree = "<group>"; };
-		F5BA81412719B9C800717C67 /* PCH_GraphingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PCH_GraphingView.swift; sourceTree = "<group>"; };
 		F5ED29EC270F1F9C003E84CB /* Segment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Segment.swift; sourceTree = "<group>"; };
 		F5ED29EE271709B0003E84CB /* PhaseModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -99,9 +93,6 @@
 			isa = PBXGroup;
 			children = (
 				D30D3AD7270E2F2C00A39051 /* AppDelegate.swift */,
-				F5BA813D2719B94100717C67 /* PCH_GraphingWindow.swift */,
-				F5BA813E2719B94100717C67 /* PCH_GraphingWindow.xib */,
-				F5BA81412719B9C800717C67 /* PCH_GraphingView.swift */,
 				D3573253270E5DAE000CCCF9 /* AppController.swift */,
 				D39444F42718D9C700206019 /* GetNumber.xib */,
 				D39444F52718D9C700206019 /* GetNumberDialog.swift */,
@@ -202,7 +193,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				D39444F62718D9C700206019 /* GetNumber.xib in Resources */,
-				F5BA81402719B94100717C67 /* PCH_GraphingWindow.xib in Resources */,
 				D30D3ADA270E2F2D00A39051 /* Assets.xcassets in Resources */,
 				D30D3ADD270E2F2D00A39051 /* MainMenu.xib in Resources */,
 			);
@@ -223,8 +213,6 @@
 				D39311BC2710C44200A29D65 /* TransformerView.swift in Sources */,
 				D3573254270E5DAE000CCCF9 /* AppController.swift in Sources */,
 				D39444F72718D9C700206019 /* GetNumberDialog.swift in Sources */,
-				F5BA81422719B9C800717C67 /* PCH_GraphingView.swift in Sources */,
-				F5BA813F2719B94100717C67 /* PCH_GraphingWindow.swift in Sources */,
 				D3926C08270F3D3C00D2D17C /* Core.swift in Sources */,
 				F5ED29ED270F1F9C003E84CB /* Segment.swift in Sources */,
 			);
@@ -299,7 +287,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.5;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -361,7 +349,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.5;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_SWIFT_FLAGS = "";

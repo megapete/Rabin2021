@@ -78,7 +78,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     
     /// Window controller to display graphs
-    var graphWindowCtrl:PCH_GraphingWindow? = nil
+    // var graphWindowCtrl:PCH_GraphingWindow? = nil
     
     /// The current basic sections that are loaded in memory
     var currentSections:[BasicSection] = []
@@ -205,7 +205,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         #else
         
-        try? model.CalculateInductanceMatrix()
+        //try? model.CalculateInductanceMatrix()
         print("Pretending to be recalculating Inductance matrix")
         
         #endif
@@ -477,227 +477,6 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     }
     
     // MARK: Testing routines
-    @IBAction func handleGetCoil1J(_ sender: Any) {
-        
-        let dlog = GetNumberDialog(descriptiveText: "Z-Value", unitsText: "metres", noteText: "", windowTitle: "Get Coil1 J")
-        
-        if dlog.runModal() == .OK {
-            
-            print("Z = \(dlog.numberValue)")
-            print("J = \(self.currentModel!.J(radialPos: 0, realZ: dlog.numberValue))")
-        }
-    }
-    
-    @IBAction func handleShowCoil1J(_ sender: Any) {
-        
-        guard let model = self.currentModel, model.segments.count > 0 else {
-            
-            return
-        }
-        
-        let integerFormatter = NumberFormatter()
-        integerFormatter.numberStyle = .none
-        integerFormatter.minimum = 0
-        integerFormatter.maximum = NSNumber(integerLiteral: model.segments.count - 1)
-        
-        let coilNumDlog = GetNumberDialog(descriptiveText: "Coil Number:", unitsText: "", noteText: "(0 is closest to core)", windowTitle: "J For Coil", initialValue: 0.0, fieldFormatter: integerFormatter)
-        
-        if coilNumDlog.runModal() == .cancel {
-            
-            return
-        }
-        
-        let radialPos = Int(coilNumDlog.numberValue)
-        
-        let L = model.realWindowHeight
-        
-        var minY = Double.greatestFiniteMagnitude
-        var maxY = -Double.greatestFiniteMagnitude
-        var points:[NSPoint] = []
-        
-        let numPoints = 1000
-        for i in 0...numPoints {
-            
-            print("Point \(i)")
-            let ii = Double(i)
-            let nextX = ii / Double(numPoints) * L
-            
-            let nextY = model.J(radialPos: radialPos, realZ: nextX) / 1000.0
-            
-            minY = min(minY, nextY)
-            maxY = max(maxY, nextY)
-            
-            points.append(NSPoint(x: nextX * 1000, y: nextY))
-        }
-        
-        let grafWidth = L * 1.1 * 1000
-        let grafHeight = (maxY - minY) * 1.1
-        
-        let origin = NSPoint(x: -grafWidth * 0.05, y: -(abs(minY) + grafHeight * 0.05))
-        let size = NSSize(width: grafWidth, height: grafHeight)
-        
-        self.graphWindowCtrl = PCH_GraphingWindow(graphBounds: NSRect(origin: origin, size: size))
-        
-        self.graphWindowCtrl!.graphView.showAxes(show: true)
-        self.graphWindowCtrl!.graphView.dataPaths = [PCH_GraphingView.DataPath(color: AppController.segmentColors[radialPos], points: points)]
-        self.graphWindowCtrl!.graphView.needsDisplay = true
-    }
-    
-    @IBAction func handleChangeCoil1(_ sender: Any) {
-        
-        let sections1 = Array(self.currentSections[0...35])
-        let sections2 = Array(self.currentSections[36...71])
-        Segment.resetSerialNumber()
-        let segment1 = try? Segment(basicSections: sections1, interleaved: false, realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentCore!.adjustedWindHt)
-        let segment2 = try? Segment(basicSections: sections2, interleaved: false, realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentCore!.adjustedWindHt)
-        
-        let model = PhaseModel(segments: [segment1!, segment2!], core: self.currentCore!, tankDepth: self.tankDepth)
-        
-        let L = model.realWindowHeight
-        
-        var minY = Double.greatestFiniteMagnitude
-        var maxY = -Double.greatestFiniteMagnitude
-        var points:[NSPoint] = []
-        
-        print("Checking two-section coil")
-        let numPoints = 1000
-        for i in 0...numPoints {
-            
-            print("Point \(i)")
-            let ii = Double(i)
-            let nextX = ii / Double(numPoints) * L
-            
-            let nextY = model.J(radialPos: 0, realZ: nextX) / 1000.0
-            
-            minY = min(minY, nextY)
-            maxY = max(maxY, nextY)
-            
-            points.append(NSPoint(x: nextX * 1000, y: nextY))
-        }
-        
-        let grafWidth = L * 1.1 * 1000
-        let grafHeight = (maxY - minY) * 1.1
-        
-        let origin = NSPoint(x: -grafWidth * 0.05, y: -(abs(minY) + grafHeight * 0.05))
-        let size = NSSize(width: grafWidth, height: grafHeight)
-        
-        self.graphWindowCtrl = PCH_GraphingWindow(graphBounds: NSRect(origin: origin, size: size))
-        
-        self.graphWindowCtrl!.graphView.showAxes(show: true)
-        self.graphWindowCtrl!.graphView.dataPaths = [PCH_GraphingView.DataPath(color: .red, points: points)]
-        self.graphWindowCtrl!.graphView.needsDisplay = true
-    }
-    
-    @IBAction func handleTestEVMethod(_ sender: Any) {
-        
-        /* let core = Core(diameter: 0.15, realWindowHeight: 0.3, legCenters: 0.25)
-        let N1 = 1.0
-        let I1 = 1.0
-        let N4 = 2.0
-        let I4 = I1 * N1 / N4
-        let wdgData = BasicSectionWindingData(type: .disc, discData: BasicSectionWindingData.DiscData(numAxialColumns: 12, axialColumnWidth: 0.038), layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: 0.004, axialDimn: 0.004, turnInsulation: 0.001, resistancePerMeter: 0))
-        let basicSection1 = BasicSection(location: LocStruct(radial: 0, axial: 2), N: N1, I: I1, wdgData: wdgData, rect: NSRect(x: 0.091, y: 0.268, width: 0.004, height: 0.004))
-        let basicSection2 = BasicSection(location: LocStruct(radial: 0, axial: 1), N: 1, I: 1, wdgData: wdgData, rect: NSRect(x: 0.091, y: 0.268 - 0.008, width: 0.004, height: 0.004))
-        let basicSection3 = BasicSection(location: LocStruct(radial: 0, axial: 0), N: 1, I: 1, wdgData: wdgData, rect: NSRect(x: 0.091, y: 0.268 - 0.016, width: 0.004, height: 0.004))
-        let basicSection4 = BasicSection(location: LocStruct(radial: 1, axial: 0), N: N4, I: I4, wdgData: wdgData, rect: NSRect(x: 0.100, y: 0.268, width: 0.004, height: 0.004))
-        let segment1 = try? Segment(basicSections: [basicSection1], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
-        let segment2 = try? Segment(basicSections: [basicSection2], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
-        let segment3 = try? Segment(basicSections: [basicSection3], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
-        let segment4 = try? Segment(basicSections: [basicSection4], interleaved: false, realWindowHeight: 0.3, useWindowHeight: 0.3)
-        
-        let EVLtest1 = EslamianVahidiSegment(segment: segment1!, core: core)!
-        let EVLtest2 = EslamianVahidiSegment(segment: segment2!, core: core)!
-        let EVLtest3 = EslamianVahidiSegment(segment: segment3!, core: core)!
-        let EVLtest4 = EslamianVahidiSegment(segment: segment4!, core: core)!
-        
-        print("Mutual inductance 1-2: \(EVLtest1.M_pu_InWindow(otherSegment: EVLtest2))")
-        print("Mutual inductance 2-1: \(EVLtest2.M_pu_InWindow(otherSegment: EVLtest1))")
-        print("Mutual inductance 1-3: \(EVLtest1.M_pu_InWindow(otherSegment: EVLtest3))")
-        
-        let L1 = EVLtest1.L_pu_InWindow()
-        let L4 = EVLtest4.L_pu_InWindow()
-        let M14 = EVLtest1.M_pu_InWindow(otherSegment: EVLtest4)
-        print("Self-inductance (per-unit-length, in window) #1: \(EVLtest1.L_pu_InWindow())")
-        print("Self-Inductance (per-unit-length, in window) #4: \(EVLtest4.L_pu_InWindow())")
-        
-        print("Mutual inductance (per-unit-length, in window) 1-4: \(EVLtest1.M_pu_InWindow(otherSegment: EVLtest4))")
-        print("Mutual inductance (per-unit-length, in window) 4-1: \(EVLtest4.M_pu_InWindow(otherSegment: EVLtest1))")
-        
-        let energy14 = L1 * I1 * I1 + L4 * I4 * I4 + 2 * M14 * I1 * I4
-        
-        print("Energy: \(energy14)")
-        
-        print("Self-inductance (per-unit-length, outside window) #1: \(EVLtest1.M_pu_OutsideWindow(otherSegment: EVLtest1))")
-        print("Mutual inductance (per-unit-length, outside window) 1-2: \(EVLtest1.M_pu_OutsideWindow(otherSegment: EVLtest2))")
-         */
-    }
-    
-    @IBAction func handleGetInductances(_ sender: Any) {
-        /*
-        guard let model = self.currentModel, model.segments.count > 0, let core = self.currentCore else {
-            
-            return
-        }
-        
-        var EV:[EslamianVahidiSegment] = []
-        
-        for nextSegment in model.segments {
-            
-            EV.append(EslamianVahidiSegment(segment: nextSegment, core: core)!)
-        }
-        
-        let M = PCH_BaseClass_Matrix(matrixType: .general, numType: .Double, rows: UInt(EV.count), columns: UInt(EV.count))
-        
-        print("Getting in-window inductances...")
-        for i in 0..<EV.count {
-            
-            print("Segment #\(i)")
-            // Get self-inductance
-            let iR1 = EV[i].segment.r1
-            let iR2 = EV[i].segment.r2
-            M[i, i] = EV[i].L_pu_InWindow() * π * (iR1 + iR2)
-            
-            for j in i+1..<EV.count {
-                
-                if j % 50 == 0 {
-                    print("To: \(j)")
-                }
-                
-                let innerRadius = min(iR1, EV[j].segment.r1)
-                let outerRadius = max(iR2, EV[j].segment.r2)
-                // let meanRadius = (innerRadius + outerRadius) / 2.0
-                let multiplier = π * (innerRadius + outerRadius)
-                let nextM:Double = EV[i].M_pu_InWindow(otherSegment: EV[j]) * multiplier
-                
-                M[i, j] = nextM
-                M[j, i] = nextM
-            }
-        }
-        print("Done!")
-        
-        print("Inductance array is positive definite: \(M.TestPositiveDefinite())")
-         */
-    }
-    
-    @IBAction func handleGetIndMatrix(_ sender: Any) {
-        /*
-        guard let model = self.currentModel, model.segments.count > 0, let core = self.currentCore else {
-            
-            return
-        }
-        
-        print("Creating EV Segments...")
-        let evSegments = EslamianVahidiSegment.Create_EV_Array(segments: model.segments, core: core)
-        print("Done!\n\nCreating inductance matrix...")
-        guard let _ = try? EslamianVahidiSegment.InductanceMatrix(evSegments: evSegments) else {
-            
-            DLog("SHIT!")
-            return
-        }
-        
-        print("Done!")
-         */
-    }
     
     // MARK: File routines
     func doOpen(fileURL:URL) -> Bool {
@@ -1388,6 +1167,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
     }
     
+    /*
     @IBAction func handleShowGraph(_ sender: Any) {
         
         DLog("Creating window controller")
@@ -1395,7 +1175,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         self.graphWindowCtrl = PCH_GraphingWindow(graphBounds: NSRect(x: -10.0, y: -10.0, width: 1000.0, height: 400.0))
         
         
-    }
+    } */
     
     
     @IBAction func handleOpenFile(_ sender: Any) {
@@ -1555,6 +1335,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         return // nil
     }
     
+    /*
     @IBAction func handleWdgImpedancePairs(_ sender: Any) {
         
         let kvaImp = doWindingImpedance(coil1: 0, coil2: 1)
@@ -1563,8 +1344,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             
             print("Impedance: \(kvaImp.impedancePU * 100)% at \(kvaImp.baseVA) kVA")
         }
-    }
+    } */
     
+    /*
     /// Function to get the impedance (in p.u. of the winding with the higher VA) between two coils. If the VA of the two windings is different, the higher of the two is used to do the calculation. Note that if an error occurs (like if coil1 = coil2 or one of the coils does not exist), the tuple (0,0) is returned.
     /// - Parameter coil1: One of the two coils of the calculation, as referred to by its radial position in the phase (0-based)
     /// - Parameter coil2: The other coil in the calculation
@@ -1590,7 +1372,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         let impedance = (2.0 * π * xlFile.frequency) / baseVA * energy
         
         return (baseVA, impedance)
-    }
+    } */
     
     // MARK: Menu Validation
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
