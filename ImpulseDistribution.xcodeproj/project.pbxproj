@@ -27,6 +27,7 @@
 		F561C3CC2B4838AF00C9CEDE /* PchExcelDesignFilePackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3CB2B4838AF00C9CEDE /* PchExcelDesignFilePackage */; };
 		F561C3CE2B4838AF00C9CEDE /* PchMatrixPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3CD2B4838AF00C9CEDE /* PchMatrixPackage */; };
 		F561C3D02B4838AF00C9CEDE /* PchProgressIndicatorPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3CF2B4838AF00C9CEDE /* PchProgressIndicatorPackage */; };
+		F561C3D32B4B528800C9CEDE /* PchFiniteElementPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3D22B4B528800C9CEDE /* PchFiniteElementPackage */; };
 		F5BA813F2719B94100717C67 /* PCH_GraphingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5BA813D2719B94100717C67 /* PCH_GraphingWindow.swift */; };
 		F5BA81402719B94100717C67 /* PCH_GraphingWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = F5BA813E2719B94100717C67 /* PCH_GraphingWindow.xib */; };
 		F5BA81422719B9C800717C67 /* PCH_GraphingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5BA81412719B9C800717C67 /* PCH_GraphingView.swift */; };
@@ -70,6 +71,7 @@
 				D3F020132B1BBF4200CBD0F0 /* Numerics in Frameworks */,
 				F561C3CC2B4838AF00C9CEDE /* PchExcelDesignFilePackage in Frameworks */,
 				D3F020112B1BBF4200CBD0F0 /* ComplexModule in Frameworks */,
+				F561C3D32B4B528800C9CEDE /* PchFiniteElementPackage in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -150,6 +152,7 @@
 				F561C3CB2B4838AF00C9CEDE /* PchExcelDesignFilePackage */,
 				F561C3CD2B4838AF00C9CEDE /* PchMatrixPackage */,
 				F561C3CF2B4838AF00C9CEDE /* PchProgressIndicatorPackage */,
+				F561C3D22B4B528800C9CEDE /* PchFiniteElementPackage */,
 			);
 			productName = Rabin2021;
 			productReference = D30D3AD4270E2F2C00A39051 /* ImpulseDistribution.app */;
@@ -182,6 +185,7 @@
 			packageReferences = (
 				D3F0200F2B1BBF4200CBD0F0 /* XCRemoteSwiftPackageReference "swift-numerics" */,
 				F561C3C62B4838AF00C9CEDE /* XCRemoteSwiftPackageReference "PchBasePackage" */,
+				F561C3D12B4B528800C9CEDE /* XCRemoteSwiftPackageReference "PchFiniteElementPackage" */,
 			);
 			productRefGroup = D30D3AD5270E2F2C00A39051 /* Products */;
 			projectDirPath = "";
@@ -467,6 +471,14 @@
 				kind = branch;
 			};
 		};
+		F561C3D12B4B528800C9CEDE /* XCRemoteSwiftPackageReference "PchFiniteElementPackage" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/megapete/PchFiniteElementPackage.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -509,6 +521,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F561C3C62B4838AF00C9CEDE /* XCRemoteSwiftPackageReference "PchBasePackage" */;
 			productName = PchProgressIndicatorPackage;
+		};
+		F561C3D22B4B528800C9CEDE /* PchFiniteElementPackage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F561C3D12B4B528800C9CEDE /* XCRemoteSwiftPackageReference "PchFiniteElementPackage" */;
+			productName = PchFiniteElementPackage;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
