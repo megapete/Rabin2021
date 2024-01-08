@@ -1047,7 +1047,12 @@ class PhaseModel:Codable {
                         if abs(cumCap[inner] - cumCap[outer]) > refValue {
                                 
                             currentNodeIndex[refCoil] += 1
-                            // MARK: There's a bug here where the curretNodeIndex[refCoil] goes beyond the size of the array it is indexing
+                            
+                            if currentNodeIndex[refCoil] >= nodeCaps[refCoil].count {
+                                
+                                break
+                            }
+                            
                             cumCap[refCoil] += nodeCaps[refCoil][currentNodeIndex[refCoil]].cap
                         }
                         else {
