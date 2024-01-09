@@ -246,11 +246,13 @@ class Segment: Codable, Equatable, Hashable {
     }
     
     /// The current density of the section
+    /*
     var ActualJ:Double {
         get {
             return self.N * self.I / self.area
         }
     }
+    */
     
     /// The resistance of the segment at the given temperature (in C)
     func resistance(at temp:Double = 20.0) -> Double {
@@ -271,6 +273,7 @@ class Segment: Codable, Equatable, Hashable {
     // Functions required by the paper "New Methods for Computation of the Inductance Matrix of Transformer Windings for Very Fast Transients Studies" by M. Eslamian and B. Vahidi.
     
     /// A synonym for z1
+    /*
     func y1() -> Double {
         
         return self.z1
@@ -293,7 +296,7 @@ class Segment: Codable, Equatable, Hashable {
         
         return self.r2 - coreRadius
     }
-    
+     */
     /// The series capacitance of the segment when it is considered within a coil (this property is set elsewhere)
     var seriesCapacitance:Double = 0.0
     

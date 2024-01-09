@@ -8,8 +8,11 @@
 import Foundation
 import AppKit
 import Accelerate
+import ComplexModule
+import RealModule
 import PchBasePackage
 import PchMatrixPackage
+import PchFiniteElementPackage
 
 class PhaseModel:Codable {
     
@@ -37,7 +40,7 @@ class PhaseModel:Codable {
     let core:Core
     
     /// An array of arrays where the first index is the segment number and the second index (i) is J[i] for the segment (used for DelVecchio only)
-    var J:[[Double]] = []
+    // var J:[[Double]] = []
     
     /// An array of Eslamian Vahidi segments. Ultimately, there will probably be no reason to keep this around and it should be removed from the class.
     //var evSegments:[EslamianVahidiSegment] = []
@@ -1923,6 +1926,16 @@ class PhaseModel:Codable {
         }
         
         return result
+    }
+    
+    /// Create the Finite Element Model (PchFePhase) for this phase model
+    func CreateFePhase() -> PchFePhase {
+        
+        var feSections:[PchFePhase.Section] = []
+        for nextSection in self.segments {
+            
+            // let newFeSection = PchFePhase.Section(innerRadius: nextSection.r1, radialBuild: nextSection.r2 - nextSection.r1, zMin: nextSection.z1, zMax: nextSection.z2, totalTurns: nextSection.N, activeTurns: nextSection.N, seriesRmsCurrent: Complex(nextSection.I), frequency: 60.0, strandsPerTurn: nextSection.basicSections[0].wdgData.turn., strandsPerLayer: <#T##Double#>, strandRadial: <#T##Double#>, strandAxial: <#T##Double#>, strandConductor: <#T##PchConductorRegion.CondMaterial#>, numAxialColumns: <#T##Double#>, axialColumnWidth: <#T##Double#>)
+        }
     }
     
     /*
