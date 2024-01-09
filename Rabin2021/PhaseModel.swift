@@ -935,28 +935,36 @@ class PhaseModel:Codable {
             
             // Now we take care of the shunt capacitances
             
-            // First, we update the Nodes array
+            // First, we update the Nodes array. This sets up the nodes on each Segment, and returns an array of the topmost nodes (as an Int index into the self.nodeStore array) for the coils.
             let coilTopNodes = try SetNodes()
             
+            // Init some local vars
             var innerFirstNode = 0
             var outerFirstNode = 0
             var innerCoilHt = 0.0
             var referenceZero = self.nodeStore[0].aboveSegment!.z1
             
+            // For each coil ('i' is the index of the "outer" coil)
             for i in 0..<coilTopNodes.count {
                 
+                // we need to find the first (ie: lowest) and last (highest) node for the outermost coil. Note that for coil '0' (the innermost coil), the core is considered to be the 'inner' coil
                 outerFirstNode = i == 0 ? 0 : coilTopNodes[i - 1] + 1
                 let outerLastNode = coilTopNodes[i]
-                // let outerNodeCount = outerLastNode - outerFirstNode + 1
+                
+                // get the overall height of the outer coil
                 let outerCoilHt = self.nodeStore[outerLastNode].belowSegment!.z2 - self.nodeStore[outerFirstNode].aboveSegment!.z1
+                // fix the reference '0' for the coil pair (set it to the lesser of the two)
                 referenceZero = min(referenceZero, self.nodeStore[outerFirstNode].aboveSegment!.z1)
                 
                 ZAssert(outerCoilHt > 0.0, message: "Got negative height!")
                 
+                // Get the shunt capacitance between the 'i-th' coil and the i-1 coil
                 let totalCapacitance = try CoilInnerShuntCapacitance(coil: i)
                 
+                // choose the higher of the two heights as the reference to use
                 let referenceHt = max(innerCoilHt, outerCoilHt)
                 
+                // come up with a rate of change for the capacitance
                 let faradsPerMeter = totalCapacitance / referenceHt
                 
                 struct nodeCap {
@@ -969,6 +977,8 @@ class PhaseModel:Codable {
                 let currentCoil = self.nodeStore[outerFirstNode].aboveSegment!.radialPos
                 let hasShieldInside = try self.RadialShieldInside(coil: currentCoil) != nil
                 var innerNodeCaps:[nodeCap] = []
+                
+                // What we do next depends if this is the innermost coil, or if there is a ground shield inside the coil
                 if i == 0 || hasShieldInside {
                     
                     // take care of the special case where it's the first coil (ie: the 'inner coil' is actually the core)
@@ -988,6 +998,8 @@ class PhaseModel:Codable {
                         innerNodeCaps.append(nextNodeCap)
                     }
                 }
+                
+                // At this point, the (inner -> outer) shunt capacitances are calculated; now calculate the (outer -> inner) capacitances
                 
                 var outerNodeCaps:[nodeCap] = []
                 
@@ -1027,6 +1039,7 @@ class PhaseModel:Codable {
                     let nodeCaps = [innerNodeCaps, outerNodeCaps]
                     var currentNodeIndex = [0, 0]
                     var cumCap = [innerNodeCaps[0].cap, outerNodeCaps[0].cap]
+                    // set the reference coil as the one whose first node has the lower capacitance (ie: the most nodes - I think)
                     var refCoil = nodeCaps[inner][0].cap <= nodeCaps[outer][0].cap ? inner : outer
                     var otherCoil = refCoil == inner ? outer : inner
                     var capLinks:[capLink] = []
@@ -1034,6 +1047,7 @@ class PhaseModel:Codable {
                     
                     while currentNodeIndex[inner] < nodeCaps[inner].count && currentNodeIndex[outer] < nodeCaps[outer].count {
                     
+                        // This is where weird things like large axial gaps in tapping windings are (should) be taken care of
                         let thisAverageZ = (nodeCaps[inner][currentNodeIndex[inner]].z + nodeCaps[outer][currentNodeIndex[outer]].z) / 2.0
                         let thisAverageC = (thisAverageZ - referenceZero) / referenceHt * totalCapacitance
                         
