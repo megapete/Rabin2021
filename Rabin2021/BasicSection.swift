@@ -80,17 +80,6 @@ struct BasicSectionWindingData:Codable {
     
     let layers:LayerData
     
-    /// Strand data (required for FE analysis)
-    struct StrandData:Codable {
-        
-        let radialDim:Double
-        let axialDim:Double
-    }
-    
-    let strandData:StrandData
-    let strandsPerTurn:Int
-    let strandsRadially:Int
-    
     /// Turn data for the section
     struct TurnData:Codable {
         

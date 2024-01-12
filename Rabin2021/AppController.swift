@@ -16,10 +16,14 @@ let PCH_CIR_FILETYPE = "cir"
 var rb2021_progressIndicatorWindow:PCH_ProgressIndicatorWindow? = nil
 
 import Cocoa
+import UniformTypeIdentifiers
+import ComplexModule
+import RealModule
 import PchBasePackage
 import PchExcelDesignFilePackage
 import PchDialogBoxPackage
 import PchProgressIndicatorPackage
+import PchFiniteElementPackage
 
 class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
@@ -181,34 +185,161 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             }
         }
         
-        guard let model = self.currentModel else {
+        guard let model = self.currentModel, let excelFile = self.currentXLfile else {
             
-            PCH_ErrorAlert(message: "The model does not exist!", info: "Impossible to continue!")
+            PCH_ErrorAlert(message: "The model and/or Excel file do/does not exist!", info: "Impossible to continue!")
             return
         }
         
-        // Debug builds run incredibly slow when doing O(n2) stuff, so we exclude that code while we're still debugging UI.
-        #if !DEBUG
-        
-        do {
+        guard let feModel = CreateFeModel(xlFile: excelFile, model: model) else {
             
-            // print("ProgIndicator exists: \(rb2021_progressIndicatorWindow != nil)")
-            try model.CalculateInductanceMatrix()
-            
-        }
-        catch {
-            
-            let alert = NSAlert(error: error)
-            let _ = alert.runModal()
+            PCH_ErrorAlert(message: "Could not create finite element model!")
             return
         }
         
-        #else
+        guard let feMesh = feModel.CreateFE_Model() else {
+            
+            PCH_ErrorAlert(message: "Could not create mesh!")
+            return
+        }
         
-        //try? model.CalculateInductanceMatrix()
-        print("Pretending to be recalculating Inductance matrix")
+        feModel.magneticMesh = feMesh
         
-        #endif
+        // To calculate the eddy losses, we need to make some assumptions regarding the amp-turn distribution. The method used here should be considered _temporary_. It would be better to have the program analyze the current connections (as selected by the user) and figure out the voltages and kVA.
+        // For now, we will assume the following:
+        // 1. Separate windings with the same terminal number are assumed to be 'main' windings (higher kVA) and 'tapping' windings (lower kVA)
+        //    1a) The tap will be the one where the tapping winding has the same current direction as the main winding (this will cause small (I think) errors depending on the actual tap selected by the user)
+        //    1b) For double-stacked windings, it is assumed that they will be connected in parallel
+        // 2. The nominal transformer kVA will be equal to the full kVA of terminal 2
+        // 3. If there is a 3rd (or 4th...) terminal make sure that its kVA is correctly set. It is assumed that the kVA of non-Terminal-2 windings are negative with respect to Terminal 2 and that the total amp-turns equal 0.
+        // 4. Volts/Turn is selected from the sum of voltages of terminal 2 divided by the sum of turns of terminal 2
+        // 5. Terminal number greater than 2 have only a SINGLE COIL associated with them
+        var refKVA = -1.0
+        var terms:Set<Int> = []
+        for nextWinding in excelFile.windings {
+            
+            if nextWinding.terminal.terminalNumber == 0 {
+                
+                continue
+            }
+            
+            if nextWinding.terminal.terminalNumber == 2 {
+                
+                refKVA += nextWinding.terminal.kVA
+            }
+            
+            terms.insert(nextWinding.terminal.terminalNumber)
+        }
+        
+        guard terms.count >= 2 else {
+            
+            PCH_ErrorAlert(message: "Not enough terminals!")
+            return
+        }
+        
+        guard refKVA > 0 else {
+            
+            PCH_ErrorAlert(message: "No winding has been assigned to terminal number 2!")
+            return
+        }
+        
+        // the index into these arrays is the terminal number minus 1
+        var term2volts:Double = 0.0
+        var turns:[Double] = Array(repeating: 0.0, count: terms.count)
+        for nextTerm in terms {
+            
+            for nextWinding in excelFile.windings {
+                
+                if nextWinding.terminal.terminalNumber == nextTerm {
+                    
+                    var wdgTurns = nextWinding.numTurns.max / (nextWinding.isDoubleStack ? 2.0 : 1.0)
+                    turns[nextTerm - 1] += wdgTurns
+                }
+                
+                if nextTerm == 2 {
+                    
+                    let phFactor = nextWinding.terminal.connection == .wye ? SQRT3 : 1.0
+                    let wdgVolts = nextWinding.terminal.lineVolts / phFactor / (nextWinding.isDoubleStack ? 2.0 : 1.0)
+                    term2volts += wdgVolts
+                }
+            }
+        }
+        
+        let voltsPerTurn = term2volts / turns[1]
+        
+        var kvas:[Double] = Array(repeating: 0.0, count: terms.count)
+        kvas[1] = refKVA
+        var otherTermskVA = refKVA
+        var otherTerms = terms
+        otherTerms.remove(1)
+        otherTerms.remove(2)
+        while otherTerms.count > 0 {
+            
+            let nextTerm = otherTerms.first!
+                
+            for nextWdg in excelFile.windings {
+                
+                if nextWdg.terminal.terminalNumber == nextTerm {
+                    
+                    kvas[nextTerm - 1] = nextWdg.terminal.kVA
+                    otherTermskVA -= nextWdg.terminal.kVA
+                    otherTerms.remove(nextTerm)
+                    break
+                }
+            }
+        }
+        
+        kvas[0] = otherTermskVA
+        var currents:[Double] = Array(repeating: 0.0, count: terms.count)
+        
+        for nextTerm in terms {
+            
+            let voltage = turns[nextTerm - 1] * voltsPerTurn
+            currents[nextTerm - 1] = kvas[nextTerm - 1] / Double(excelFile.numPhases) / voltage
+            
+        }
+        
+        var firstSegmentIndex = 0
+        for wdgIndex in 0..<excelFile.windings.count {
+            
+            do {
+                
+                let lastSegmentIndex = try model.GetHighestSection(coil: wdgIndex)
+                for segIndex in firstSegmentIndex...lastSegmentIndex {
+                    
+                    let currentDirection = excelFile.windings[wdgIndex].terminal.terminalNumber == 2 ? -1.0 : 1.0
+                    let currentDivider = excelFile.windings[wdgIndex].isDoubleStack ? 2.0 : 1.0
+                    feModel.window.sections[segIndex].seriesRmsCurrent = Complex(currents[excelFile.windings[wdgIndex].terminal.terminalNumber] * currentDirection / currentDivider)
+                }
+                
+                firstSegmentIndex = lastSegmentIndex + 1
+            }
+            catch {
+                
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
+                return
+            }
+        }
+        
+        guard let _ = feModel.GetFullModelAndSolve() else {
+            
+            PCH_ErrorAlert(message: "Could not solve full model!")
+            return
+        }
+        
+        guard feModel.GetEddyLosses() else {
+            
+            PCH_ErrorAlert(message: "Could not get eddy losses!")
+            return
+        }
+        
+        for i in 0..<model.segments.count {
+            
+            model.segments[i].eddyLossPU = feModel.window.sections[i].EddyLossPU(atTemp: 20.0)
+        }
+        
+        
         
         do {
         
@@ -474,6 +605,80 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         }
         
         return result
+    }
+    
+    /// Function to create the finite-element model that we'll use to get the inductance matrix and eddy losses for the current PhaseModel. It is assumed that 'model' has already been updated (or created) using 'xlFile'.
+    func CreateFeModel(xlFile:PCH_ExcelDesignFile, model:PhaseModel) -> PchFePhase? {
+        
+        // do some simple checks to see if the xlFile and the model match, at least in terms of the number of coils and their basic sections
+        guard let lastSegment = model.segments.last, lastSegment.radialPos == xlFile.windings.count - 1 else {
+            
+            DLog("xlFile and model coil count do not match!")
+            return nil
+        }
+        
+        var totalBasicSections = 0
+        for nextSegment in model.segments {
+            
+            totalBasicSections += nextSegment.basicSections.count
+        }
+        
+        var totalFileSections = 0
+        for nextWinding in xlFile.windings {
+            
+            let wType = nextWinding.windingType
+            
+            if wType == .disc {
+                
+                totalFileSections += nextWinding.numAxialSections
+            }
+            else if wType == .helix {
+                
+                totalFileSections += Int(nextWinding.numTurns.max)
+            }
+            else {
+                
+                totalFileSections += 1
+            }
+        }
+        
+        guard totalFileSections == totalBasicSections else {
+            
+            DLog("xlFile and model section count do not match!")
+            return nil
+        }
+        
+        // Ok, we'll assume that the two models are compatible. Create the finite element sections & window
+        var feSections:[PchFePhase.Section] = []
+        for nextSegment in model.segments {
+            
+            let wdg = xlFile.windings[nextSegment.radialPos]
+            let wdgTurn = wdg.turnDefinition
+            let strandsPerTurn = wdgTurn.numCablesAxial * wdgTurn.numCablesRadial * (wdgTurn.cable.conductor == .ctc ? wdgTurn.cable.numCTCstrands :  wdgTurn.cable.numStrandsAxial * wdgTurn.cable.numStrandsRadial)
+            // default to a layer (or multi-start) winding (we always assume a 1-layer winding for this)
+            var numTurnsRadially = Double(wdg.numRadialSections)
+            if wdg.windingType == .disc || wdg.windingType == .sheet {
+                
+                numTurnsRadially = wdg.numTurns.max / Double(wdg.numAxialSections)
+            }
+            else if wdg.windingType == .helix {
+                
+                numTurnsRadially = 1.0
+            }
+            
+            let newFeSection = PchFePhase.Section(innerRadius: nextSegment.r1, radialBuild: nextSegment.r2 - nextSegment.r1, zMin: nextSegment.z1, zMax: nextSegment.z2, totalTurns: nextSegment.N, activeTurns: nextSegment.N, seriesRmsCurrent: Complex(nextSegment.I), frequency: xlFile.frequency, strandsPerTurn: Double(strandsPerTurn), strandsPerLayer: numTurnsRadially * Double(wdgTurn.numCablesRadial) * Double(wdgTurn.cable.numStrandsRadial), strandRadial: wdgTurn.cable.strandRadialDimension, strandAxial: wdgTurn.cable.strandAxialDimension, strandConductor: .CU, numAxialColumns: Double(wdg.numAxialColumns), axialColumnWidth: wdg.spacerWidth)
+            
+            feSections.append(newFeSection)
+        }
+        
+        let coreCenterToTank = xlFile.tankDepth / 2.0
+        let windowHt = xlFile.core.windowHeight
+        let constPotPt = NSPoint(x: coreCenterToTank, y: windowHt / 2)
+        let feWindow = PchFePhase.Window(zMin: 0.0, zMax: windowHt, rMin: xlFile.core.radius, rMax: coreCenterToTank, constPotentialPoint: constPotPt, sections: feSections)
+        
+        let fePhase = PchFePhase(window: feWindow)
+        
+        return fePhase
     }
     
     // MARK: Testing routines
@@ -1216,7 +1421,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         let saveAsPanel = NSSavePanel()
         saveAsPanel.title = "SPICE File"
         saveAsPanel.message = "Save SPICE (.cir) File"
-        saveAsPanel.allowedFileTypes = [PCH_CIR_FILETYPE]
+        
+        guard let cirType = UTType(filenameExtension: PCH_CIR_FILETYPE, conformingTo: .utf8PlainText) else {
+            
+            DLog("Could not create file type!")
+            return
+        }
+        
+        saveAsPanel.allowedContentTypes = [cirType]
         saveAsPanel.allowsOtherFileTypes = false
         
         if saveAsPanel.runModal() == .OK

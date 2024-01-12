@@ -1928,16 +1928,6 @@ class PhaseModel:Codable {
         return result
     }
     
-    /// Create the Finite Element Model (PchFePhase) for this phase model
-    func CreateFePhase() -> PchFePhase {
-        
-        var feSections:[PchFePhase.Section] = []
-        for nextSection in self.segments {
-            
-            // let newFeSection = PchFePhase.Section(innerRadius: nextSection.r1, radialBuild: nextSection.r2 - nextSection.r1, zMin: nextSection.z1, zMax: nextSection.z2, totalTurns: nextSection.N, activeTurns: nextSection.N, seriesRmsCurrent: Complex(nextSection.I), frequency: 60.0, strandsPerTurn: nextSection.basicSections[0].wdgData.turn., strandsPerLayer: <#T##Double#>, strandRadial: <#T##Double#>, strandAxial: <#T##Double#>, strandConductor: <#T##PchConductorRegion.CondMaterial#>, numAxialColumns: <#T##Double#>, axialColumnWidth: <#T##Double#>)
-        }
-    }
-    
     /*
     /// Get the current density of the given coil at the given height, using equation 9.10 of DelVecchio
     func J(radialPos:Int, realZ:Double) -> Double {
