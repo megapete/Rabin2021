@@ -25,7 +25,7 @@ import PchDialogBoxPackage
 import PchProgressIndicatorPackage
 import PchFiniteElementPackage
 
-class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
+class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhaseDelegate {
     
     /// The main window of the program
     @IBOutlet weak var mainWindow: NSWindow!
@@ -71,8 +71,6 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     @IBOutlet weak var mainWdgInductanceMenuItem: NSMenuItem!
     @IBOutlet weak var mainWdgImpedanceMenuItem: NSMenuItem!
     
-    
-    
     /// R and Z indication on the main window
     @IBOutlet weak var rLocationTextField: NSTextField!
     @IBOutlet weak var zLocationTextField: NSTextField!
@@ -80,6 +78,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     /// Mode indicator
     @IBOutlet weak var modeIndicatorTextField: NSTextField!
     
+    /// Inductance calculation indicators
+    @IBOutlet weak var inductanceLight: NSTextField!
+    @IBOutlet weak var indCalcProgInd: NSProgressIndicator!
+    @IBOutlet weak var indCalcLabel: NSTextField!
     
     /// Window controller to display graphs
     // var graphWindowCtrl:PCH_GraphingWindow? = nil
@@ -89,6 +91,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     /// The current model that is stored in memory. This is what is actually displayed in the TransformerView and what all calculations are performed upon.
     var currentModel:PhaseModel? = nil
+    
+    /// The current FE model that is stored in memory (this is required becuase the inductance calcualtion takes really long and so is put into a different thread)
+    var currentFePhase:PchFePhase? = nil
     
     /// The current core in memory
     var currentCore:Core? = nil
@@ -120,11 +125,46 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         self.rLocationTextField.doubleValue = 0
         self.zLocationTextField.doubleValue = 0
+        
+        self.inductanceLight.textColor = .red
+        self.indCalcProgInd.isHidden = true
+        self.indCalcProgInd.minValue = 0.0
+        self.indCalcProgInd.maxValue = 100.0
+        self.indCalcLabel.isHidden = true
     }
     
     func InitializeController()
     {
         
+    }
+    
+    // MARK: PchFePhaseDelegate routine(s)
+    func didFinishInductanceCalculation(phase:PchFePhase) {
+        
+        // the '===' operator compares references
+        guard let fePhase = self.currentFePhase, fePhase === phase else {
+            
+            DLog("PchFePhase does not match the one in memory!")
+            return
+        }
+        
+        DLog("Got inductance completion message!")
+        self.inductanceLight.textColor = fePhase.inductanceMatrix != nil && fePhase.inductanceMatrixIsValid ? .green : .red
+        
+        self.indCalcProgInd.isHidden = true
+        self.indCalcLabel.isHidden = true
+    }
+    
+    func updatePuCompletedInductanceCalculation(puComplete: Double, phase: PchFePhase) {
+        
+        // the '===' operator compares references
+        guard let fePhase = self.currentFePhase, fePhase === phase else {
+            
+            DLog("PchFePhase does not match the one in memory!")
+            return
+        }
+        
+        self.indCalcProgInd.doubleValue = puComplete * 100.0
     }
     
     // MARK: Transformer update routines
@@ -191,19 +231,20 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             return
         }
         
-        guard let feModel = CreateFeModel(xlFile: excelFile, model: model) else {
+        guard let fePhase = CreateFePhase(xlFile: excelFile, model: model) else {
             
             PCH_ErrorAlert(message: "Could not create finite element model!")
             return
         }
         
-        guard let feMesh = feModel.CreateFE_Model() else {
+        guard let feMesh = fePhase.CreateFE_Model() else {
             
             PCH_ErrorAlert(message: "Could not create mesh!")
             return
         }
         
-        feModel.magneticMesh = feMesh
+        fePhase.magneticMesh = feMesh
+        self.currentFePhase = fePhase
         
         // To calculate the eddy losses, we need to make some assumptions regarding the amp-turn distribution. The method used here should be considered _temporary_. It would be better to have the program analyze the current connections (as selected by the user) and figure out the voltages and kVA.
         // For now, we will assume the following:
@@ -214,7 +255,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         // 3. If there is a 3rd (or 4th...) terminal make sure that its kVA is correctly set. It is assumed that the kVA of non-Terminal-2 windings are negative with respect to Terminal 2 and that the total amp-turns equal 0.
         // 4. Volts/Turn is selected from the sum of voltages of terminal 2 divided by the sum of turns of terminal 2
         // 5. Terminal number greater than 2 have only a SINGLE COIL associated with them
-        var refKVA = -1.0
+        var refKVA = 0.0
         var terms:Set<Int> = []
         for nextWinding in excelFile.windings {
             
@@ -252,15 +293,15 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
                 
                 if nextWinding.terminal.terminalNumber == nextTerm {
                     
-                    var wdgTurns = nextWinding.numTurns.max / (nextWinding.isDoubleStack ? 2.0 : 1.0)
+                    let wdgTurns = nextWinding.numTurns.max // / (nextWinding.isDoubleStack ? 2.0 : 1.0)
                     turns[nextTerm - 1] += wdgTurns
-                }
-                
-                if nextTerm == 2 {
                     
-                    let phFactor = nextWinding.terminal.connection == .wye ? SQRT3 : 1.0
-                    let wdgVolts = nextWinding.terminal.lineVolts / phFactor / (nextWinding.isDoubleStack ? 2.0 : 1.0)
-                    term2volts += wdgVolts
+                    if nextTerm == 2 {
+                        
+                        let phFactor = nextWinding.terminal.connection == .wye ? SQRT3 : 1.0
+                        let wdgVolts = nextWinding.terminal.lineVolts / phFactor // / (nextWinding.isDoubleStack ? 2.0 : 1.0)
+                        term2volts += wdgVolts
+                    }
                 }
             }
         }
@@ -295,8 +336,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         for nextTerm in terms {
             
             let voltage = turns[nextTerm - 1] * voltsPerTurn
-            currents[nextTerm - 1] = kvas[nextTerm - 1] / Double(excelFile.numPhases) / voltage
-            
+            currents[nextTerm - 1] = kvas[nextTerm - 1] * 1000.0 / Double(excelFile.numPhases) / voltage
         }
         
         var firstSegmentIndex = 0
@@ -304,12 +344,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             
             do {
                 
-                let lastSegmentIndex = try model.GetHighestSection(coil: wdgIndex)
+                let lastSegmentIndex = try model.GetHighestSection(coil: wdgIndex) + firstSegmentIndex
                 for segIndex in firstSegmentIndex...lastSegmentIndex {
                     
                     let currentDirection = excelFile.windings[wdgIndex].terminal.terminalNumber == 2 ? -1.0 : 1.0
-                    let currentDivider = excelFile.windings[wdgIndex].isDoubleStack ? 2.0 : 1.0
-                    feModel.window.sections[segIndex].seriesRmsCurrent = Complex(currents[excelFile.windings[wdgIndex].terminal.terminalNumber] * currentDirection / currentDivider)
+                    // let currentDivider = excelFile.windings[wdgIndex].isDoubleStack ? 2.0 : 1.0
+                    fePhase.window.sections[segIndex].seriesRmsCurrent = Complex(currents[excelFile.windings[wdgIndex].terminal.terminalNumber - 1] * currentDirection) // / currentDivider)
                 }
                 
                 firstSegmentIndex = lastSegmentIndex + 1
@@ -322,13 +362,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
             }
         }
         
-        guard let _ = feModel.GetFullModelAndSolve() else {
+        guard let _ = fePhase.GetFullModelAndSolve() else {
             
             PCH_ErrorAlert(message: "Could not solve full model!")
             return
         }
         
-        guard feModel.GetEddyLosses() else {
+        guard fePhase.GetEddyLosses() else {
             
             PCH_ErrorAlert(message: "Could not get eddy losses!")
             return
@@ -336,10 +376,15 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         
         for i in 0..<model.segments.count {
             
-            model.segments[i].eddyLossPU = feModel.window.sections[i].EddyLossPU(atTemp: 20.0)
+            model.segments[i].eddyLossPU = fePhase.window.sections[i].EddyLossPU(atTemp: 20.0)
         }
         
+        self.inductanceLight.textColor = .red
+        self.indCalcLabel.isHidden = false
+        self.indCalcProgInd.isHidden = false
+        self.indCalcProgInd.doubleValue = 0.0
         
+        fePhase.SetInductanceMatrix()
         
         do {
         
@@ -608,7 +653,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     }
     
     /// Function to create the finite-element model that we'll use to get the inductance matrix and eddy losses for the current PhaseModel. It is assumed that 'model' has already been updated (or created) using 'xlFile'.
-    func CreateFeModel(xlFile:PCH_ExcelDesignFile, model:PhaseModel) -> PchFePhase? {
+    func CreateFePhase(xlFile:PCH_ExcelDesignFile, model:PhaseModel) -> PchFePhase? {
         
         // do some simple checks to see if the xlFile and the model match, at least in terms of the number of coils and their basic sections
         guard let lastSegment = model.segments.last, lastSegment.radialPos == xlFile.windings.count - 1 else {
@@ -676,7 +721,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
         let constPotPt = NSPoint(x: coreCenterToTank, y: windowHt / 2)
         let feWindow = PchFePhase.Window(zMin: 0.0, zMax: windowHt, rMin: xlFile.core.radius, rMax: coreCenterToTank, constPotentialPoint: constPotPt, sections: feSections)
         
-        let fePhase = PchFePhase(window: feWindow)
+        let fePhase = PchFePhase(window: feWindow, delegate: self)
         
         return fePhase
     }
