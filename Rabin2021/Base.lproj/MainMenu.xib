@@ -40,8 +40,10 @@
                 <outlet property="removeStaticRingMenuItem" destination="4HP-v0-HBk" id="Y4d-TJ-nm9"/>
                 <outlet property="saveAsCirFileMenuItem" destination="SJg-48-XWQ" id="GSK-ZP-juG"/>
                 <outlet property="saveBaseCmatrixMenuItem" destination="X1L-Wz-3EW" id="h9Y-Xj-oQR"/>
+                <outlet property="saveBmatrixMenuItem" destination="Lx5-Zo-nvZ" id="0yt-Rk-xis"/>
                 <outlet property="saveFixedCmatrixMenuItem" destination="5eK-yU-3ra" id="efd-Ze-oBc"/>
                 <outlet property="saveMmatrixMenuItem" destination="I9o-un-V1m" id="GXy-pI-eYq"/>
+                <outlet property="saveUnfactoredMmatrixMenuItem" destination="I9o-un-V1m" id="PE5-k6-rUA"/>
                 <outlet property="showWdgAsSingleSegmentMenuItem" destination="Aqp-v7-qka" id="wWQ-tl-Wef"/>
                 <outlet property="splitSegmentToBasicSectionsMenuItem" destination="hmW-Yq-C8J" id="aNg-xP-L1a"/>
                 <outlet property="staticRingBelowMenuItem" destination="yYJ-bL-mnq" id="u77-aA-iGG"/>
@@ -574,10 +576,22 @@
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <menu key="submenu" title="Matrices" id="V5a-fc-ttx">
                         <items>
-                            <menuItem title="Save Cholesky M-matrix..." id="I9o-un-V1m">
+                            <menuItem title="Save Unfactored M-matrix..." id="I9o-un-V1m">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
-                                    <action selector="handleSaveMmatrix:" target="XWq-sU-B2V" id="lxI-wl-Wam"/>
+                                    <action selector="handleSaveRawMmatrix:" target="XWq-sU-B2V" id="ZUt-fd-ees"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Save Cholesky M-matrix..." id="C7h-vj-wgu">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleSaveMmatrix:" target="XWq-sU-B2V" id="6w8-Si-ZIa"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Get B-matrix and Save..." id="Lx5-Zo-nvZ">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleBmatrixSave:" target="XWq-sU-B2V" id="UkZ-YP-9XY"/>
                                 </connections>
                             </menuItem>
                             <menuItem title="Save Base C-matrix..." id="X1L-Wz-3EW">
@@ -746,7 +760,7 @@
                         <rect key="frame" x="477" y="2" width="84" height="16"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
                         <textFieldCell key="cell" lineBreakMode="clipping" alignment="center" title="Calculating..." id="t4T-Td-McT">
-                            <font key="font" metaFont="system" size="11"/>
+                            <font key="font" metaFont="smallSystem"/>
                             <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
                             <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
                         </textFieldCell>

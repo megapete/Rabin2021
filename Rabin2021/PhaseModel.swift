@@ -45,6 +45,13 @@ class PhaseModel:Codable {
     /// An array of Eslamian Vahidi segments. Ultimately, there will probably be no reason to keep this around and it should be removed from the class.
     //var evSegments:[EslamianVahidiSegment] = []
     
+    /// The A-matrix as defined in DelVecchio, with rows corresponding to nodes and columns corresponding to sections
+    var A:PchMatrix? = nil
+    
+    /// The B-matrix as defined in DelvVecchio, with rows corresponding to sections and columns corresponding to nodes.
+    /// This matrix is multiplied by the voltage vector to yield the voltage drop across each section. The matrix is made up of 1's and -1's to achieve this.
+    var B:PchMatrix? = nil
+    
     /// The inductance matrix for the model. **NOTE: This matrix is in Cholesky-factorized form
     var M:PchMatrix? = nil
     
@@ -263,6 +270,27 @@ class PhaseModel:Codable {
         return abs(seg1index - seg2index) == 1
     }
     
+    /// Return an array of non-axially-adjacent connections that come to one of the segment's terminals. This is useful when "fixing" the C-array since the aaxial-adjacent connections are taken care of _implicitly_ in the array, while connections to other coils, non-adjacent discs, or impulse/ground need to be _explicity_ handled
+    func NonAdjacentConnections(segment:Segment) -> [Segment.Connection] {
+        
+        var result:[Segment.Connection] = []
+        
+        for nextConnection in segment.connections {
+            
+            if let connSeg = nextConnection.segment {
+                
+                if SegmentsAreAdjacent(segment1: segment, segment2: connSeg) {
+                    
+                    continue
+                }
+            }
+            
+            result.append(nextConnection)
+        }
+        
+        return result
+    }
+    
     /// Function to return the axially adjacent Segments below and above the given Segment
     func AxiallyAdjacentSegments(to:Segment) throws -> (below:Segment?, above:Segment?) {
         
@@ -283,85 +311,91 @@ class PhaseModel:Codable {
         }
     }
     
-    /*
-    /// Function to return the total magnetic energy between two coils in the model. A coil's radial position (0 is closest to the core) is used to define it. The energy is calculated using the higher of the two NI (if they are different). If one of the coil designations that are passed to the routine does not exist, the function throws an error. If coil1 == coil2 then the function throws an error.
-    func TotalMagneticEnergy(coil1:Int, coil2:Int) throws -> Double {
+    /// Calculate the A matrix, save it to Aand return it. NOTE: In practice, I doubt that it is actually worth creating this matrix and multiplying it by the I (current) vector. It is probably better to simply maintain a current-drop vector - TBD.
+    func GetAmatrix() throws -> PchMatrix {
         
-        if coil1 == coil2 {
+        guard !nodes.isEmpty && !segments.isEmpty else {
             
-            throw PhaseModelError(info: "", type: .SameCoilTwice)
+            throw PhaseModelError(info: "", type: .EmptyModel);
         }
         
-        let bottomCoil1Seg = self.SegmentAt(location: LocStruct(radial: coil1, axial: 0))
-        let bottomCoil2Seg = self.SegmentAt(location: LocStruct(radial: coil2, axial: 0))
+        let newA = PchMatrix(matrixType: .general, numType: .Double, rows: UInt(nodes.count), columns: UInt(segments.count))
         
-        guard bottomCoil1Seg != nil && bottomCoil2Seg != nil else {
+        for nextNode in nodes {
             
-            let badCoil = bottomCoil1Seg == nil ? coil1 : coil2
-            
-            throw PhaseModelError(info: "\(badCoil)", type: .CoilDoesNotExist)
-        }
-        
-        var N1 = 0.0
-        var N2 = 0.0
-        for nextSegment in self.segments {
-            
-            if nextSegment.radialPos == coil1 {
+            if let belowSegment = nextNode.belowSegment {
                 
-                N1 += nextSegment.N
-            }
-            else if nextSegment.radialPos == coil2 {
-                
-                N2 += nextSegment.N
-            }
-        }
-        
-        let NIref = N1 * bottomCoil1Seg!.I >= N2 * bottomCoil2Seg!.I ? N1 * bottomCoil1Seg!.I : N2 * bottomCoil2Seg!.I
-        
-        let I1 = NIref / N1
-        let I2 = -NIref / N2 // one of the two currents is negative in our calculation of energy
-        
-        var result = 0.0
-        
-        for nextSegment in self.segments {
-            
-            if nextSegment.radialPos == coil1 {
-                
-                let NI1 = nextSegment.N * I1
-                for nextInductance in nextSegment.inductances {
+                do {
                     
-                    if nextInductance.toSegment == nil || nextInductance.toSegment!.radialPos == coil1 {
-                        
-                        result += nextInductance.inductance * NI1 * NI1
-                        
-                    }
-                    else if nextInductance.toSegment!.radialPos == coil2 {
-                        
-                        let NI2 = nextInductance.toSegment!.N * I2
-                        result += nextInductance.inductance * NI1 * NI2
-                    }
+                    let column = try SegmentIndex(segment: belowSegment)
+                    newA[nextNode.number, column] = 1.0
+                }
+                catch {
+                    
+                    throw error
                 }
             }
-            else if nextSegment.radialPos == coil2 {
+            
+            if let aboveSegment = nextNode.aboveSegment {
                 
-                let NI2 = nextSegment.N * I2
-                for nextInductance in nextSegment.inductances {
+                do {
                     
-                    if nextInductance.toSegment == nil || nextInductance.toSegment!.radialPos == coil2 {
-                        
-                        result += nextInductance.inductance * NI2 * NI2
-                    }
-                    else if nextInductance.toSegment!.radialPos == coil1 {
-                        
-                        let NI1 = nextInductance.toSegment!.N * I1
-                        result += nextInductance.inductance * NI1 * NI2
-                    }
+                    let column = try SegmentIndex(segment: aboveSegment)
+                    newA[nextNode.number, column] = -1.0
+                }
+                catch {
+                    
+                    throw error
                 }
             }
         }
         
-        return result / 2.0
-    } */
+        self.A = newA
+        return newA
+    }
+    
+    /// Calculate the B matrix, save it to B and return it. NOTE: In practice, I doubt that it is actually worth creating this matrix and multiplying it by the Voltage vector. It is probably better to simply maintain a voltage-drop vector - TBD.
+    func GetBmatrix() throws -> PchMatrix {
+        
+        guard !segments.isEmpty else {
+            
+            throw PhaseModelError(info: "", type: .EmptyModel);
+        }
+        
+        let newB = PchMatrix(matrixType: .general, numType: .Double, rows: UInt(segments.count), columns: UInt(nodes.count));
+        
+        for nextNode in nodes {
+            
+            if let aboveSeg = nextNode.aboveSegment {
+                
+                do {
+                    
+                    let row = try SegmentIndex(segment: aboveSeg)
+                    newB[row, nextNode.number] = 1.0
+                }
+                catch {
+                    
+                    throw error
+                }
+            }
+            
+            if let belowSegment = nextNode.belowSegment {
+                
+                do {
+                    
+                    let row = try SegmentIndex(segment: belowSegment)
+                    newB[row, nextNode.number] = -1.0
+                }
+                catch {
+                    
+                    throw error
+                }
+            }
+        }
+        
+        self.B = newB
+        return newB
+    }
     
     /// A routine to change the connectors in the model when newSegment(s) take(s) the place of oldSegment(s). It is assumed that the Segment arrays are contiguous and in order. The count of oldSegments must be a multiple of newSegments or the count of newSegmenst must be a multiple of oldSegments.  If both arguments only have a single Segment, it is assumed that the one in newSegment replaces the one in oldSegment. It is further assumed that the new Segments have _NOT_ been added to the model yet, but will be soon after calling this function. Any connector references to oldSegments that should be set to newSegments will be replaced in the model - however, the model itself (ie: the array of Segments in segmentStore) will not be changed.
     ///  - Note: If there is only a single oldSegment, only adjacent-segment connections are retained, and connections to non-Segments (like ground, etc) are trashed.
@@ -1407,7 +1441,7 @@ class PhaseModel:Codable {
             
             if nextSegment.radialPos == coil && nextSegment.axialPos >= 0 {
                 
-                print("\(nextSegment.seriesCapacitance)")
+                // print("\(nextSegment.seriesCapacitance)")
                 result += 1.0 / nextSegment.seriesCapacitance
             }
         }
@@ -1416,56 +1450,6 @@ class PhaseModel:Codable {
         
     }
     
-    /*
-    func CalculateInductanceMatrix(useEVmodel:Bool = true) throws {
-        
-        guard self.segments.count > 0 else {
-            
-            throw PhaseModelError(info: "", type: .EmptyModel)
-        }
-        
-        if useEVmodel {
-            /*
-            // We need to grab the main window pointer here, while we're still in the main loop
-            let theMainWindow = NSApplication.shared.mainWindow
-            
-            if let progIndicator = rb2021_progressIndicatorWindow, let mainWindow = theMainWindow {
-                
-                progIndicator.UpdateIndicator(value: 0.0, minValue: 0.0, maxValue: Double(self.segments.count * 2), text: "Calculating current densities & vector potentials")
-                
-                mainWindow.beginSheet(progIndicator.window!, completionHandler: {responseCode in
-                    DLog("Ended sheet")
-                })
-            }
-            
-            let mutIndQueue = DispatchQueue(label: "com.huberistech.rb2021_mutual_inductance_calculation")
-            
-            mutIndQueue.async {
-                    
-                let evArray = EslamianVahidiSegment.Create_EV_Array(segments: self.segments, core: self.core)
-                    
-                guard let indArray = try? EslamianVahidiSegment.InductanceMatrix(evSegments: evArray, inWindowWeighting: 1.0) else {
-                        
-                        PCH_ErrorAlert(message: "Error while creating Inductance Matrix!", info: "You are well and truly fucked!")
-                        return
-                    }
-                
-                    self.M = indArray
-                
-            
-                if let progIndicator = rb2021_progressIndicatorWindow, let mainWindow = theMainWindow {
-                    
-                    DispatchQueue.main.sync { mainWindow.endSheet(progIndicator.window!) }
-                }
-            }
-            */
-        }
-        else {
-            
-            throw PhaseModelError(info: "", type: .UnimplementedInductanceMethod)
-        }
-    }
-    */
     
     /// Insert a new Segment into the correct spot in the model to keep the segmentStore array sorted. If there is an existing Segment with the same LocStruct as the new one, this function throws an error.
     func InsertSegment(newSegment:Segment) throws {

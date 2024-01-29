@@ -20,6 +20,7 @@ import UniformTypeIdentifiers
 import ComplexModule
 import RealModule
 import PchBasePackage
+import PchMatrixPackage
 import PchExcelDesignFilePackage
 import PchDialogBoxPackage
 import PchProgressIndicatorPackage
@@ -61,6 +62,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     
     /// Save matrices
     @IBOutlet weak var saveMmatrixMenuItem: NSMenuItem!
+    @IBOutlet weak var saveUnfactoredMmatrixMenuItem: NSMenuItem!
+    @IBOutlet weak var saveBmatrixMenuItem: NSMenuItem!
+    
     @IBOutlet weak var saveBaseCmatrixMenuItem: NSMenuItem!
     @IBOutlet weak var saveFixedCmatrixMenuItem: NSMenuItem!
     
@@ -153,6 +157,24 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         
         self.indCalcProgInd.isHidden = true
         self.indCalcLabel.isHidden = true
+        
+        guard let model = self.currentModel, let feIndMatrix = fePhase.inductanceMatrix, fePhase.inductanceMatrixIsValid else {
+            
+            DLog("Model is nil or matrix is invalid (or nil)!")
+            return
+        }
+        
+        print("Energy (from Inductance): \(fePhase.EnergyFromInductance())")
+        
+        // save the Cholesky-factored form of the inductance matrix for later computations
+        let indMatrix = PchMatrix(srcMatrix: feIndMatrix)
+        guard indMatrix.TestPositiveDefinite(overwriteExistingMatrix: true) else {
+            
+            DLog("Matrix is not positive-definite!")
+            return
+        }
+        
+        model.M = indMatrix
     }
     
     func updatePuCompletedInductanceCalculation(puComplete: Double, phase: PchFePhase) {
@@ -385,12 +407,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         self.indCalcProgInd.doubleValue = 0.0
         
         fePhase.SetInductanceMatrix()
+        // model.M = fePhase.inductanceMatrix;
         
         do {
         
             try model.CalculateCapacitanceMatrix()
-            print("Coil 0 Cs: \(try model.CoilSeriesCapacitance(coil: 0))")
-            print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: 1))")
+            DLog("Coil 0 Cs: \(try model.CoilSeriesCapacitance(coil: 0))")
+            DLog("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: 1))")
         }
         catch {
             
@@ -764,19 +787,27 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         }
     }
     
-    @IBAction func handleSaveMmatrix(_ sender: Any) {
-        /*
-        guard let model = self.currentModel, let Mmatrix = model.M else {
+    @IBAction func handleSaveRawMmatrix(_ sender: Any) {
+        
+        guard let feModel = self.currentFePhase, let Mmatrix = feModel.inductanceMatrix, feModel.inductanceMatrixIsValid else {
             
+            DLog("FeModel or inductance matrix nil (or invalid)!")
             return
+        }
+        
+        guard let uttptxtType = UTType(filenameExtension: "txt") else {
+            
+            DLog("Couldn't create UTType for txt!");
+            return;
         }
         
         let csvFileString = Mmatrix.csv
         
         let savePanel = NSSavePanel()
         savePanel.title = "Inductance Matrix"
-        savePanel.message = "Save Inductance Matrix as CSV file"
-        savePanel.allowedFileTypes = ["txt"]
+        savePanel.message = "Save Unfactored Inductance Matrix as CSV file"
+        // savePanel.allowedFileTypes = ["txt"]
+        savePanel.allowedContentTypes = [uttptxtType];
         savePanel.allowsOtherFileTypes = false
         
         if savePanel.runModal() == .OK
@@ -795,13 +826,106 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                 }
             }
         }
-         */
     }
     
+    @IBAction func handleSaveMmatrix(_ sender: Any) {
+        
+        guard let model = self.currentModel, let Mmatrix = model.M else {
+            
+            return
+        }
+        
+        guard let uttptxtType = UTType(filenameExtension: "txt") else {
+            
+            DLog("Couldn't create UTType for txt!");
+            return;
+        }
+        
+        let csvFileString = Mmatrix.csv
+        
+        let savePanel = NSSavePanel()
+        savePanel.title = "Inductance Matrix"
+        savePanel.message = "Save Inductance Matrix as CSV file"
+        // savePanel.allowedFileTypes = ["txt"]
+        savePanel.allowedContentTypes = [uttptxtType];
+        savePanel.allowsOtherFileTypes = false
+        
+        if savePanel.runModal() == .OK
+        {
+            if let fileUrl = savePanel.url
+            {
+                do {
+                    
+                    try csvFileString.write(to: fileUrl, atomically: false, encoding: .utf8)
+                }
+                catch {
+                    
+                    let alert = NSAlert(error: error)
+                    let _ = alert.runModal()
+                    return
+                }
+            }
+        }
+         
+    }
+    
+    @IBAction func handleBmatrixSave(_ sender: Any) {
+        
+        guard let model = self.currentModel else {
+            
+            return
+        }
+        
+        guard let uttptxtType = UTType(filenameExtension: "txt") else {
+            
+            DLog("Couldn't create UTType for txt!")
+            return
+        }
+        
+        guard let Bmatrix = try? model.GetBmatrix() else {
+            
+            DLog("Couldn't calculate B matrix!")
+            return
+        }
+        
+        let csvFileString = Bmatrix.csv
+        
+        let savePanel = NSSavePanel()
+        savePanel.title = "B Matrix"
+        savePanel.message = "Save B Matrix as CSV file"
+        // savePanel.allowedFileTypes = ["txt"]
+        savePanel.allowedContentTypes = [uttptxtType];
+        savePanel.allowsOtherFileTypes = false
+        
+        if savePanel.runModal() == .OK
+        {
+            if let fileUrl = savePanel.url
+            {
+                do {
+                    
+                    try csvFileString.write(to: fileUrl, atomically: false, encoding: .utf8)
+                }
+                catch {
+                    
+                    let alert = NSAlert(error: error)
+                    let _ = alert.runModal()
+                    return
+                }
+            }
+        }
+    }
+    
+    
     @IBAction func handleSaveBaseCmatrix(_ sender: Any) {
-        /*
+        
         guard let model = self.currentModel, let Cmatrix = model.C else {
             
+            return
+        }
+        
+        guard let uttptxtType = UTType(filenameExtension: "txt") else {
+            
+            DLog("Couldn't create UTType for txt!")
             return
         }
         
@@ -810,7 +934,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         let savePanel = NSSavePanel()
         savePanel.title = "Base Capacitance Matrix"
         savePanel.message = "Save Capacitance Matrix as CSV file"
-        savePanel.allowedFileTypes = ["txt"]
+        // savePanel.allowedFileTypes = ["txt"]
+        savePanel.allowedContentTypes = [uttptxtType]
         savePanel.allowsOtherFileTypes = false
         
         if savePanel.runModal() == .OK
@@ -829,7 +954,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                 }
             }
         }
-         */
+         
     }
     
     @IBAction func handleSaveFixedCmatrix(_ sender: Any) {
@@ -1634,7 +1759,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     // MARK: Menu Validation
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         
-        if menuItem == self.zoomInMenuItem || menuItem == self.zoomOutMenuItem || menuItem == self.zoomRectMenuItem || menuItem == self.zoomRectMenuItem || menuItem == self.addGroundMenuItem || menuItem == self.addImpulseMenuItem || menuItem == self.addConnectionMenuItem || menuItem == self.removeConnectionMenuItem || menuItem == self.saveAsCirFileMenuItem {
+        if menuItem == self.zoomInMenuItem || menuItem == self.zoomOutMenuItem || menuItem == self.zoomRectMenuItem || menuItem == self.zoomRectMenuItem || menuItem == self.addGroundMenuItem || menuItem == self.addImpulseMenuItem || menuItem == self.addConnectionMenuItem || menuItem == self.removeConnectionMenuItem || menuItem == self.saveAsCirFileMenuItem || menuItem == saveBmatrixMenuItem {
             
             return self.currentModel != nil
         }
@@ -1692,6 +1817,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         if menuItem == self.saveMmatrixMenuItem {
             
             return self.currentModel != nil && self.currentModel!.M != nil
+        }
+        
+        if menuItem == self.saveUnfactoredMmatrixMenuItem {
+            
+            return self.currentFePhase != nil && self.currentFePhase!.inductanceMatrix != nil && self.currentFePhase!.inductanceMatrixIsValid
         }
         
         if menuItem == self.saveBaseCmatrixMenuItem {
