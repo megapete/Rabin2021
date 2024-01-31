@@ -7,7 +7,17 @@
 
 import Foundation
 
-struct Node:Codable {
+struct Node:Codable, Hashable {
+    
+    static func == (lhs: Node, rhs: Node) -> Bool {
+        
+        return lhs.number == rhs.number
+    }
+    
+    func hash(into hasher: inout Hasher) {
+        
+        hasher.combine(number)
+    }
     
     /// The identifying number for the Node. This is also used as the index into the capaciance matrix, so it is 0-based
     let number:Int

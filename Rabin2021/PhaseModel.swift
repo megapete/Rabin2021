@@ -291,6 +291,36 @@ class PhaseModel:Codable {
         return result
     }
     
+    func NodeAt(segment:Segment, connection:Segment.Connection) -> Node? {
+        
+        for nextNode in nodes {
+            
+            if let aboveSegment = nextNode.aboveSegment {
+                
+                if aboveSegment == segment {
+                
+                    if !connection.connector.fromIsUpper {
+                        
+                        return nextNode
+                    }
+                }
+            }
+            
+            if let belowSegment = nextNode.belowSegment {
+                
+                if belowSegment == segment {
+                
+                    if connection.connector.fromIsUpper {
+                        
+                        return nextNode
+                    }
+                }
+            }
+        }
+        
+        return nil
+    }
+    
     /// Function to return the axially adjacent Segments below and above the given Segment
     func AxiallyAdjacentSegments(to:Segment) throws -> (below:Segment?, above:Segment?) {
         
@@ -395,6 +425,38 @@ class PhaseModel:Codable {
         
         self.B = newB
         return newB
+    }
+    
+    /// Function to return all nodes in the model that are of the given connector location (this includes impulse, ground, and floating)
+    func NodesOfType(connType:Connector.Location) -> [Node] {
+        
+        var result:[Node] = []
+        for nextNode in nodes {
+            
+            if let aboveSegment = nextNode.aboveSegment {
+                
+                for nextConnection in aboveSegment.connections {
+                    
+                    if nextConnection.segment == nil && !nextConnection.connector.fromIsUpper && nextConnection.connector.toLocation == connType {
+                        
+                        result.append(nextNode)
+                    }
+                }
+            }
+            
+            if let belowSegment = nextNode.belowSegment {
+                
+                for nextConnection in belowSegment.connections {
+                    
+                    if nextConnection.segment == nil && nextConnection.connector.fromIsUpper && nextConnection.connector.toLocation == connType {
+                        
+                        result.append(nextNode)
+                    }
+                }
+            }
+        }
+        
+        return result
     }
     
     /// A routine to change the connectors in the model when newSegment(s) take(s) the place of oldSegment(s). It is assumed that the Segment arrays are contiguous and in order. The count of oldSegments must be a multiple of newSegments or the count of newSegmenst must be a multiple of oldSegments.  If both arguments only have a single Segment, it is assumed that the one in newSegment replaces the one in oldSegment. It is further assumed that the new Segments have _NOT_ been added to the model yet, but will be soon after calling this function. Any connector references to oldSegments that should be set to newSegments will be replaced in the model - however, the model itself (ie: the array of Segments in segmentStore) will not be changed.

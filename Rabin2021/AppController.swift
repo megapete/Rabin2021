@@ -751,6 +751,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     
     // MARK: Testing routines
     
+    @IBAction func handleCreateSimStruct(_ sender: Any) {
+        
+        let testStruct = SimulationModel(model: self.currentModel!)
+    }
+    
+    
     // MARK: File routines
     func doOpen(fileURL:URL) -> Bool {
         

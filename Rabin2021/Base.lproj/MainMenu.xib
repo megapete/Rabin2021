@@ -29,8 +29,6 @@
                 <outlet property="indCalcProgInd" destination="Det-ry-1cY" id="JK5-pS-z4f"/>
                 <outlet property="inductanceLight" destination="8Bk-Y9-N83" id="Fxc-0g-zsc"/>
                 <outlet property="interleaveSelectionMenuItem" destination="Msd-Z1-NJO" id="iTF-13-8vY"/>
-                <outlet property="mainWdgImpedanceMenuItem" destination="BE9-jw-FCN" id="e8W-sD-aBG"/>
-                <outlet property="mainWdgInductanceMenuItem" destination="Fzu-VS-4Yf" id="dWv-1q-YaF"/>
                 <outlet property="mainWindow" destination="QvC-M9-y7g" id="99a-gB-L5N"/>
                 <outlet property="modeIndicatorTextField" destination="zvY-4g-7mg" id="Wl9-uU-VYo"/>
                 <outlet property="rLocationTextField" destination="NTX-as-kOd" id="arL-Ge-79x"/>
@@ -501,18 +499,31 @@
                 </menuItem>
                 <menuItem title="Inductance" id="pcL-vc-XoW">
                     <modifierMask key="keyEquivalentModifierMask"/>
-                    <menu key="submenu" title="Inductance" id="5My-BP-PBE">
+                    <menu key="submenu" title="Inductance" id="O8z-UT-78f">
                         <items>
-                            <menuItem title="Main Winding Inductances..." id="Fzu-VS-4Yf">
+                            <menuItem title="Main Winding Inductances..." id="1jR-vc-IVL">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
-                                    <action selector="handleMainWdgInductances:" target="XWq-sU-B2V" id="eVs-Rf-q71"/>
+                                    <action selector="handleMainWdgInductances:" target="XWq-sU-B2V" id="uSD-mh-d1p"/>
                                 </connections>
                             </menuItem>
-                            <menuItem title="Winding Impedance Pairs..." id="BE9-jw-FCN">
+                            <menuItem title="Winding Impedance Pairs..." id="Fsb-Bk-n0a">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
-                                    <action selector="handleWdgImpedancePairs:" target="XWq-sU-B2V" id="IE7-gi-cum"/>
+                                    <action selector="handleWdgImpedancePairs:" target="XWq-sU-B2V" id="mQq-is-0b5"/>
+                                </connections>
+                            </menuItem>
+                        </items>
+                    </menu>
+                </menuItem>
+                <menuItem title="Simulate" id="yKG-t7-rJn">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                    <menu key="submenu" title="Simulate" id="ifa-Yd-wQL">
+                        <items>
+                            <menuItem title="Create Simulation Struct" id="9LX-Ul-dgv">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleCreateSimStruct:" target="XWq-sU-B2V" id="KKV-b2-uwj"/>
                                 </connections>
                             </menuItem>
                         </items>
@@ -1083,5 +1094,24 @@
             </items>
             <point key="canvasLocation" x="897" y="389"/>
         </menu>
+        <menuItem title="Inductance" id="weE-4W-H1u">
+            <modifierMask key="keyEquivalentModifierMask"/>
+            <menu key="submenu" title="Inductance" id="PUZ-cx-Bz5">
+                <items>
+                    <menuItem title="Main Winding Inductances..." id="Buo-tT-7xT">
+                        <modifierMask key="keyEquivalentModifierMask"/>
+                        <connections>
+                            <action selector="handleMainWdgInductances:" target="XWq-sU-B2V" id="YYf-bb-bKb"/>
+                        </connections>
+                    </menuItem>
+                    <menuItem title="Winding Impedance Pairs..." id="uNX-D0-oZs">
+                        <modifierMask key="keyEquivalentModifierMask"/>
+                        <connections>
+                            <action selector="handleWdgImpedancePairs:" target="XWq-sU-B2V" id="kYj-x1-09d"/>
+                        </connections>
+                    </menuItem>
+                </items>
+            </menu>
+        </menuItem>
     </objects>
 </document>
