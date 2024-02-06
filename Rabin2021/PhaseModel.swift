@@ -227,6 +227,16 @@ class PhaseModel:Codable {
         self.tankDepth = tankDepth
     }
     
+    /// Get the array of segments excluding shielding elements
+    func CoilSegments() -> [Segment] {
+        
+        var result = self.segmentStore
+        
+        result.removeAll(where: {$0.radialPos < 0 || $0.axialPos < 0})
+        
+        return result
+    }
+    
     /// Return the index into the inductance matrix for the given Segment
     func SegmentIndex(segment:Segment) throws -> Int {
         
@@ -270,7 +280,7 @@ class PhaseModel:Codable {
         return abs(seg1index - seg2index) == 1
     }
     
-    /// Return an array of non-axially-adjacent connections that come to one of the segment's terminals. This is useful when "fixing" the C-array since the aaxial-adjacent connections are taken care of _implicitly_ in the array, while connections to other coils, non-adjacent discs, or impulse/ground need to be _explicity_ handled
+    /// Return an array of non-axially-adjacent connections that come to one of the segment's terminals. This is useful when "fixing" the C-array since the axial-adjacent connections are taken care of _implicitly_ in the array, while connections to other coils, non-adjacent discs, or impulse/ground need to be _explicity_ handled
     func NonAdjacentConnections(segment:Segment) -> [Segment.Connection] {
         
         var result:[Segment.Connection] = []

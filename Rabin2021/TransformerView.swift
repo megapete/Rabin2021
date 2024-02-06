@@ -499,7 +499,12 @@ struct SegmentPath:Equatable {
 }
 
 /// Definition and drawing routines for Ground, Impulse, and connections between non-adjacent coil segments. Note that dimensions passed in to routines in the struct are expected to be in the model's coordiantes (including the 'dimensionMultiplier' global variable). The fancy cursors are also defined here.
-struct ViewConnector {
+struct ViewConnector : Equatable {
+    
+    static func == (lhs: ViewConnector, rhs: ViewConnector) -> Bool {
+        
+        return lhs.segments.from == rhs.segments.from && lhs.segments.to == rhs.segments.to
+    }
     
     /// The different types of connectors
     enum type {
@@ -1505,6 +1510,11 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             for nextViewConnector in self.viewConnectors {
                 
                 if nextViewConnector.hitZone.contains(endPoint) {
+                    
+                    if nextViewConnector == startConnector {
+                        
+                        return
+                    }
                     
                     var startConnections = startConnector.segments.from.ConnectionDestinations(fromLocation: startConnector.connector.fromLocation)
                     startConnections.removeAll(where: { $0.segment == nil })

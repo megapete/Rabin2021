@@ -678,15 +678,16 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     /// Function to create the finite-element model that we'll use to get the inductance matrix and eddy losses for the current PhaseModel. It is assumed that 'model' has already been updated (or created) using 'xlFile'.
     func CreateFePhase(xlFile:PCH_ExcelDesignFile, model:PhaseModel) -> PchFePhase? {
         
+        let coilSegments = model.CoilSegments()
         // do some simple checks to see if the xlFile and the model match, at least in terms of the number of coils and their basic sections
-        guard let lastSegment = model.segments.last, lastSegment.radialPos == xlFile.windings.count - 1 else {
+        guard let lastSegment = coilSegments.last, lastSegment.radialPos == xlFile.windings.count - 1 else {
             
             DLog("xlFile and model coil count do not match!")
             return nil
         }
         
         var totalBasicSections = 0
-        for nextSegment in model.segments {
+        for nextSegment in coilSegments {
             
             totalBasicSections += nextSegment.basicSections.count
         }
@@ -718,7 +719,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         
         // Ok, we'll assume that the two models are compatible. Create the finite element sections & window
         var feSections:[PchFePhase.Section] = []
-        for nextSegment in model.segments {
+        for nextSegment in coilSegments {
             
             let wdg = xlFile.windings[nextSegment.radialPos]
             let wdgTurn = wdg.turnDefinition
@@ -1383,7 +1384,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             try model.InsertSegment(newSegment: newStaticRing)
             
             try model.CalculateCapacitanceMatrix()
-            print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: currentSegment.segment.radialPos))")
+            // print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: currentSegment.segment.radialPos))")
             
             self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segmentColor: currentSegment.segmentColor))
             self.txfoView.currentSegments = [self.txfoView.segments.last!]
