@@ -96,6 +96,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     /// The current model that is stored in memory. This is what is actually displayed in the TransformerView and what all calculations are performed upon.
     var currentModel:PhaseModel? = nil
     
+    /// The current simulation model that is stored in memory
+    var currentSimModel:SimulationModel? = nil
+    
     /// The current FE model that is stored in memory (this is required becuase the inductance calcualtion takes really long and so is put into a different thread)
     var currentFePhase:PchFePhase? = nil
     
@@ -754,7 +757,18 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     
     @IBAction func handleCreateSimStruct(_ sender: Any) {
         
-        let testStruct = SimulationModel(model: self.currentModel!)
+        currentSimModel = SimulationModel(model: self.currentModel!)
+    }
+    
+    @IBAction func handleDoSimulate(_ sender: Any) {
+        
+        guard let simModel = self.currentSimModel else {
+            
+            DLog("No simulation model!")
+            return
+        }
+        
+        let simResult = simModel.Simulate(waveForm: SimulationModel.WaveForm(type: .FullWave, pkVoltage: 125.0), startTime: 0.0, endTime: 100.0E-6, deltaT: 0.1E-6)
     }
     
     

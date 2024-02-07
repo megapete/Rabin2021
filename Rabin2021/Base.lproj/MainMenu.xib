@@ -526,6 +526,12 @@
                                     <action selector="handleCreateSimStruct:" target="XWq-sU-B2V" id="KKV-b2-uwj"/>
                                 </connections>
                             </menuItem>
+                            <menuItem title="Simulate" id="qgl-wB-C1d">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleDoSimulate:" target="XWq-sU-B2V" id="nhz-vR-Yv3"/>
+                                </connections>
+                            </menuItem>
                         </items>
                     </menu>
                 </menuItem>

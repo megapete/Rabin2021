@@ -384,7 +384,7 @@ struct SimulationModel {
     // Call to simulate the impulse shot using the given parameters and 'self'
     func Simulate(waveForm:WaveForm, startTime:Double, endTime:Double, deltaT:Double) -> [SimulationStepResult] {
         
-        var result:[SimulationStepResult] = []
+        // var result:[SimulationStepResult] = []
         var currentTime = startTime
         // Arrays that need to be updated at every time step of the simulation
         var V:[Double] = Array(repeating: 0.0, count: baseC.rows)
@@ -392,72 +392,139 @@ struct SimulationModel {
         
         var I:[Double] = Array(repeating: 0.0, count: M.rows)
         var currentDrop:[Double] = Array(repeating: 0.0, count: baseC.rows)
-        let firstStepResult = SimulationStepResult(volts: V, amps: I, time: currentTime)
+        var result:[SimulationStepResult] = [SimulationStepResult(volts: V, amps: I, time: currentTime)]
         
         // The frequency for each disc at each time step needs to be calculated properly. For now, we'll just give everybody the same number, based on a wavelength of 1/200µs
         let eddyFreq = 1.0 / 200.0E-6
+        
+        // variables used by RK4
+        var interimI = I
+        // var newI = I
+        var interimV = V
+        // var newV = V
+        
+        let rkFactor:[Double] = [0.0, 0.5, 0.5, 1.0, 0.0]
+        
         while currentTime < endTime {
             
-            // First, we solve for dI/dt
-            // Start by getting the voltage drops ('BV')
-            for i in 0..<voltageDrop.count {
+            var kV:[[Double]] = Array(repeating: Array(repeating: 0.0, count: baseC.rows), count: 4)
+            var kI:[[Double]] = Array(repeating: Array(repeating: 0.0, count: M.rows), count: 4)
+            
+            // RK4 algorithm
+            for interimStep in 0..<4 {
                 
-                let indexBase = vDropInd[i]
-                voltageDrop[i] = V[indexBase.belowNode] - V[indexBase.aboveNode]
-            }
-            
-            let Mrhs = QuickVectorSubtract(lhs: voltageDrop, rhs: QuickRI(I: I, freq: eddyFreq))
-            
-            let dIdt = M.SolvePositiveDefinite(B: Mrhs)
-            
-            // And now, dV/dt
-            for i in 0..<currentDrop.count {
-                
-                let indexBase = iDropInd[i]
-                let Ij:Double = indexBase.belowSeg < 0 ? 0 : I[indexBase.belowSeg]
-                let Ij1:Double = indexBase.aboveSeg < 0 ? 0 : I[indexBase.aboveSeg]
-                currentDrop[i] = Ij - Ij1
-            }
-            
-            // Set the grounded node rhs values to 0
-            for nextGround in groundedNodes {
-                
-                let index = nextGround.number
-                currentDrop[index] = 0.0
-            }
-            
-            // Set the impulsed node rhs values to the derivative of the impulse equation at the current time
-            for nextImpulse in impulsedNodes {
-                
-                let index = nextImpulse.number
-                currentDrop[index] = waveForm.dV(currentTime)
-            }
-            
-            // Add the currentDrops of connected terminals to the "parent" terminal and then set the connected-terminal's currentDrop to 0
-            for (nextNode, connNodes) in finalConnectedNodes {
-                
-                let toNode = nextNode.number
-                for nextConnNode in connNodes {
+                // Solve for dV/dt
+                for i in 0..<currentDrop.count {
                     
-                    let fromNode = nextConnNode.number
-                    currentDrop[toNode] += currentDrop[fromNode]
-                    currentDrop[fromNode] = 0.0
+                    let indexBase = iDropInd[i]
+                    let Ij:Double = indexBase.belowSeg < 0 ? 0 : interimI[indexBase.belowSeg]
+                    let Ij1:Double = indexBase.aboveSeg < 0 ? 0 : interimI[indexBase.aboveSeg]
+                    currentDrop[i] = Ij - Ij1
                 }
-            }
+                
+                // Set the grounded node rhs values to 0
+                for nextGround in groundedNodes {
+                    
+                    let index = nextGround.number
+                    currentDrop[index] = 0.0
+                }
+                
+                // Set the impulsed node rhs values to the derivative of the impulse equation at the current time
+                for nextImpulse in impulsedNodes {
+                    
+                    let index = nextImpulse.number
+                    currentDrop[index] = waveForm.dV(currentTime + deltaT * rkFactor[interimStep])
+                }
+                
+                // Add the currentDrops of connected terminals to the "parent" terminal and then set the connected-terminal's currentDrop to 0
+                for (nextNode, connNodes) in finalConnectedNodes {
+                    
+                    let toNode = nextNode.number
+                    for nextConnNode in connNodes {
+                        
+                        let fromNode = nextConnNode.number
+                        currentDrop[toNode] += currentDrop[fromNode]
+                        currentDrop[fromNode] = 0.0
+                    }
+                }
+                
+                let Crhs = PchMatrix(vectorData: currentDrop)
+                guard let dVdt = modelC.SolveSparse(B: Crhs) else {
+                    
+                    DLog("Sparse solve failed!")
+                    return []
+                }
+                
+                kV[interimStep] = dVdt.buffer
+                
+                // Solve for dI/dt
+                // Start by getting the voltage drops ('BV')
+                for i in 0..<voltageDrop.count {
+                    
+                    let indexBase = vDropInd[i]
+                    voltageDrop[i] = interimV[indexBase.belowNode] - interimV[indexBase.aboveNode]
+                }
+                
+                let Mrhs = QuickVectorSubtract(lhs: voltageDrop, rhs: QuickRI(I: interimI, freq: eddyFreq))
+                guard let dIdt = M.SolvePositiveDefinite(B: PchMatrix(vectorData: Mrhs)) else {
+                    
+                    DLog("Pos/Def Solve failed!")
+                    return []
+                }
+                
+                kI[interimStep] = dIdt.buffer
+                
+                interimI = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: deltaT * rkFactor[interimStep + 1], vector: kI[interimStep]))
+                interimV = QuickVectorAdd(lhs: V, rhs: QuickScalarVectorMultiply(scalar: deltaT * rkFactor[interimStep + 1], vector: kV[interimStep]))
+                
+            } // interimStep (end RK4)
             
-            let Crhs = PchMatrix(vectorData: currentDrop)
+            V = QuickVectorAdd(lhs: V, rhs: QuickScalarVectorMultiply(scalar: deltaT / 6, vector: kV[0]))
+            V = QuickVectorAdd(lhs: V, rhs: QuickScalarVectorMultiply(scalar: deltaT / 3, vector: kV[1]))
+            V = QuickVectorAdd(lhs: V, rhs: QuickScalarVectorMultiply(scalar: deltaT / 3, vector: kV[2]))
+            V = QuickVectorAdd(lhs: V, rhs: QuickScalarVectorMultiply(scalar: deltaT / 6, vector: kV[3]))
             
+            I = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: deltaT / 6, vector: kI[0]))
+            I = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: deltaT / 3, vector: kI[1]))
+            I = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: deltaT / 3, vector: kI[2]))
+            I = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: deltaT / 6, vector: kI[3]))
             
-            
+            result.append(SimulationStepResult(volts: V, amps: I, time: currentTime))
             
             currentTime += deltaT
+            
+        } // done simulation
+        
+        return result
+    }
+    
+    /// Multiply all values in a buffer (vector) by a scalar
+    func QuickScalarVectorMultiply(scalar:Double, vector:[Double]) -> [Double] {
+        
+        var result:[Double] = Array(repeating: 0.0, count: vector.count)
+        
+        for nextValue in vector {
+            
+            result.append(scalar * nextValue)
+        }
+        
+        return result
+    }
+    
+    func QuickVectorAdd(lhs:[Double], rhs:[Double]) -> [Double] {
+        
+        var result:[Double] = Array(repeating: 0.0, count: lhs.count)
+        
+        for i in 0..<lhs.count {
+            
+            result[i] = lhs[i] + rhs[i]
         }
         
         return result
     }
     
     /// Subtract one vector from another. Note that this routine does no dimension checking (or any checking of any kind)
-    func QuickVectorSubtract(lhs:[Double], rhs:[Double]) -> PchMatrix {
+    func QuickVectorSubtract(lhs:[Double], rhs:[Double]) -> [Double] {
         
         var result:[Double] = Array(repeating: 0.0, count: lhs.count)
         
@@ -466,7 +533,7 @@ struct SimulationModel {
             result[i] = lhs[i] - rhs[i]
         }
         
-        return PchMatrix(vectorData: result)
+        return result
     }
     
     /// Multiply the (diagonal) R matrix by the vector I. Note that this routine does no dimension checking (or any checking of any kind, for that matter)
