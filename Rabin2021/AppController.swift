@@ -768,7 +768,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             return
         }
         
-        let simResultOld = simModel.Simulate(waveForm: SimulationModel.WaveForm(type: .FullWave, pkVoltage: 125.0E3), startTime: 0.0, endTime: 100.0E-6, deltaT: 0.04E-6)
+        // let simResultOld = simModel.Simulate(waveForm: SimulationModel.WaveForm(type: .FullWave, pkVoltage: 125.0E3), startTime: 0.0, endTime: 100.0E-6, deltaT: 0.04E-6)
         let simResult = simModel.SimulateRK45(waveForm: SimulationModel.WaveForm(type: .FullWave, pkVoltage: 125.0E3), startTime: 0.0, endTime: 100.0E-6, epsilon: 100.0 / 0.05E-6)
         
         var maxValue:Double = 0.0
@@ -787,6 +787,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             }
         }
         
+        /*
         var maxOld:Double = 0.0
         for nextSimResult in simResultOld {
             
@@ -802,8 +803,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             }
         }
         
-        DLog("Max (RK4): \(maxOld)")
-        DLog("Max (RK45): \(maxValue)")
+        DLog("Max (RK4): \(maxOld), NumEntries: \(simResultOld.count)")
+         */
+        DLog("Max (RK45): \(maxValue), NumEntries: \(simResult.count)")
+        
+        
         
     }
     

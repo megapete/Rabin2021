@@ -186,7 +186,7 @@ struct SimulationModel {
     }
     
     var R:[Resistance] = []
-    // The frequency for each disc at each time step needs to be calculated properly. For now, we'll just give everybody the same number, based on a wavelength of 1/200µs
+    // The frequency for each disc at each time step needs to be calculated properly. For now, we'll just give everybody the same number, based on a wavelength of 200µs
     let eddyFreq = 1.0 / 200.0E-6
     
     var impulsedNodes:Set<Node> = []
@@ -408,7 +408,8 @@ struct SimulationModel {
         let time:Double
     }
     
-    // Call to simulate the impulse shot using the given parameters and 'self'
+    /// Call to simulate the impulse shot using the given parameters and 'self'
+    /// - Note: !!!!!!!! Do not use this call, preference should be given to SimulateRK45() !!!!!!!!!!!!!!!!!!!!!
     func Simulate(waveForm:WaveForm, startTime:Double, endTime:Double, deltaT:Double) -> [SimulationStepResult] {
         
         // var result:[SimulationStepResult] = []
@@ -514,14 +515,6 @@ struct SimulationModel {
             I = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: 1 / 3, vector: kI[2]))
             I = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: 1 / 6, vector: kI[3]))
             
-            if let check = V.max() {
-                
-                if check > 200.0E3 {
-                    
-                    print("Stop!")
-                }
-            }
-            
             result.append(SimulationStepResult(volts: V, amps: I, time: currentTime))
             
             currentTime += deltaT
@@ -532,6 +525,15 @@ struct SimulationModel {
     }
     
     /// Use the RK45 method (with adaptive timesteps) to simulate the impulse shot. Note that the 'deltaT' argument is only used as a startng point. It has a default value of 0.05E-6
+    /// - parameter waveForm: A valid WaveForm to use for the simulation
+    /// - parameter startTime: The beginning time of the simulation, usually 0
+    /// - parameter endTime: The ending time of the simulation
+    /// - parameter epsilon: The acceptable error value of a single time step, in V/s. For example, to limit the voltage error in a single step to approximately 100V, pass 100/∆t for this value
+    /// - parameter deltaT: The suggested time-step in seconds. The routine uses this to start, then refines the value as necessary. This value defaults to 0.05E-6.
+    /// - parameter Vstart: An optional set of initial voltages at time 'startTime'. If 'nil', then it is assumed that initial voltages are 0
+    /// - parameter Istart: An optional set of initial currents at time 'startTime'. If 'nil', then it is assumed that initial currents are 0
+    /// - returns: An array of SimulationStepResults
+    /// - Note: Only the voltage is used to determine whether the calculation is within tolerance (ie: current is not used)
     func SimulateRK45(waveForm:WaveForm, startTime:Double, endTime:Double, epsilon:Double, deltaT:Double = 0.05E-6, Vstart:[Double]? = nil, Istart:[Double]? = nil) -> [SimulationStepResult] {
         
         guard startTime < endTime else {
@@ -547,6 +549,8 @@ struct SimulationModel {
         
         var currentTime = startTime
         var h = deltaT
+        var unusedSteps = 0
+        
         while currentTime < endTime {
             
             h = min(h, endTime - currentTime)
@@ -601,7 +605,7 @@ struct SimulationModel {
             dI = dI - 11.0/40.0 * dIk5
             let f6 = DifferentialFormula(waveForm: waveForm, t: currentTime + h / 2, V: V + dV, I: I + dI)
             let dVk6 = h * f6.dVdt
-            let dIk6 = h * f6.dIdt
+            // let dIk6 = h * f6.dIdt
             
             var newV = V + 25.0/216.0 * dVk1
             newV = newV + 1408.0/2565.0 * dVk3
@@ -649,12 +653,14 @@ struct SimulationModel {
             }
             else {
                 
-                print("Try again!")
+                DLog("Error too great! Ignoring step!")
+                unusedSteps += 1
             }
             
             h = delV * h
         }
         
+        DLog("Total number of unused steps: \(unusedSteps)")
         return result
     }
     
