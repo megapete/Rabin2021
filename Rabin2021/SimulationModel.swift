@@ -80,6 +80,31 @@ extension PchMatrix {
     }
 }
 
+private extension Array<Double> {
+    
+    static func *(scalar:Double, rhs:[Double]) -> [Double] {
+        
+        return rhs.map({scalar * $0})
+    }
+    
+    static func *(lhs:[Double], scalar:Double) -> [Double] {
+        
+        return lhs.map({$0 * scalar})
+    }
+    
+    static func +(lhs:[Double], rhs:[Double]) -> [Double] {
+        
+        // from https://stackoverflow.com/questions/41453942/add-elements-of-two-arrays-in-swift-without-appending-together
+        return zip(lhs,rhs).map(+)
+    }
+    
+    static func -(lhs:[Double], rhs:[Double]) -> [Double] {
+        
+        // from https://stackoverflow.com/questions/41453942/add-elements-of-two-arrays-in-swift-without-appending-together
+        return zip(lhs,rhs).map(-)
+    }
+}
+
 struct SimulationModel {
     
     struct WaveForm {
@@ -161,6 +186,8 @@ struct SimulationModel {
     }
     
     var R:[Resistance] = []
+    // The frequency for each disc at each time step needs to be calculated properly. For now, we'll just give everybody the same number, based on a wavelength of 1/200µs
+    let eddyFreq = 1.0 / 200.0E-6
     
     var impulsedNodes:Set<Node> = []
     var groundedNodes:Set<Node> = []
@@ -394,18 +421,15 @@ struct SimulationModel {
         var currentDrop:[Double] = Array(repeating: 0.0, count: baseC.rows)
         var result:[SimulationStepResult] = [SimulationStepResult(volts: V, amps: I, time: currentTime)]
         
-        // The frequency for each disc at each time step needs to be calculated properly. For now, we'll just give everybody the same number, based on a wavelength of 1/200µs
-        let eddyFreq = 1.0 / 200.0E-6
         
-        // variables used by RK4
-        var interimI = I
-        // var newI = I
-        var interimV = V
-        // var newV = V
         
         let rkFactor:[Double] = [0.0, 0.5, 0.5, 1.0, 0.0]
         
         while currentTime < endTime {
+            
+            // variables used by RK4
+            var interimI = I
+            var interimV = V
             
             var kV:[[Double]] = Array(repeating: Array(repeating: 0.0, count: baseC.rows), count: 4)
             var kI:[[Double]] = Array(repeating: Array(repeating: 0.0, count: M.rows), count: 4)
@@ -455,7 +479,8 @@ struct SimulationModel {
                     return []
                 }
                 
-                kV[interimStep] = dVdt.buffer
+                // we use the method of the paper "rungekutta_adaptive_stepsize" (multiplying the k's by 'h' here instead of later)
+                kV[interimStep] = QuickScalarVectorMultiply(scalar: deltaT, vector: dVdt.buffer)
                 
                 // Solve for dI/dt
                 // Start by getting the voltage drops ('BV')
@@ -472,22 +497,30 @@ struct SimulationModel {
                     return []
                 }
                 
-                kI[interimStep] = dIdt.buffer
+                kI[interimStep] = QuickScalarVectorMultiply(scalar: deltaT, vector: dIdt.buffer)
                 
-                interimI = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: deltaT * rkFactor[interimStep + 1], vector: kI[interimStep]))
-                interimV = QuickVectorAdd(lhs: V, rhs: QuickScalarVectorMultiply(scalar: deltaT * rkFactor[interimStep + 1], vector: kV[interimStep]))
+                interimI = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: rkFactor[interimStep + 1], vector: kI[interimStep]))
+                interimV = QuickVectorAdd(lhs: V, rhs: QuickScalarVectorMultiply(scalar: rkFactor[interimStep + 1], vector: kV[interimStep]))
                 
             } // interimStep (end RK4)
             
-            V = QuickVectorAdd(lhs: V, rhs: QuickScalarVectorMultiply(scalar: deltaT / 6, vector: kV[0]))
-            V = QuickVectorAdd(lhs: V, rhs: QuickScalarVectorMultiply(scalar: deltaT / 3, vector: kV[1]))
-            V = QuickVectorAdd(lhs: V, rhs: QuickScalarVectorMultiply(scalar: deltaT / 3, vector: kV[2]))
-            V = QuickVectorAdd(lhs: V, rhs: QuickScalarVectorMultiply(scalar: deltaT / 6, vector: kV[3]))
+            V = QuickVectorAdd(lhs: V, rhs: QuickScalarVectorMultiply(scalar: 1 / 6, vector: kV[0]))
+            V = QuickVectorAdd(lhs: V, rhs: QuickScalarVectorMultiply(scalar: 1 / 3, vector: kV[1]))
+            V = QuickVectorAdd(lhs: V, rhs: QuickScalarVectorMultiply(scalar: 1 / 3, vector: kV[2]))
+            V = QuickVectorAdd(lhs: V, rhs: QuickScalarVectorMultiply(scalar: 1 / 6, vector: kV[3]))
             
-            I = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: deltaT / 6, vector: kI[0]))
-            I = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: deltaT / 3, vector: kI[1]))
-            I = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: deltaT / 3, vector: kI[2]))
-            I = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: deltaT / 6, vector: kI[3]))
+            I = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: 1 / 6, vector: kI[0]))
+            I = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: 1 / 3, vector: kI[1]))
+            I = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: 1 / 3, vector: kI[2]))
+            I = QuickVectorAdd(lhs: I, rhs: QuickScalarVectorMultiply(scalar: 1 / 6, vector: kI[3]))
+            
+            if let check = V.max() {
+                
+                if check > 200.0E3 {
+                    
+                    print("Stop!")
+                }
+            }
             
             result.append(SimulationStepResult(volts: V, amps: I, time: currentTime))
             
@@ -498,14 +531,207 @@ struct SimulationModel {
         return result
     }
     
+    /// Use the RK45 method (with adaptive timesteps) to simulate the impulse shot. Note that the 'deltaT' argument is only used as a startng point. It has a default value of 0.05E-6
+    func SimulateRK45(waveForm:WaveForm, startTime:Double, endTime:Double, epsilon:Double, deltaT:Double = 0.05E-6, Vstart:[Double]? = nil, Istart:[Double]? = nil) -> [SimulationStepResult] {
+        
+        guard startTime < endTime else {
+            
+            DLog("Start must be less than end!")
+            return []
+        }
+        
+        var V:[Double] = Vstart == nil ? Array(repeating: 0.0, count: baseC.rows) : Vstart!
+        var I:[Double] = Istart == nil ? Array(repeating: 0.0, count: M.rows) : Istart!
+        
+        var result:[SimulationStepResult] = [SimulationStepResult(volts: V, amps: I, time: startTime)]
+        
+        var currentTime = startTime
+        var h = deltaT
+        while currentTime < endTime {
+            
+            h = min(h, endTime - currentTime)
+            
+            // This all comes from the pdf document "rungekutta_adaptive_timestep"
+            let f1 = DifferentialFormula(waveForm: waveForm, t: currentTime, V: V, I: I)
+            let dVk1 = h * f1.dVdt
+            let dIk1 = h * f1.dIdt
+            
+            let f2 = DifferentialFormula(waveForm: waveForm, t: currentTime + h / 4, V: V + (0.25 * dVk1), I: I + (0.25 * dIk1))
+            let dVk2 = h * f2.dVdt
+            let dIk2 = h * f2.dIdt
+            var dV = 3.0/32.0 * dVk1
+            dV = dV + 9.0/32.0 * dVk2
+            var dI = 3.0/32.0 * dIk1
+            dI = dI + 9.0/32.0 * dIk2
+            
+            let f3 = DifferentialFormula(waveForm: waveForm, t: currentTime + 3 * h / 8, V: V + dV, I: I + dI)
+            let dVk3 = h * f3.dVdt
+            let dIk3 = h * f3.dIdt
+            dV = 1932.0/2197.0 * dVk1 
+            dV = dV - 7200.0/2197.0 * dVk2
+            dV = dV + 7296.0/2197.0 * dVk3
+            dI = 1932.0/2197.0 * dIk1
+            dI = dI - 7200.0/2197.0 * dIk2
+            dI = dI + 7296.0/2197.0 * dIk3
+            
+            let f4 = DifferentialFormula(waveForm: waveForm, t: currentTime + 12 * h / 13, V: V + dV, I: I + dI)
+            let dVk4 = h * f4.dVdt
+            let dIk4 = h * f4.dIdt
+            dV = 439.0/216.0 * dVk1 
+            dV = dV - 8.0 * dVk2
+            dV = dV + 3680.0/513.0 * dVk3
+            dV = dV - 845.0/4104.0 * dVk4
+            dI = 439.0/216.0 * dIk1 
+            dI = dI - 8.0 * dIk2
+            dI = dI + 3680.0/513.0 * dIk3
+            dI = dI - 845.0/4104.0 * dIk4
+            
+            let f5 = DifferentialFormula(waveForm: waveForm, t: currentTime + h, V: V + dV, I: I + dI)
+            let dVk5 = h * f5.dVdt
+            let dIk5 = h * f5.dIdt
+            dV = -8.0/27.0 * dVk1
+            dV = dV + 2.0 * dVk2
+            dV = dV - 3544.0/2565.0 * dVk3
+            dV = dV + 1859.0/4104.0 * dVk4
+            dV = dV - 11.0/40.0 * dVk5
+            dI = -8.0/27.0 * dIk1
+            dI = dI + 2.0 * dIk2
+            dI = dI - 3544.0/2565.0 * dIk3
+            dI = dI + 1859.0/4104.0 * dIk4
+            dI = dI - 11.0/40.0 * dIk5
+            let f6 = DifferentialFormula(waveForm: waveForm, t: currentTime + h / 2, V: V + dV, I: I + dI)
+            let dVk6 = h * f6.dVdt
+            let dIk6 = h * f6.dIdt
+            
+            var newV = V + 25.0/216.0 * dVk1
+            newV = newV + 1408.0/2565.0 * dVk3
+            newV = newV + 2197.0/4104.0 * dVk4
+            newV = newV - 1.0/5.0 * dVk5
+            
+            var newI = I + 25.0/216.0 * dIk1
+            newI = newI + 1408.0/2565.0 * dIk3
+            newI = newI + 2197.0/4104.0 * dIk4
+            newI = newI - 1.0/5.0 * dIk5
+            
+            var checkV = V + 16.0/135.0 * dVk1
+            checkV = checkV + 6656.0/12825.0 * dVk3
+            checkV = checkV + 28561.0/56430.0 * dVk4
+            checkV = checkV - 9.0/50.0 * dVk5
+            checkV = checkV + 2.0/55.0 * dVk6
+            /*
+            var checkI = I + 16.0/135.0 * dIk1
+            checkI = checkI + 6656.0/12825.0 * dIk3
+            checkI = checkI + 28561.0/56430.0 * dIk4
+            checkI = checkI - 9.0/50.0 * dIk5
+            checkI = checkI + 2.0/55.0 * dIk6
+            */
+            
+            let vR = (1.0 / h) * (checkV - newV).map(abs)
+            // let iR = (1.0 / h) * (checkI - newI).map(abs)
+            
+            guard let max_vR = vR.max() /*, let max_iR = iR.max() */ else {
+                
+                DLog("Could not get max value!")
+                return []
+            }
+            
+            let delV = 0.84 * pow(epsilon / max_vR, 0.25)
+            // let delI = 0.84 * pow(epsilon / max_iR, 0.25)
+            
+            if max_vR <= epsilon /* && max_iR <= epsilon */ {
+                
+                currentTime += h
+                V = newV
+                I = newI
+                
+                let nextStepResult = SimulationStepResult(volts: V, amps: I, time: currentTime)
+                result.append(nextStepResult)
+            }
+            else {
+                
+                print("Try again!")
+            }
+            
+            h = delV * h
+        }
+        
+        return result
+    }
+    
+    
+    private func DifferentialFormula(waveForm:WaveForm, t:Double, V:[Double], I:[Double]) -> (dVdt:[Double], dIdt:[Double]) {
+        
+        var voltageDrop:[Double] = Array(repeating: 0.0, count: M.rows)
+        var currentDrop:[Double] = Array(repeating: 0.0, count: baseC.rows)
+        
+        // Solve for dV/dt
+        for i in 0..<currentDrop.count {
+            
+            let indexBase = iDropInd[i]
+            let Ij:Double = indexBase.belowSeg < 0 ? 0 : I[indexBase.belowSeg]
+            let Ij1:Double = indexBase.aboveSeg < 0 ? 0 : I[indexBase.aboveSeg]
+            currentDrop[i] = Ij - Ij1
+        }
+        
+        // Set the grounded node rhs values to 0
+        for nextGround in groundedNodes {
+            
+            let index = nextGround.number
+            currentDrop[index] = 0.0
+        }
+        
+        // Set the impulsed node rhs values to the derivative of the impulse equation at the current time
+        for nextImpulse in impulsedNodes {
+            
+            let index = nextImpulse.number
+            currentDrop[index] = waveForm.dV(t)
+        }
+        
+        // Add the currentDrops of connected terminals to the "parent" terminal and then set the connected-terminal's currentDrop to 0
+        for (nextNode, connNodes) in finalConnectedNodes {
+            
+            let toNode = nextNode.number
+            for nextConnNode in connNodes {
+                
+                let fromNode = nextConnNode.number
+                currentDrop[toNode] += currentDrop[fromNode]
+                currentDrop[fromNode] = 0.0
+            }
+        }
+        
+        let Crhs = PchMatrix(vectorData: currentDrop)
+        guard let dVdt = modelC.SolveSparse(B: Crhs) else {
+            
+            DLog("Sparse solve failed!")
+            return ([], [])
+        }
+        
+        // Solve for dI/dt
+        // Start by getting the voltage drops ('BV')
+        for i in 0..<voltageDrop.count {
+            
+            let indexBase = vDropInd[i]
+            voltageDrop[i] = V[indexBase.belowNode] - V[indexBase.aboveNode]
+        }
+        
+        let Mrhs = QuickVectorSubtract(lhs: voltageDrop, rhs: QuickRI(I: I, freq: eddyFreq))
+        guard let dIdt = M.SolvePositiveDefinite(B: PchMatrix(vectorData: Mrhs)) else {
+            
+            DLog("Pos/Def Solve failed!")
+            return ([], [])
+        }
+        
+        return (dVdt.buffer, dIdt.buffer)
+    }
+    
     /// Multiply all values in a buffer (vector) by a scalar
     func QuickScalarVectorMultiply(scalar:Double, vector:[Double]) -> [Double] {
         
         var result:[Double] = Array(repeating: 0.0, count: vector.count)
         
-        for nextValue in vector {
+        for i in 0..<vector.count {
             
-            result.append(scalar * nextValue)
+            result[i] = scalar * vector[i]
         }
         
         return result

@@ -768,7 +768,43 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             return
         }
         
-        let simResult = simModel.Simulate(waveForm: SimulationModel.WaveForm(type: .FullWave, pkVoltage: 125.0), startTime: 0.0, endTime: 100.0E-6, deltaT: 0.1E-6)
+        let simResultOld = simModel.Simulate(waveForm: SimulationModel.WaveForm(type: .FullWave, pkVoltage: 125.0E3), startTime: 0.0, endTime: 100.0E-6, deltaT: 0.04E-6)
+        let simResult = simModel.SimulateRK45(waveForm: SimulationModel.WaveForm(type: .FullWave, pkVoltage: 125.0E3), startTime: 0.0, endTime: 100.0E-6, epsilon: 100.0 / 0.05E-6)
+        
+        var maxValue:Double = 0.0
+        
+        for nextSimResult in simResult {
+            
+            guard let testVal = nextSimResult.volts.max() else {
+                
+                ALog("FUCK!")
+                return
+            }
+            
+            if fabs(testVal) > maxValue {
+                
+                maxValue = testVal
+            }
+        }
+        
+        var maxOld:Double = 0.0
+        for nextSimResult in simResultOld {
+            
+            guard let testVal = nextSimResult.volts.max() else {
+                
+                ALog("FUCK!")
+                return
+            }
+            
+            if fabs(testVal) > maxOld {
+                
+                maxOld = testVal
+            }
+        }
+        
+        DLog("Max (RK4): \(maxOld)")
+        DLog("Max (RK45): \(maxValue)")
+        
     }
     
     
