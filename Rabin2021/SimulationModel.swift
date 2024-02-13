@@ -109,14 +109,34 @@ struct SimulationModel {
     
     struct WaveForm {
         
-        // For now, only the FullWave option is defined, and assumes a 1.2 x 50 µs waveform
-        enum Types {
+        // Only the Full Wave option is actually usable
+        enum Types:String, CaseIterable {
             
-            case FullWave
+            case FullWave = "Full Wave (1.2 x 50 µs)"
+            case ChoppedWave = "Chopped Wave (1.2 x 3.0 µs)"
+            case Switching = "Switching (100 x 1000 µs)"
         }
         
         let pkVoltage:Double
         let type:Types
+        
+        var timeToZero:Double {
+            
+            get {
+                
+                switch self.type {
+                    
+                case .FullWave:
+                    return 100.0E-6
+                    
+                case .ChoppedWave:
+                    return 50.0E-6
+                    
+                case .Switching:
+                    return 1000.0E-6
+                }
+            }
+        }
             
         init(type:Types, pkVoltage:Double) {
             
@@ -187,7 +207,9 @@ struct SimulationModel {
     
     var R:[Resistance] = []
     // The frequency for each disc at each time step needs to be calculated properly. For now, we'll just give everybody the same number, based on a wavelength of 200µs
-    let eddyFreq = 1.0 / 200.0E-6
+    static let defaultEddyFreq = 1.0 / 200.0E-6
+    
+    let eddyFreqs:[Double]? = nil
     
     var impulsedNodes:Set<Node> = []
     var groundedNodes:Set<Node> = []
@@ -491,7 +513,7 @@ struct SimulationModel {
                     voltageDrop[i] = interimV[indexBase.belowNode] - interimV[indexBase.aboveNode]
                 }
                 
-                let Mrhs = QuickVectorSubtract(lhs: voltageDrop, rhs: QuickRI(I: interimI, freq: eddyFreq))
+                let Mrhs = QuickVectorSubtract(lhs: voltageDrop, rhs: QuickRI(I: interimI, freqs: eddyFreqs))
                 guard let dIdt = M.SolvePositiveDefinite(B: PchMatrix(vectorData: Mrhs)) else {
                     
                     DLog("Pos/Def Solve failed!")
@@ -720,7 +742,7 @@ struct SimulationModel {
             voltageDrop[i] = V[indexBase.belowNode] - V[indexBase.aboveNode]
         }
         
-        let Mrhs = QuickVectorSubtract(lhs: voltageDrop, rhs: QuickRI(I: I, freq: eddyFreq))
+        let Mrhs = QuickVectorSubtract(lhs: voltageDrop, rhs: QuickRI(I: I, freqs: eddyFreqs))
         guard let dIdt = M.SolvePositiveDefinite(B: PchMatrix(vectorData: Mrhs)) else {
             
             DLog("Pos/Def Solve failed!")
@@ -769,12 +791,13 @@ struct SimulationModel {
     }
     
     /// Multiply the (diagonal) R matrix by the vector I. Note that this routine does no dimension checking (or any checking of any kind, for that matter)
-    func QuickRI(I:[Double], freq:Double = 60.0) -> [Double] {
+    func QuickRI(I:[Double], freqs:[Double]?) -> [Double] {
         
         var result:[Double] = Array(repeating: 0.0, count: I.count)
         for i in 0..<I.count {
             
-            result[i] = R[i].EffectiveResistanceAt(newFreq: freq) * I[i]
+            let frequency = freqs == nil ? SimulationModel.defaultEddyFreq : freqs![i]
+            result[i] = R[i].EffectiveResistanceAt(newFreq: frequency) * I[i]
         }
         
         return result

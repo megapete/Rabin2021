@@ -22,6 +22,8 @@
 		D3F020132B1BBF4200CBD0F0 /* Numerics in Frameworks */ = {isa = PBXBuildFile; productRef = D3F020122B1BBF4200CBD0F0 /* Numerics */; };
 		D3F020152B1BBF4200CBD0F0 /* RealModule in Frameworks */ = {isa = PBXBuildFile; productRef = D3F020142B1BBF4200CBD0F0 /* RealModule */; };
 		D3FB7D6A2752B7A3009ACCB4 /* Connector.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FB7D692752B7A3009ACCB4 /* Connector.swift */; };
+		F531E2772B7BBAAC004DE02F /* GetSimDetailsDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F531E2762B7BBAAC004DE02F /* GetSimDetailsDialog.swift */; };
+		F531E27B2B7BFE03004DE02F /* GetSimDetailsView.xib in Resources */ = {isa = PBXBuildFile; fileRef = F531E27A2B7BFE03004DE02F /* GetSimDetailsView.xib */; };
 		F53EB3CF2B6938A400299736 /* SimulationModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F53EB3CE2B6938A400299736 /* SimulationModel.swift */; };
 		F561C3C82B4838AF00C9CEDE /* PchBasePackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3C72B4838AF00C9CEDE /* PchBasePackage */; };
 		F561C3CA2B4838AF00C9CEDE /* PchDialogBoxPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3C92B4838AF00C9CEDE /* PchDialogBoxPackage */; };
@@ -48,6 +50,8 @@
 		D3B7FF21270E320E002537D3 /* BasicSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BasicSection.swift; sourceTree = "<group>"; };
 		D3BE820027330E9600EF964D /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		D3FB7D692752B7A3009ACCB4 /* Connector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Connector.swift; sourceTree = "<group>"; };
+		F531E2762B7BBAAC004DE02F /* GetSimDetailsDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GetSimDetailsDialog.swift; sourceTree = "<group>"; };
+		F531E27A2B7BFE03004DE02F /* GetSimDetailsView.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = GetSimDetailsView.xib; sourceTree = "<group>"; };
 		F53EB3CE2B6938A400299736 /* SimulationModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulationModel.swift; sourceTree = "<group>"; };
 		F5ED29EC270F1F9C003E84CB /* Segment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Segment.swift; sourceTree = "<group>"; };
 		F5ED29EE271709B0003E84CB /* PhaseModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseModel.swift; sourceTree = "<group>"; };
@@ -100,6 +104,8 @@
 				D39444F52718D9C700206019 /* GetNumberDialog.swift */,
 				F5ED29EE271709B0003E84CB /* PhaseModel.swift */,
 				F53EB3CE2B6938A400299736 /* SimulationModel.swift */,
+				F531E2762B7BBAAC004DE02F /* GetSimDetailsDialog.swift */,
+				F531E27A2B7BFE03004DE02F /* GetSimDetailsView.xib */,
 				D3926C07270F3D3C00D2D17C /* Core.swift */,
 				D3FB7D692752B7A3009ACCB4 /* Connector.swift */,
 				D323F2CE27E14F3900D94DA1 /* Node.swift */,
@@ -195,6 +201,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F531E27B2B7BFE03004DE02F /* GetSimDetailsView.xib in Resources */,
 				D39444F62718D9C700206019 /* GetNumber.xib in Resources */,
 				D30D3ADA270E2F2D00A39051 /* Assets.xcassets in Resources */,
 				D30D3ADD270E2F2D00A39051 /* MainMenu.xib in Resources */,
@@ -219,6 +226,7 @@
 				D3926C08270F3D3C00D2D17C /* Core.swift in Sources */,
 				F53EB3CF2B6938A400299736 /* SimulationModel.swift in Sources */,
 				F5ED29ED270F1F9C003E84CB /* Segment.swift in Sources */,
+				F531E2772B7BBAAC004DE02F /* GetSimDetailsDialog.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

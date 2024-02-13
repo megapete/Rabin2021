@@ -25,6 +25,7 @@
                 <outlet property="addGroundMenuItem" destination="v78-OQ-6tN" id="ILk-Wy-dG5"/>
                 <outlet property="addImpulseMenuItem" destination="i9N-bc-tbw" id="TJU-Oo-SB8"/>
                 <outlet property="combineSegmentsIntoSingleSegmentMenuItem" destination="bwi-RW-boG" id="dY2-kP-Zy8"/>
+                <outlet property="createSimModelMenuItem" destination="9LX-Ul-dgv" id="6lP-9A-RIt"/>
                 <outlet property="indCalcLabel" destination="ocG-G6-KV1" id="n6s-mO-rQF"/>
                 <outlet property="indCalcProgInd" destination="Det-ry-1cY" id="JK5-pS-z4f"/>
                 <outlet property="inductanceLight" destination="8Bk-Y9-N83" id="Fxc-0g-zsc"/>
@@ -43,6 +44,7 @@
                 <outlet property="saveMmatrixMenuItem" destination="I9o-un-V1m" id="GXy-pI-eYq"/>
                 <outlet property="saveUnfactoredMmatrixMenuItem" destination="I9o-un-V1m" id="PE5-k6-rUA"/>
                 <outlet property="showWdgAsSingleSegmentMenuItem" destination="Aqp-v7-qka" id="wWQ-tl-Wef"/>
+                <outlet property="simulateMenuItem" destination="qgl-wB-C1d" id="6gm-BU-6n3"/>
                 <outlet property="splitSegmentToBasicSectionsMenuItem" destination="hmW-Yq-C8J" id="aNg-xP-L1a"/>
                 <outlet property="staticRingBelowMenuItem" destination="yYJ-bL-mnq" id="u77-aA-iGG"/>
                 <outlet property="staticRingOverMenuItem" destination="Qy0-6N-UAU" id="Sxy-Fa-RGp"/>
@@ -520,7 +522,7 @@
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <menu key="submenu" title="Simulate" id="ifa-Yd-wQL">
                         <items>
-                            <menuItem title="Create Simulation Struct" id="9LX-Ul-dgv">
+                            <menuItem title="Create Simulation Model" id="9LX-Ul-dgv">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
                                     <action selector="handleCreateSimStruct:" target="XWq-sU-B2V" id="KKV-b2-uwj"/>

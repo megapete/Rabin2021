@@ -71,6 +71,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     /// Saving files
     @IBOutlet weak var saveAsCirFileMenuItem: NSMenuItem!
     
+    /// Simulation
+    @IBOutlet weak var createSimModelMenuItem: NSMenuItem!
+    @IBOutlet weak var simulateMenuItem: NSMenuItem!
+    
+    
     /// Inductance Calculations
     @IBOutlet weak var mainWdgInductanceMenuItem: NSMenuItem!
     @IBOutlet weak var mainWdgImpedanceMenuItem: NSMenuItem!
@@ -98,6 +103,15 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     
     /// The current simulation model that is stored in memory
     var currentSimModel:SimulationModel? = nil
+    
+    struct SimulationResults {
+        
+        let waveForm:SimulationModel.WaveForm
+        let peakVoltage:Double
+        let stepResults:[SimulationModel.SimulationStepResult]
+    }
+    /// The result of the latest simulation run that was executed
+    var latestSimulationResult:SimulationResults? = nil
     
     /// The current FE model that is stored in memory (this is required becuase the inductance calcualtion takes really long and so is put into a different thread)
     var currentFePhase:PchFePhase? = nil
@@ -755,9 +769,16 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     
     // MARK: Testing routines
     
+    // MARK: Simulation routines
     @IBAction func handleCreateSimStruct(_ sender: Any) {
         
-        currentSimModel = SimulationModel(model: self.currentModel!)
+        guard let newModel = SimulationModel(model: self.currentModel!) else {
+            
+            PCH_ErrorAlert(message: "Could not create simulation model!")
+            return
+        }
+        
+        currentSimModel = newModel
     }
     
     @IBAction func handleDoSimulate(_ sender: Any) {
@@ -768,47 +789,37 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             return
         }
         
-        // let simResultOld = simModel.Simulate(waveForm: SimulationModel.WaveForm(type: .FullWave, pkVoltage: 125.0E3), startTime: 0.0, endTime: 100.0E-6, deltaT: 0.04E-6)
-        let simResult = simModel.SimulateRK45(waveForm: SimulationModel.WaveForm(type: .FullWave, pkVoltage: 125.0E3), startTime: 0.0, endTime: 100.0E-6, epsilon: 100.0 / 0.05E-6)
+        var waveForms:[String] = []
+        SimulationModel.WaveForm.Types.allCases.forEach {
+
+            waveForms.append($0.rawValue)
+        }
         
-        var maxValue:Double = 0.0
+        let simDetailsDlog = SimDetailsDlog(waveFormStrings: waveForms)
         
-        for nextSimResult in simResult {
+        if simDetailsDlog.runModal() == .OK {
             
-            guard let testVal = nextSimResult.volts.max() else {
+            self.latestSimulationResult = nil
+            let peakVoltage = simDetailsDlog.voltageField.doubleValue * 1000
+            guard abs(peakVoltage) >= 10000 else {
                 
-                ALog("FUCK!")
+                PCH_ErrorAlert(message: "Cannot simulate with a voltage less than 10kV!")
                 return
             }
             
-            if fabs(testVal) > maxValue {
-                
-                maxValue = testVal
-            }
-        }
-        
-        /*
-        var maxOld:Double = 0.0
-        for nextSimResult in simResultOld {
+            let wfIndex = simDetailsDlog.waveFormPopUp.indexOfSelectedItem
+            let waveForm = SimulationModel.WaveForm(type: SimulationModel.WaveForm.Types.allCases[wfIndex], pkVoltage: peakVoltage)
             
-            guard let testVal = nextSimResult.volts.max() else {
+            let simResult = simModel.SimulateRK45(waveForm: waveForm, startTime: 0.0, endTime: waveForm.timeToZero, epsilon: 100.0 / 0.05E-6)
+            
+            if simResult.isEmpty {
                 
-                ALog("FUCK!")
+                PCH_ErrorAlert(message: "Simulation failed!")
                 return
             }
             
-            if fabs(testVal) > maxOld {
-                
-                maxOld = testVal
-            }
+            self.latestSimulationResult = SimulationResults(waveForm: waveForm, peakVoltage: peakVoltage, stepResults: simResult)
         }
-        
-        DLog("Max (RK4): \(maxOld), NumEntries: \(simResultOld.count)")
-         */
-        DLog("Max (RK45): \(maxValue), NumEntries: \(simResult.count)")
-        
-        
-        
     }
     
     
@@ -1883,6 +1894,16 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         if menuItem == self.saveUnfactoredMmatrixMenuItem {
             
             return self.currentFePhase != nil && self.currentFePhase!.inductanceMatrix != nil && self.currentFePhase!.inductanceMatrixIsValid
+        }
+        
+        if menuItem == self.createSimModelMenuItem {
+            
+            return self.currentModel != nil && self.currentModel!.C != nil && self.currentModel!.M != nil
+        }
+        
+        if menuItem == self.simulateMenuItem {
+            
+            return self.currentModel != nil && self.currentModel!.C != nil && self.currentModel!.M != nil && self.currentSimModel != nil
         }
         
         if menuItem == self.saveBaseCmatrixMenuItem {
