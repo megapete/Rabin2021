@@ -822,6 +822,34 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         }
     }
     
+    @IBAction func handleShowWaveforms(_ sender: Any) {
+        
+        let waveformWind = WaveFormDisplayWindow(windowNibName: "WaveFormDisplayWindow")
+        
+        guard let simResult = latestSimulationResult else {
+            
+            DLog("No simulation results available!")
+            return
+        }
+        
+        for nextResult in simResult.stepResults {
+            
+            var stepData:[NSPoint] = []
+            // all impulse shots are in terms of µs, so get back to better numbers
+            let x = nextResult.time * 1.0E6
+            for nextV in nextResult.volts {
+                
+                // voltages are normally in thousands of volts, so ell divide by 1000
+                let newPoint = NSPoint(x: x, y: nextV / 1000.0)
+                stepData.append(newPoint)
+            }
+            
+            waveformWind.data.append(stepData)
+        }
+        
+        waveformWind.showWindow(self)
+    }
+    
     
     // MARK: File routines
     func doOpen(fileURL:URL) -> Bool {

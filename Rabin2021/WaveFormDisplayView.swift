@@ -11,13 +11,15 @@ import PchBasePackage
 class WaveFormDisplayView: NSView {
 
     // Fraction of an inch to use for the margins
-    private let margin:CGFloat = 10 // ie: 1/10"
+    private let margin:CGFloat = 0.1 // ie: 1/10"
     // Screen resolution in dots per inch (default is for Retina screen)
     var screenRes:NSSize = NSSize(width: 144, height: 144)
     
     let axisColor = NSColor.darkGray
     
-    private var scale:NSPoint = NSPoint()
+    private var directionalScale:NSPoint = NSPoint()
+    
+    private var scale:CGFloat = 1.0
     
     private var extrema:NSRect = NSRect()
     
@@ -33,15 +35,16 @@ class WaveFormDisplayView: NSView {
         
         var newBoundsRect = extremaRect
         
-        newBoundsRect.size.width += extremaRect.origin.x
-        newBoundsRect.origin.x = 0.0
+        //newBoundsRect.size.width += extremaRect.origin.x
+        //newBoundsRect.origin.x = 0.0
         
-        scale.x = newBoundsRect.width / self.frame.width
-        scale.y = newBoundsRect.height / self.frame.height
+        directionalScale.x = extremaRect.width / self.frame.width
+        directionalScale.y = extremaRect.height / self.frame.height
+        scale = min(directionalScale.x, directionalScale.y)
         
         // figure out the margin values using our scale
-        let scaledMarginX = screenRes.width / margin * scale.x
-        let scaledMarginY = screenRes.height / margin * scale.y
+        let scaledMarginX = screenRes.width * margin * directionalScale.x * (directionalScale.x / scale)
+        let scaledMarginY = screenRes.height * margin * directionalScale.y * (directionalScale.y / scale)
         
         self.bounds = newBoundsRect.insetBy(dx: -scaledMarginX, dy: -scaledMarginY)
         
@@ -55,6 +58,15 @@ class WaveFormDisplayView: NSView {
         self.dataStore.append(newData)
         
         self.extrema = self.extrema.union(WaveFormDisplayView.GetExtremaFromData(data: newData))
+    }
+    
+    func RemoveAllDataSeries() {
+        
+        self.dataStore = []
+        self.extrema = NSRect()
+        
+        self.bounds = NSRect(x: -screenRes.width / margin, y: -screenRes.height / margin, width: self.frame.width, height: self.frame.height)
+        self.UpdateScaleAndZoomWindow()
     }
     
     static func GetExtremaFromData(data:[NSPoint]) -> NSRect {
@@ -76,9 +88,21 @@ class WaveFormDisplayView: NSView {
     }
     
     override func draw(_ dirtyRect: NSRect) {
+        
         super.draw(dirtyRect)
 
         // Drawing code here.
+        // Draw the axes
+        let Axes = NSBezierPath()
+        let xAxisGap = screenRes.width * margin * directionalScale.x * (directionalScale.x / scale) / 2
+        let yAxisGap = screenRes.height * margin * directionalScale.y * (directionalScale.y / scale) / 2
+        Axes.lineWidth = scale
+        Axes.move(to: NSPoint(x: bounds.origin.x + xAxisGap , y: 0))
+        Axes.line(to: NSPoint(x: bounds.origin.x + bounds.width - xAxisGap, y: 0))
+        Axes.move(to: NSPoint(x: 0, y: 0 - yAxisGap))
+        Axes.line(to: NSPoint(x: 0, y: bounds.origin.y + bounds.height - yAxisGap))
+        axisColor.setStroke()
+        Axes.stroke()
     }
     
 }

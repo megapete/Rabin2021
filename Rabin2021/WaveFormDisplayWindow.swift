@@ -36,6 +36,8 @@ class WaveFormDisplayWindow: NSWindowController {
             DLog("Couldn't get main screen")
         }
         
+        waveFormView.RemoveAllDataSeries()
+        
         for nextDataSeries in data {
             
             waveFormView.AddDataSeries(newData: nextDataSeries)
