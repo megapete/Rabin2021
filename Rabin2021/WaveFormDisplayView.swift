@@ -17,7 +17,7 @@ class WaveFormDisplayView: NSView {
     
     let axisColor = NSColor.darkGray
     
-    private var directionalScale:NSPoint = NSPoint()
+    private var scaleMultiplier:NSPoint = NSPoint()
     
     private var scale:CGFloat = 1.0
     
@@ -29,7 +29,7 @@ class WaveFormDisplayView: NSView {
         
         // Convert the current extrema and axes' positions into the bounds for our view and zoom to show everything. The extrema rectangle will be inset by the value (in inches) defined by 'self.margin'.
         
-        let extremaRect = extrema.isEmpty ? NSRect(x: 0, y: 0, width: 1000, height: 1000) : extrema
+        let extremaRect = extrema.isEmpty ? NSRect(x: 0, y: 0, width: 1000, height: 800) : extrema
         
         // let usableFrame = self.frame.insetBy(dx: screenRes.width / margin, dy: screenRes.height / margin)
         
@@ -38,13 +38,16 @@ class WaveFormDisplayView: NSView {
         //newBoundsRect.size.width += extremaRect.origin.x
         //newBoundsRect.origin.x = 0.0
         
-        directionalScale.x = extremaRect.width / self.frame.width
-        directionalScale.y = extremaRect.height / self.frame.height
-        scale = min(directionalScale.x, directionalScale.y)
+        // scale is always based on the x (time) axis
+        scale = extremaRect.width / self.frame.width
+        scaleMultiplier = NSPoint(x: 1.0, y: self.frame.height * scale / extremaRect.height)
+        newBoundsRect.origin.y *= scaleMultiplier.y
+        newBoundsRect.size.height *= scaleMultiplier.y
+        
         
         // figure out the margin values using our scale
-        let scaledMarginX = screenRes.width * margin * directionalScale.x * (directionalScale.x / scale)
-        let scaledMarginY = screenRes.height * margin * directionalScale.y * (directionalScale.y / scale)
+        let scaledMarginX = screenRes.width * margin * scale
+        let scaledMarginY = screenRes.height * margin * scale
         
         self.bounds = newBoundsRect.insetBy(dx: -scaledMarginX, dy: -scaledMarginY)
         
@@ -94,15 +97,72 @@ class WaveFormDisplayView: NSView {
         // Drawing code here.
         // Draw the axes
         let Axes = NSBezierPath()
-        let xAxisGap = screenRes.width * margin * directionalScale.x * (directionalScale.x / scale) / 2
-        let yAxisGap = screenRes.height * margin * directionalScale.y * (directionalScale.y / scale) / 2
+        let xAxisGap = screenRes.width * margin * scale / 2
+        let yAxisGap = screenRes.height * margin * scale / 2
         Axes.lineWidth = scale
         Axes.move(to: NSPoint(x: bounds.origin.x + xAxisGap , y: 0))
         Axes.line(to: NSPoint(x: bounds.origin.x + bounds.width - xAxisGap, y: 0))
-        Axes.move(to: NSPoint(x: 0, y: 0 - yAxisGap))
+        Axes.move(to: NSPoint(x: 0, y: bounds.origin.y - yAxisGap))
         Axes.line(to: NSPoint(x: 0, y: bounds.origin.y + bounds.height - yAxisGap))
         axisColor.setStroke()
         Axes.stroke()
+        
+        if dataStore.isEmpty {
+            
+            return
+        }
+        
+        var waveForms:[NSBezierPath] = []
+        NSBezierPath.defaultLineWidth = scale
+        
+        
+        var didFirst = false
+        for nextTimeStep in dataStore {
+            
+            guard let impNode = nextTimeStep.last else {
+                
+                DLog("No data???")
+                return
+            }
+            
+            let numDiscs = 58
+            for point in nextTimeStep.count-numDiscs-1..<nextTimeStep.count {
+                
+                let i = point - (nextTimeStep.count-numDiscs-1)
+                
+                
+                var drawNode = nextTimeStep[point]
+                drawNode.y *= scaleMultiplier.y
+                
+                if waveForms.count <= numDiscs {
+                    
+                    waveForms.append(NSBezierPath())
+                    waveForms[i].move(to: drawNode)
+                    
+                }
+                else {
+                    
+                    waveForms[i].line(to: drawNode)
+                }
+                
+                
+            }
+        }
+        
+        var colorHue:CGFloat = 0.0
+        for nextPath in waveForms {
+            
+            let lineColor = NSColor(calibratedHue: colorHue, saturation: 1.0, brightness: 1.0, alpha: 1.0)
+            lineColor.set()
+            
+            nextPath.stroke()
+            
+            colorHue += 1.0 / 12.0
+            if colorHue >= 1.0 {
+                
+                colorHue = 0.0
+            }
+        }
     }
     
 }

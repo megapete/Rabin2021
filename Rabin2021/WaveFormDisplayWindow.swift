@@ -36,6 +36,9 @@ class WaveFormDisplayWindow: NSWindowController {
             DLog("Couldn't get main screen")
         }
         
+        waveFormView.wantsLayer = true
+        waveFormView.layer?.backgroundColor = .black
+        
         waveFormView.RemoveAllDataSeries()
         
         for nextDataSeries in data {

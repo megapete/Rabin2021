@@ -675,7 +675,7 @@ struct SimulationModel {
             }
             else {
                 
-                DLog("Error too great! Ignoring step!")
+                DLog("Error too great at time \(currentTime * 1.0E6) µs; Step: \(h * 1.0E6) µs. Adjusting step and trying again!")
                 unusedSteps += 1
             }
             
