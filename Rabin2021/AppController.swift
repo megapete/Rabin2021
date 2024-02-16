@@ -824,6 +824,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     
     @IBAction func handleShowWaveforms(_ sender: Any) {
         
+        
+        
+        /* OLD CODE
         let waveformWind = WaveFormDisplayWindow(windowNibName: "WaveFormDisplayWindow")
         
         guard let simResult = latestSimulationResult else {
@@ -839,7 +842,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             let x = nextResult.time * 1.0E6
             for nextV in nextResult.volts {
                 
-                // voltages are normally in thousands of volts, so ell divide by 1000
+                // voltages are normally in thousands of volts, so we'll divide by 1000
                 let newPoint = NSPoint(x: x, y: nextV / 1000.0)
                 stepData.append(newPoint)
             }
@@ -847,7 +850,97 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             waveformWind.data.append(stepData)
         }
         
-        waveformWind.showWindow(self)
+        waveformWind.showWindow(self) */
+    }
+    
+    /// Show the requested waveforms. Current waveforms are displayed for the given Segments while voltage waveforms are shown for nodes located above and below the given Segments
+    /// - note: If both 'showVoltage" and 'showCurrent' are false, the routine does nothing
+    func doShowWaveforms(segments:[Int], showVoltage:Bool, showCurrent:Bool) {
+        
+        guard let simResult = latestSimulationResult, !segments.isEmpty && (showVoltage || showCurrent) else {
+            
+            return
+        }
+        
+        if showCurrent {
+            
+            let waveformWind = WaveFormDisplayWindow(windowNibName: "WaveFormDisplayWindow")
+            waveformWind.windowTitle = "Current Waveforms: Segments [\(segments.first!)-\(segments.last!)]"
+            
+            var maxValue = -Double.greatestFiniteMagnitude
+            var minValue = Double.greatestFiniteMagnitude
+            
+            for nextResult in simResult.stepResults {
+                
+                var stepData:[NSPoint] = []
+                let x = nextResult.time * 1.0E6
+                for nextSegment in segments {
+                    
+                    let amps = nextResult.amps[nextSegment]
+                    maxValue = max(amps, maxValue)
+                    minValue = min(amps, minValue)
+                    let newPoint = NSPoint(x: x, y: amps)
+                    stepData.append(newPoint)
+                }
+                
+                // only calculate and apply a multiplier if the results are not all zeros
+                if abs(minValue) > 0 || abs(maxValue) > 0 {
+                    
+                    // we want to keep the NSPoints in the "low-integer" (say, 0 to 1000) range:
+                    let height = abs(maxValue - minValue)
+                    var multiplier = 1000.0 / height
+                    // We want to round the multiplier down to the nearest power of 10: 10^(floor(log10(x)))
+                    multiplier = pow(10.0, floor(log10(multiplier)))
+                    
+                    for i in 0..<stepData.count {
+                        
+                        stepData[i].y *= multiplier
+                    }
+                }
+                
+                waveformWind.showWindow(self)
+            }
+        }
+        
+        if showVoltage {
+            
+            let waveformWind = WaveFormDisplayWindow(windowNibName: "WaveFormDisplayWindow")
+            waveformWind.windowTitle = "Voltage Waveforms: Segments [\(segments.first!)-\(segments.last!)]"
+            
+            var maxValue = -Double.greatestFiniteMagnitude
+            var minValue = Double.greatestFiniteMagnitude
+            
+            for nextResult in simResult.stepResults {
+                
+                var stepData:[NSPoint] = []
+                let x = nextResult.time * 1.0E6
+                for nextSegment in segments {
+                    
+                    let amps = nextResult.volts[nextSegment]
+                    maxValue = max(amps, maxValue)
+                    minValue = min(amps, minValue)
+                    let newPoint = NSPoint(x: x, y: amps)
+                    stepData.append(newPoint)
+                }
+                
+                // only calculate and apply a multiplier if the results are not all zeros
+                if abs(minValue) > 0 || abs(maxValue) > 0 {
+                    
+                    // we want to keep the NSPoints in the "low-integer" (say, 0 to 1000) range:
+                    let height = abs(maxValue - minValue)
+                    var multiplier = 1000.0 / height
+                    // We want to round the multiplier down to the nearest power of 10: 10^(floor(log10(x)))
+                    multiplier = pow(10.0, floor(log10(multiplier)))
+                    
+                    for i in 0..<stepData.count {
+                        
+                        stepData[i].y *= multiplier
+                    }
+                }
+                
+                waveformWind.showWindow(self)
+            }
+        }
     }
     
     

@@ -13,6 +13,7 @@ class WaveFormDisplayWindow: NSWindowController {
     @IBOutlet weak var waveFormView: WaveFormDisplayView!
     
     var data:[[NSPoint]] = []
+    var windowTitle:String = "Waveforms"
     
     override func windowDidLoad() {
         super.windowDidLoad()
@@ -34,6 +35,11 @@ class WaveFormDisplayWindow: NSWindowController {
         else {
             
             DLog("Couldn't get main screen")
+        }
+        
+        if let wfWindow = window {
+            
+            wfWindow.title = windowTitle
         }
         
         waveFormView.wantsLayer = true

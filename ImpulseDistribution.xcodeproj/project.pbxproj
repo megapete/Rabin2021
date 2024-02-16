@@ -34,6 +34,8 @@
 		F561C3CE2B4838AF00C9CEDE /* PchMatrixPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3CD2B4838AF00C9CEDE /* PchMatrixPackage */; };
 		F561C3D02B4838AF00C9CEDE /* PchProgressIndicatorPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3CF2B4838AF00C9CEDE /* PchProgressIndicatorPackage */; };
 		F561C3D32B4B528800C9CEDE /* PchFiniteElementPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3D22B4B528800C9CEDE /* PchFiniteElementPackage */; };
+		F5EBD03D2B7FABD00043CC4C /* ShowWaveFormsDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5EBD03C2B7FABD00043CC4C /* ShowWaveFormsDialog.swift */; };
+		F5EBD03F2B7FAC040043CC4C /* ShowWaveFormsView.xib in Resources */ = {isa = PBXBuildFile; fileRef = F5EBD03E2B7FAC040043CC4C /* ShowWaveFormsView.xib */; };
 		F5ED29ED270F1F9C003E84CB /* Segment.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED29EC270F1F9C003E84CB /* Segment.swift */; };
 		F5ED29EF271709B0003E84CB /* PhaseModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED29EE271709B0003E84CB /* PhaseModel.swift */; };
 /* End PBXBuildFile section */
@@ -59,6 +61,8 @@
 		F531E27D2B7C0B9F004DE02F /* WaveFormDisplayWindow.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = WaveFormDisplayWindow.xib; sourceTree = "<group>"; };
 		F531E2802B7C0BC3004DE02F /* WaveFormDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveFormDisplayView.swift; sourceTree = "<group>"; };
 		F53EB3CE2B6938A400299736 /* SimulationModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulationModel.swift; sourceTree = "<group>"; };
+		F5EBD03C2B7FABD00043CC4C /* ShowWaveFormsDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShowWaveFormsDialog.swift; sourceTree = "<group>"; };
+		F5EBD03E2B7FAC040043CC4C /* ShowWaveFormsView.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = ShowWaveFormsView.xib; sourceTree = "<group>"; };
 		F5ED29EC270F1F9C003E84CB /* Segment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Segment.swift; sourceTree = "<group>"; };
 		F5ED29EE271709B0003E84CB /* PhaseModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -115,6 +119,8 @@
 				F531E2802B7C0BC3004DE02F /* WaveFormDisplayView.swift */,
 				F531E27C2B7C0B9F004DE02F /* WaveFormDisplayWindow.swift */,
 				F531E27D2B7C0B9F004DE02F /* WaveFormDisplayWindow.xib */,
+				F5EBD03C2B7FABD00043CC4C /* ShowWaveFormsDialog.swift */,
+				F5EBD03E2B7FAC040043CC4C /* ShowWaveFormsView.xib */,
 				D3926C07270F3D3C00D2D17C /* Core.swift */,
 				D3FB7D692752B7A3009ACCB4 /* Connector.swift */,
 				D323F2CE27E14F3900D94DA1 /* Node.swift */,
@@ -210,6 +216,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F5EBD03F2B7FAC040043CC4C /* ShowWaveFormsView.xib in Resources */,
 				F531E27B2B7BFE03004DE02F /* GetSimDetailsView.xib in Resources */,
 				F531E27F2B7C0B9F004DE02F /* WaveFormDisplayWindow.xib in Resources */,
 				D39444F62718D9C700206019 /* GetNumber.xib in Resources */,
@@ -236,6 +243,7 @@
 				D39444F72718D9C700206019 /* GetNumberDialog.swift in Sources */,
 				D3926C08270F3D3C00D2D17C /* Core.swift in Sources */,
 				F53EB3CF2B6938A400299736 /* SimulationModel.swift in Sources */,
+				F5EBD03D2B7FABD00043CC4C /* ShowWaveFormsDialog.swift in Sources */,
 				F5ED29ED270F1F9C003E84CB /* Segment.swift in Sources */,
 				F531E27E2B7C0B9F004DE02F /* WaveFormDisplayWindow.swift in Sources */,
 				F531E2772B7BBAAC004DE02F /* GetSimDetailsDialog.swift in Sources */,
