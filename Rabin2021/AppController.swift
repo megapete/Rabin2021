@@ -824,7 +824,23 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     
     @IBAction func handleShowWaveforms(_ sender: Any) {
         
+        guard let phModel = self.currentModel, let simModel = self.currentSimModel else {
+            
+            DLog("No simulation model!")
+            return
+        }
         
+        guard let showWaveFormDlog = ShowWaveFormsDialog(phaseModel: phModel, simModel: simModel) else {
+            
+            DLog("Couldn't open dialog box!")
+            return
+        }
+        
+        if showWaveFormDlog.runModal() == .OK {
+            
+            let segmentRange = showWaveFormDlog.segmentRange
+            print(segmentRange)
+        }
         
         /* OLD CODE
         let waveformWind = WaveFormDisplayWindow(windowNibName: "WaveFormDisplayWindow")

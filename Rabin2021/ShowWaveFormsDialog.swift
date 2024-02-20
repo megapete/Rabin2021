@@ -25,6 +25,24 @@ class ShowWaveFormsDialog: PCH_DialogBox {
     @IBOutlet weak var rangeFromPicker: NSPopUpButton!
     @IBOutlet weak var rangeToPicker: NSPopUpButton!
     
+    var currentCoilSelection = 0
+    
+    var segmentRange:Range<Int> {
+        
+        let coilSelected = coilPicker.indexOfSelectedItem
+        
+        do {
+            
+            let coilBase = coilSelected == 0 ? -1 : try phaseModel.GetHighestSection(coil: coilSelected - 1)
+            
+            return (coilBase + rangeFromPicker.indexOfSelectedItem)..<(coilBase + rangeToPicker.indexOfSelectedItem + 1)
+        }
+        catch {
+            
+            PCH_ErrorAlert(message: error.localizedDescription)
+            return 0..<0
+        }
+    }
     
     init?(phaseModel:PhaseModel, simModel:SimulationModel) {
         
@@ -64,11 +82,92 @@ class ShowWaveFormsDialog: PCH_DialogBox {
             rangeFromPicker.removeAllItems()
             rangeToPicker.removeAllItems()
             
+            rangeFromPicker.addItems(withTitles: segNames)
+            rangeToPicker.addItems(withTitles: segNames)
+            
             rangeFromPicker.selectItem(at: 0)
-            rangeToPicker.selectItem(at: lastSeg)
+            rangeToPicker.selectItem(at: lastSeg-1)
+            
+            rangeFromPicker.isEnabled = false
+            rangeToPicker.isEnabled = false
         }
+    }
+    
+    @IBAction func handleSegmentSelection(_ sender: Any) {
         
+        if allSegmentsRadioButton.state == .on {
+            
+            rangeFromPicker.isEnabled = false
+            rangeToPicker.isEnabled = false
+        }
+        else {
+            
+            rangeFromPicker.isEnabled = true
+            rangeToPicker.isEnabled = true
+        }
+    }
+    
+    @IBAction func handleCoilSelection(_ sender: Any) {
         
+        let coilSelected = coilPicker.indexOfSelectedItem
+        
+        // we only do all this if the user has changed the coil selection
+        if coilSelected != currentCoilSelection {
+            
+            // var firstSeg = 0
+            /*
+            if coilSelected > 0 {
+                
+                guard let prevCoilLastSeg = try? phaseModel.GetHighestSection(coil: coilSelected - 1) else {
+                    
+                    ALog("Well that shouldn't happen...")
+                    PCH_ErrorAlert(message: "An impossible error has occurred!")
+                    return
+                }
+                
+                firstSeg = prevCoilLastSeg + 1
+            } */
+            
+            guard let newCoilLastSeg = try? phaseModel.GetHighestSection(coil: coilSelected) else {
+                
+                ALog("Well that shouldn't happen...")
+                PCH_ErrorAlert(message: "An impossible error has occurred!")
+                return
+            }
+            
+            var segNames:[String] = []
+            for i in 1...newCoilLastSeg + 1 {
+                
+                segNames.append("\(i)")
+            }
+            
+            rangeFromPicker.removeAllItems()
+            rangeToPicker.removeAllItems()
+            
+            rangeFromPicker.addItems(withTitles: segNames)
+            rangeToPicker.addItems(withTitles: segNames)
+            
+            rangeFromPicker.selectItem(at: 0)
+            rangeToPicker.selectItem(at: newCoilLastSeg)
+            
+            currentCoilSelection = coilSelected
+        }
+    }
+    
+    @IBAction func handleFromSegmentSelection(_ sender: Any) {
+        
+        if rangeFromPicker.indexOfSelectedItem > rangeToPicker.indexOfSelectedItem {
+            
+            rangeToPicker.selectItem(at: rangeFromPicker.indexOfSelectedItem)
+        }
+    }
+    
+    @IBAction func handleToSegmentSelection(_ sender: Any) {
+        
+        if rangeToPicker.indexOfSelectedItem < rangeFromPicker.indexOfSelectedItem {
+            
+            rangeFromPicker.selectItem(at: rangeToPicker.indexOfSelectedItem)
+        }
     }
     
 }

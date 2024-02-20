@@ -52,6 +52,9 @@
                             </items>
                         </menu>
                     </popUpButtonCell>
+                    <connections>
+                        <action selector="handleCoilSelection:" target="-2" id="60d-Tn-rPa"/>
+                    </connections>
                 </popUpButton>
                 <popUpButton verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="Ufw-dn-g81">
                     <rect key="frame" x="305" y="117" width="57" height="25"/>
@@ -67,6 +70,9 @@
                             </items>
                         </menu>
                     </popUpButtonCell>
+                    <connections>
+                        <action selector="handleFromSegmentSelection:" target="-2" id="oFV-3F-O3Y"/>
+                    </connections>
                 </popUpButton>
                 <popUpButton verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="BnQ-QR-wvc">
                     <rect key="frame" x="392" y="117" width="57" height="25"/>
@@ -82,6 +88,9 @@
                             </items>
                         </menu>
                     </popUpButtonCell>
+                    <connections>
+                        <action selector="handleToSegmentSelection:" target="-2" id="6Vp-xu-Wch"/>
+                    </connections>
                 </popUpButton>
                 <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="pWa-UF-NKa">
                     <rect key="frame" x="182" y="170" width="31" height="16"/>
@@ -99,6 +108,9 @@
                         <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
                         <font key="font" metaFont="system"/>
                     </buttonCell>
+                    <connections>
+                        <action selector="handleSegmentSelection:" target="-2" id="D75-7q-jea"/>
+                    </connections>
                 </button>
                 <button verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="tVN-2J-aEz">
                     <rect key="frame" x="195" y="122" width="69" height="18"/>
@@ -107,6 +119,9 @@
                         <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
                         <font key="font" metaFont="system"/>
                     </buttonCell>
+                    <connections>
+                        <action selector="handleSegmentSelection:" target="-2" id="jrf-IM-k2G"/>
+                    </connections>
                 </button>
                 <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="O9l-R2-lbM">
                     <rect key="frame" x="268" y="123" width="39" height="16"/>
