@@ -33,7 +33,7 @@ class ShowWaveFormsDialog: PCH_DialogBox {
         
         do {
             
-            let coilBase = coilSelected == 0 ? -1 : try phaseModel.GetHighestSection(coil: coilSelected - 1)
+            let coilBase = coilSelected == 0 ? 0 : try phaseModel.GetHighestSection(coil: coilSelected - 1) + 1
             
             return (coilBase + rangeFromPicker.indexOfSelectedItem)..<(coilBase + rangeToPicker.indexOfSelectedItem + 1)
         }

@@ -109,6 +109,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         let waveForm:SimulationModel.WaveForm
         let peakVoltage:Double
         let stepResults:[SimulationModel.SimulationStepResult]
+        
+        var numSteps:Int {
+            
+            get {
+                
+                return stepResults.count
+            }
+        }
     }
     /// The result of the latest simulation run that was executed
     var latestSimulationResult:SimulationResults? = nil
@@ -839,7 +847,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         if showWaveFormDlog.runModal() == .OK {
             
             let segmentRange = showWaveFormDlog.segmentRange
-            print(segmentRange)
+            DLog("Segment range: \(segmentRange)")
+            
+            self.doShowWaveforms(segments: segmentRange, showVoltage: showWaveFormDlog.showVoltagesCheckBox.state == .on, showCurrent: showWaveFormDlog.showCurrentsCheckBox.state == .on)
         }
         
         /* OLD CODE
@@ -871,14 +881,16 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     
     /// Show the requested waveforms. Current waveforms are displayed for the given Segments while voltage waveforms are shown for nodes located above and below the given Segments
     /// - note: If both 'showVoltage" and 'showCurrent' are false, the routine does nothing
-    func doShowWaveforms(segments:[Int], showVoltage:Bool, showCurrent:Bool) {
+    func doShowWaveforms(segments:Range<Int>, showVoltage:Bool, showCurrent:Bool) {
         
-        guard let simResult = latestSimulationResult, !segments.isEmpty && (showVoltage || showCurrent) else {
+        guard let simResult = latestSimulationResult, let model = currentModel, !segments.isEmpty && (showVoltage || showCurrent) else {
             
             return
         }
         
         if showCurrent {
+            
+            let dataStride = simResult.numSteps > 1000 ? simResult.numSteps / 1000 : 1
             
             let waveformWind = WaveFormDisplayWindow(windowNibName: "WaveFormDisplayWindow")
             waveformWind.windowTitle = "Current Waveforms: Segments [\(segments.first!)-\(segments.last!)]"
@@ -886,7 +898,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             var maxValue = -Double.greatestFiniteMagnitude
             var minValue = Double.greatestFiniteMagnitude
             
-            for nextResult in simResult.stepResults {
+            var wfData:[[NSPoint]] = []
+            for nextResultIndex in stride(from: 0, to: simResult.numSteps, by: dataStride) {
+                
+                let nextResult = simResult.stepResults[nextResultIndex]
                 
                 var stepData:[NSPoint] = []
                 let x = nextResult.time * 1.0E6
@@ -899,63 +914,102 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                     stepData.append(newPoint)
                 }
                 
-                // only calculate and apply a multiplier if the results are not all zeros
-                if abs(minValue) > 0 || abs(maxValue) > 0 {
+                wfData.append(stepData)
+            }
+            
+            // only calculate and apply a multiplier if the results are not all zeros
+            if abs(minValue) > 0 || abs(maxValue) > 0 {
+                
+                // we want to keep the NSPoints in the "low-integer" (say, 0 to 1000) range:
+                let height = abs(maxValue - minValue)
+                var multiplier = 1000.0 / height
+                // We want to round the multiplier down to the nearest power of 10: 10^(floor(log10(x)))
+                multiplier = pow(10.0, floor(log10(multiplier)))
+                
+                for i in 0..<wfData.count {
                     
-                    // we want to keep the NSPoints in the "low-integer" (say, 0 to 1000) range:
-                    let height = abs(maxValue - minValue)
-                    var multiplier = 1000.0 / height
-                    // We want to round the multiplier down to the nearest power of 10: 10^(floor(log10(x)))
-                    multiplier = pow(10.0, floor(log10(multiplier)))
-                    
-                    for i in 0..<stepData.count {
+                    for j in 0..<wfData[i].count {
                         
-                        stepData[i].y *= multiplier
+                        wfData[i][j].y *= multiplier
                     }
                 }
-                
-                waveformWind.showWindow(self)
             }
+            
+            waveformWind.data = wfData
+            waveformWind.showWindow(self)
         }
         
         if showVoltage {
             
+            let dataStride = simResult.numSteps > 1000 ? simResult.numSteps / 1000 : 1
+            
+            // we need to convert the segment numbers passed in to their associated nodes (top and bottom) without repeats
+            var nodeSet:Set<Int> = []
+            let segmentsToShow = model.segments[segments]
+            for nextNode in model.nodes {
+                
+                if let belowSeg = nextNode.belowSegment {
+                    
+                    if segmentsToShow.contains(belowSeg) {
+                        
+                        nodeSet.insert(nextNode.number)
+                    }
+                }
+                if let aboveSeg = nextNode.aboveSegment {
+                    
+                    if segmentsToShow.contains(aboveSeg) {
+                        
+                        nodeSet.insert(nextNode.number)
+                    }
+                }
+            }
+            let nodes:[Int] = Array(nodeSet).sorted(by: { $0 < $1 })
+            
             let waveformWind = WaveFormDisplayWindow(windowNibName: "WaveFormDisplayWindow")
-            waveformWind.windowTitle = "Voltage Waveforms: Segments [\(segments.first!)-\(segments.last!)]"
+            waveformWind.windowTitle = "Voltage Waveforms: Nodes to segments [\(segments.first!)-\(segments.last!)]"
             
             var maxValue = -Double.greatestFiniteMagnitude
             var minValue = Double.greatestFiniteMagnitude
             
-            for nextResult in simResult.stepResults {
+            var wfData:[[NSPoint]] = []
+            for nextResultIndex in stride(from: 0, to: simResult.numSteps, by: dataStride) {
                 
+                let nextResult = simResult.stepResults[nextResultIndex]
                 var stepData:[NSPoint] = []
                 let x = nextResult.time * 1.0E6
-                for nextSegment in segments {
+                for nextNode in nodes {
                     
-                    let amps = nextResult.volts[nextSegment]
-                    maxValue = max(amps, maxValue)
-                    minValue = min(amps, minValue)
-                    let newPoint = NSPoint(x: x, y: amps)
+                    let volts = nextResult.volts[nextNode]
+                    maxValue = max(volts, maxValue)
+                    minValue = min(volts, minValue)
+                    let newPoint = NSPoint(x: x, y: volts)
                     stepData.append(newPoint)
                 }
                 
-                // only calculate and apply a multiplier if the results are not all zeros
-                if abs(minValue) > 0 || abs(maxValue) > 0 {
+                wfData.append(stepData)
+            }
+            
+            // only calculate and apply a multiplier if the results are not all zeros
+            if abs(minValue) > 0 || abs(maxValue) > 0 {
+                
+                // we want to keep the NSPoints in the "low-integer" (say, 0 to 1000) range:
+                let height = abs(maxValue - minValue)
+                var multiplier = 1000.0 / height
+                // We want to round the multiplier down to the nearest power of 10: 10^(floor(log10(x)))
+                multiplier = pow(10.0, floor(log10(multiplier)))
+                
+                for i in 0..<wfData.count {
                     
-                    // we want to keep the NSPoints in the "low-integer" (say, 0 to 1000) range:
-                    let height = abs(maxValue - minValue)
-                    var multiplier = 1000.0 / height
-                    // We want to round the multiplier down to the nearest power of 10: 10^(floor(log10(x)))
-                    multiplier = pow(10.0, floor(log10(multiplier)))
-                    
-                    for i in 0..<stepData.count {
+                    for j in 0..<wfData[i].count {
                         
-                        stepData[i].y *= multiplier
+                        wfData[i][j].y *= multiplier
                     }
                 }
-                
-                waveformWind.showWindow(self)
             }
+            
+            waveformWind.data = wfData
+            waveformWind.showWindow(self)
+            
         }
     }
     

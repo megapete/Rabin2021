@@ -112,42 +112,37 @@ class WaveFormDisplayView: NSView {
             return
         }
         
-        var waveForms:[NSBezierPath] = []
         NSBezierPath.defaultLineWidth = scale
+        var waveForms:[NSBezierPath] = []
         
-        
+        var moveCount = 0
         var didFirst = false
         for nextTimeStep in dataStore {
             
-            guard let impNode = nextTimeStep.last else {
+            for nextPointIndex in 0..<nextTimeStep.count {
                 
-                DLog("No data???")
-                return
-            }
-            
-            let numDiscs = 58
-            for point in nextTimeStep.count-numDiscs-1..<nextTimeStep.count {
+                var drawPoint = nextTimeStep[nextPointIndex]
+                drawPoint.y *= scaleMultiplier.y
                 
-                let i = point - (nextTimeStep.count-numDiscs-1)
-                
-                
-                var drawNode = nextTimeStep[point]
-                drawNode.y *= scaleMultiplier.y
-                
-                if waveForms.count <= numDiscs {
+                if !didFirst {
                     
+                    moveCount += 1
                     waveForms.append(NSBezierPath())
-                    waveForms[i].move(to: drawNode)
-                    
+                    waveForms[nextPointIndex].move(to: drawPoint)
                 }
                 else {
                     
-                    waveForms[i].line(to: drawNode)
+                    DLog("Num elements in waveform \(nextPointIndex) before: \(waveForms[nextPointIndex].elementCount)")
+                    waveForms[nextPointIndex].line(to: drawPoint)
                 }
                 
-                
+                DLog("Num elements in waveform \(nextPointIndex) after: \(waveForms[nextPointIndex].elementCount)")
             }
+            
+            didFirst = true
         }
+        
+        DLog("Number of elements in first path: \(waveForms[0].elementCount)")
         
         var colorHue:CGFloat = 0.0
         for nextPath in waveForms {

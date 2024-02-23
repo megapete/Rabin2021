@@ -12,6 +12,7 @@ class WaveFormDisplayWindow: NSWindowController {
 
     @IBOutlet weak var waveFormView: WaveFormDisplayView!
     
+    // The data to display. Note that to avoid slowing done the interface too much, it is recommended to limit the number of data series (to say, 1000). This is the responsibility of the calling routine.
     var data:[[NSPoint]] = []
     var windowTitle:String = "Waveforms"
     
