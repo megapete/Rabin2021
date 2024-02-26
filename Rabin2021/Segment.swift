@@ -111,6 +111,22 @@ class Segment: Codable, Equatable, Hashable {
         }
     }
     
+    var strandRadial:Double {
+        
+        get {
+            
+            return self.basicSections[0].wdgData.turn.strandRadial
+        }
+    }
+    
+    var strandAxial:Double {
+        
+        get {
+            
+            return self.basicSections[0].wdgData.turn.strandAxial
+        }
+    }
+    
     var location:LocStruct {
         get {
             return LocStruct(radial: self.radialPos, axial: self.axialPos)
@@ -270,7 +286,18 @@ class Segment: Codable, Equatable, Hashable {
         return result
     }
     
-    var eddyLossPU:Double = 0.0
+    func turnEffectiveRadius() -> Double {
+        
+        guard let bSect = self.basicSections.first else {
+            
+            return 0
+        }
+        
+        return bSect.wdgData.turn.effectiveRadius
+    }
+    
+    var eddyLossRadialPU:Double = 0.0
+    var eddyLossAxialPU:Double = 0.0
     
     // Functions required by the paper "New Methods for Computation of the Inductance Matrix of Transformer Windings for Very Fast Transients Studies" by M. Eslamian and B. Vahidi.
     
@@ -906,7 +933,7 @@ class Segment: Codable, Equatable, Hashable {
         let originY = adjacentSegment.rect.origin.y
         let rsRect = NSRect(x: originX, y: originY, width: rsThickness, height: elecHt)
         // create a dummy BSdata struct
-        let rsWdgData = BasicSectionWindingData(type: .disc, discData: BasicSectionWindingData.DiscData(numAxialColumns: 10, axialColumnWidth: 0.038), layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: rsThickness, axialDimn: elecHt, turnInsulation: 0, resistancePerMeter: 0))
+        let rsWdgData = BasicSectionWindingData(type: .disc, discData: BasicSectionWindingData.DiscData(numAxialColumns: 10, axialColumnWidth: 0.038), layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: rsThickness, axialDimn: elecHt, turnInsulation: 0, resistancePerMeter: 0, strandRadial: 0, strandAxial: 0))
         let rsSection = BasicSection(location: rsLocation, N: 0, I: 0, wdgData: rsWdgData, rect: rsRect)
         
         do {
@@ -939,7 +966,7 @@ class Segment: Codable, Equatable, Hashable {
         srRect.origin.y += offsetY
         srRect.size.height = srThickness
         // we need to create a dummy cable definition for the static ring
-        let srWdgData = BasicSectionWindingData(type: .disc, discData: BasicSectionWindingData.DiscData(numAxialColumns: 10, axialColumnWidth: 0.038), layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: 0, axialDimn: 0, turnInsulation: 0.125 * meterPerInch, resistancePerMeter: 0))
+        let srWdgData = BasicSectionWindingData(type: .disc, discData: BasicSectionWindingData.DiscData(numAxialColumns: 10, axialColumnWidth: 0.038), layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: 0, axialDimn: 0, turnInsulation: 0.125 * meterPerInch, resistancePerMeter: 0, strandRadial: 0, strandAxial: 0))
         let srSection = BasicSection(location: srLocation, N: 0.0, I: 0.0, wdgData: srWdgData,  rect: srRect)
         
         do {

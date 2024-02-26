@@ -195,13 +195,21 @@ struct SimulationModel {
     struct Resistance {
         
         let dc:Double
-        let eddyPU:Double
+        let effRadius:Double
+        let eddyPURadial:Double
+        let eddyPUAxial:Double
+        let strandRadial:Double
+        let strandAxial:Double
         let freq:Double = 60.0
         
+        // This comes from DelVecchio Eqs: 12.103 & 12.104
         func EffectiveResistanceAt(newFreq:Double) -> Double {
             
-            let effEddyPU = eddyPU * (newFreq * newFreq) / (freq * freq)
-            return dc * (1 + effEddyPU)
+            // rhoCopper is 1/conductivity_of_copper
+            let jouleFactor = effRadius / 2 * sqrt(π * µ0 * newFreq / rhoCopper)
+            let dcLossFreq = jouleFactor * dc
+            
+            return 0.0
         }
     }
     
@@ -250,7 +258,7 @@ struct SimulationModel {
         
         for nextSegment in model.CoilSegments() {
             
-            let nextRes = Resistance(dc: nextSegment.resistance(), eddyPU: nextSegment.eddyLossPU)
+            let nextRes = Resistance(dc: nextSegment.resistance(), effRadius: nextSegment.turnEffectiveRadius(), eddyPURadial: nextSegment.eddyLossRadialPU, eddyPUAxial: nextSegment.eddyLossAxialPU, strandRadial: nextSegment.strandRadial, strandAxial: nextSegment.strandAxial)
             R.append(nextRes)
             
             let nonAdjConns = model.NonAdjacentConnections(segment: nextSegment)

@@ -8,6 +8,7 @@
 // This file contains the definition for the most basic section that our program recognizes, along with a few support structs that it uses.
 
 import Cocoa
+import PchBasePackage
 
 /// A LocStruct holds the physical location of a coil section in the window.
 struct LocStruct:Codable, CustomStringConvertible, Comparable {
@@ -87,6 +88,15 @@ struct BasicSectionWindingData:Codable {
         let axialDimn:Double
         let turnInsulation:Double
         let resistancePerMeter:Double
+        let strandRadial:Double
+        let strandAxial:Double
+        
+        // calculate the area of copper then divide it by pi and get its square root to come up with an "effective radius"
+        var effectiveRadius:Double {
+            
+            let area = radialDimn * axialDimn
+            return sqrt(area / π)
+        }
     }
     
     let turn:TurnData
