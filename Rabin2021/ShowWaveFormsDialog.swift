@@ -16,6 +16,7 @@ class ShowWaveFormsDialog: PCH_DialogBox {
     
     @IBOutlet weak var showVoltagesCheckBox: NSButton!
     @IBOutlet weak var showCurrentsCheckBox: NSButton!
+    @IBOutlet weak var showFourierCheckBox: NSButton!
     
     @IBOutlet weak var coilPicker: NSPopUpButton!
     
@@ -113,20 +114,6 @@ class ShowWaveFormsDialog: PCH_DialogBox {
         
         // we only do all this if the user has changed the coil selection
         if coilSelected != currentCoilSelection {
-            
-            // var firstSeg = 0
-            /*
-            if coilSelected > 0 {
-                
-                guard let prevCoilLastSeg = try? phaseModel.GetHighestSection(coil: coilSelected - 1) else {
-                    
-                    ALog("Well that shouldn't happen...")
-                    PCH_ErrorAlert(message: "An impossible error has occurred!")
-                    return
-                }
-                
-                firstSeg = prevCoilLastSeg + 1
-            } */
             
             guard let newCoilLastSeg = try? phaseModel.GetHighestSection(coil: coilSelected) else {
                 

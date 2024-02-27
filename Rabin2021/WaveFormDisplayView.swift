@@ -132,17 +132,17 @@ class WaveFormDisplayView: NSView {
                 }
                 else {
                     
-                    DLog("Num elements in waveform \(nextPointIndex) before: \(waveForms[nextPointIndex].elementCount)")
+                    // DLog("Num elements in waveform \(nextPointIndex) before: \(waveForms[nextPointIndex].elementCount)")
                     waveForms[nextPointIndex].line(to: drawPoint)
                 }
                 
-                DLog("Num elements in waveform \(nextPointIndex) after: \(waveForms[nextPointIndex].elementCount)")
+                // DLog("Num elements in waveform \(nextPointIndex) after: \(waveForms[nextPointIndex].elementCount)")
             }
             
             didFirst = true
         }
         
-        DLog("Number of elements in first path: \(waveForms[0].elementCount)")
+        // DLog("Number of elements in first path: \(waveForms[0].elementCount)")
         
         var colorHue:CGFloat = 0.0
         for nextPath in waveForms {

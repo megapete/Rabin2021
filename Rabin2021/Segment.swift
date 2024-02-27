@@ -299,33 +299,7 @@ class Segment: Codable, Equatable, Hashable {
     var eddyLossRadialPU:Double = 0.0
     var eddyLossAxialPU:Double = 0.0
     
-    // Functions required by the paper "New Methods for Computation of the Inductance Matrix of Transformer Windings for Very Fast Transients Studies" by M. Eslamian and B. Vahidi.
     
-    /// A synonym for z1
-    /*
-    func y1() -> Double {
-        
-        return self.z1
-    }
-    
-    /// A synonym for z2
-    func y2() -> Double {
-        
-        return self.z2
-    }
-    
-    /// The radial dimension from the core _surface_ (diameter) to the inner edge of the segment
-    func x1(coreRadius:Double) -> Double {
-        
-        return self.r1 - coreRadius
-    }
-    
-    /// The radial dimension from the core _surface_ (diameter) to the outer edge of the segment
-    func x2(coreRadius:Double) -> Double {
-        
-        return self.r2 - coreRadius
-    }
-     */
     /// The series capacitance of the segment when it is considered within a coil (this property is set elsewhere)
     var seriesCapacitance:Double = 0.0
     

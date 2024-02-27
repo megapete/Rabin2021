@@ -13,6 +13,7 @@
                 <outlet property="rangeOfSegmentsRadioButton" destination="tVN-2J-aEz" id="IZG-bB-yl0"/>
                 <outlet property="rangeToPicker" destination="BnQ-QR-wvc" id="huF-Pw-yjX"/>
                 <outlet property="showCurrentsCheckBox" destination="Vca-46-K09" id="YIo-Fc-hbt"/>
+                <outlet property="showFourierCheckBox" destination="95U-mS-RVk" id="hCT-0l-4Yj"/>
                 <outlet property="showVoltagesCheckBox" destination="c9W-Bq-MO7" id="Kzz-NT-4Ws"/>
             </connections>
         </customObject>
@@ -39,7 +40,7 @@
                     </buttonCell>
                 </button>
                 <popUpButton verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="42n-Vo-Npy">
-                    <rect key="frame" x="224" y="164" width="78" height="25"/>
+                    <rect key="frame" x="224" y="139" width="78" height="25"/>
                     <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                     <popUpButtonCell key="cell" type="push" title="Item 1" bezelStyle="rounded" alignment="left" lineBreakMode="truncatingTail" state="on" borderStyle="borderAndBezel" imageScaling="proportionallyDown" inset="2" selectedItem="Ctf-4M-f7m" id="89s-xX-UAa">
                         <behavior key="behavior" lightByBackground="YES" lightByGray="YES"/>
@@ -57,7 +58,7 @@
                     </connections>
                 </popUpButton>
                 <popUpButton verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="Ufw-dn-g81">
-                    <rect key="frame" x="305" y="117" width="57" height="25"/>
+                    <rect key="frame" x="305" y="92" width="57" height="25"/>
                     <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                     <popUpButtonCell key="cell" type="push" title="0" bezelStyle="rounded" alignment="left" lineBreakMode="truncatingTail" state="on" borderStyle="borderAndBezel" imageScaling="proportionallyDown" inset="2" selectedItem="ik9-11-wpd" id="fGp-GJ-1lW">
                         <behavior key="behavior" lightByBackground="YES" lightByGray="YES"/>
@@ -75,7 +76,7 @@
                     </connections>
                 </popUpButton>
                 <popUpButton verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="BnQ-QR-wvc">
-                    <rect key="frame" x="392" y="117" width="57" height="25"/>
+                    <rect key="frame" x="392" y="92" width="57" height="25"/>
                     <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                     <popUpButtonCell key="cell" type="push" title="0" bezelStyle="rounded" alignment="left" lineBreakMode="truncatingTail" state="on" borderStyle="borderAndBezel" imageScaling="proportionallyDown" inset="2" selectedItem="FM8-Iz-D1B" id="u3i-wO-8iK">
                         <behavior key="behavior" lightByBackground="YES" lightByGray="YES"/>
@@ -92,8 +93,8 @@
                         <action selector="handleToSegmentSelection:" target="-2" id="6Vp-xu-Wch"/>
                     </connections>
                 </popUpButton>
-                <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="pWa-UF-NKa">
-                    <rect key="frame" x="182" y="170" width="31" height="16"/>
+                <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="pWa-UF-NKa">
+                    <rect key="frame" x="182" y="145" width="31" height="16"/>
                     <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                     <textFieldCell key="cell" lineBreakMode="clipping" title="Coil:" id="MUg-Cm-zmA">
                         <font key="font" metaFont="system"/>
@@ -102,7 +103,7 @@
                     </textFieldCell>
                 </textField>
                 <button verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="hbe-eg-nGe">
-                    <rect key="frame" x="79" y="122" width="106" height="18"/>
+                    <rect key="frame" x="79" y="97" width="106" height="18"/>
                     <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                     <buttonCell key="cell" type="radio" title="All Segments" bezelStyle="regularSquare" imagePosition="left" alignment="left" state="on" inset="2" id="uhp-NF-6O4">
                         <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
@@ -113,7 +114,7 @@
                     </connections>
                 </button>
                 <button verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="tVN-2J-aEz">
-                    <rect key="frame" x="195" y="122" width="69" height="18"/>
+                    <rect key="frame" x="195" y="97" width="69" height="18"/>
                     <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                     <buttonCell key="cell" type="radio" title="Range:" bezelStyle="regularSquare" imagePosition="left" alignment="left" inset="2" id="7AM-EC-rVW">
                         <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
@@ -123,8 +124,8 @@
                         <action selector="handleSegmentSelection:" target="-2" id="jrf-IM-k2G"/>
                     </connections>
                 </button>
-                <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="O9l-R2-lbM">
-                    <rect key="frame" x="268" y="123" width="39" height="16"/>
+                <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="O9l-R2-lbM">
+                    <rect key="frame" x="268" y="98" width="39" height="16"/>
                     <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                     <textFieldCell key="cell" lineBreakMode="clipping" title="From:" id="OD5-Gm-2HS">
                         <font key="font" metaFont="system"/>
@@ -132,8 +133,8 @@
                         <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
                     </textFieldCell>
                 </textField>
-                <textField horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="ZiT-cL-S5p">
-                    <rect key="frame" x="373" y="123" width="23" height="16"/>
+                <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="ZiT-cL-S5p">
+                    <rect key="frame" x="373" y="98" width="23" height="16"/>
                     <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                     <textFieldCell key="cell" lineBreakMode="clipping" title="To:" id="g9Y-Ap-fEO">
                         <font key="font" metaFont="system"/>
@@ -141,6 +142,14 @@
                         <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
                     </textFieldCell>
                 </textField>
+                <button verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="95U-mS-RVk">
+                    <rect key="frame" x="171" y="183" width="177" height="18"/>
+                    <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
+                    <buttonCell key="cell" type="check" title="Show Fourier Waveforms" bezelStyle="regularSquare" imagePosition="left" inset="2" id="RId-eS-ODE">
+                        <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
+                        <font key="font" metaFont="system"/>
+                    </buttonCell>
+                </button>
             </subviews>
             <point key="canvasLocation" x="207.5" y="160.5"/>
         </customView>

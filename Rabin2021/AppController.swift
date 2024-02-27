@@ -16,6 +16,7 @@ let PCH_CIR_FILETYPE = "cir"
 var rb2021_progressIndicatorWindow:PCH_ProgressIndicatorWindow? = nil
 
 import Cocoa
+import Accelerate
 import UniformTypeIdentifiers
 import ComplexModule
 import RealModule
@@ -116,6 +117,23 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                 
                 return stepResults.count
             }
+        }
+        
+        func ampsFor(segment:Int) -> [Double] {
+            
+            guard segment <= stepResults[0].amps.count else {
+                
+                DLog("Illegal segment number!")
+                return []
+            }
+            
+            var result:[Double] = []
+            for nextStep in stepResults {
+                
+                result.append(nextStep.amps[segment])
+            }
+            
+            return result
         }
     }
     /// The result of the latest simulation run that was executed
@@ -423,8 +441,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         
         for i in 0..<model.segments.count {
             
-            model.segments[i].eddyLossAxialPU = fePhase.window.sections[i].eddyLossDueToAxialFlux
-            model.segments[i].eddyLossRadialPU = fePhase.window.sections[i].eddyLossDueToRadialFlux
+            model.segments[i].eddyLossAxialPU = fePhase.window.sections[i].eddyLossDueToAxialFlux / fePhase.window.sections[i].resistiveLoss
+            model.segments[i].eddyLossRadialPU = fePhase.window.sections[i].eddyLossDueToRadialFlux / fePhase.window.sections[i].resistiveLoss
         }
         
         self.inductanceLight.textColor = .red
@@ -850,41 +868,15 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             let segmentRange = showWaveFormDlog.segmentRange
             DLog("Segment range: \(segmentRange)")
             
-            self.doShowWaveforms(segments: segmentRange, showVoltage: showWaveFormDlog.showVoltagesCheckBox.state == .on, showCurrent: showWaveFormDlog.showCurrentsCheckBox.state == .on)
+            self.doShowWaveforms(segments: segmentRange, showVoltage: showWaveFormDlog.showVoltagesCheckBox.state == .on, showCurrent: showWaveFormDlog.showCurrentsCheckBox.state == .on, showFourier: showWaveFormDlog.showFourierCheckBox.state == .on)
         }
-        
-        /* OLD CODE
-        let waveformWind = WaveFormDisplayWindow(windowNibName: "WaveFormDisplayWindow")
-        
-        guard let simResult = latestSimulationResult else {
-            
-            DLog("No simulation results available!")
-            return
-        }
-        
-        for nextResult in simResult.stepResults {
-            
-            var stepData:[NSPoint] = []
-            // all impulse shots are in terms of µs, so get back to better numbers
-            let x = nextResult.time * 1.0E6
-            for nextV in nextResult.volts {
-                
-                // voltages are normally in thousands of volts, so we'll divide by 1000
-                let newPoint = NSPoint(x: x, y: nextV / 1000.0)
-                stepData.append(newPoint)
-            }
-            
-            waveformWind.data.append(stepData)
-        }
-        
-        waveformWind.showWindow(self) */
     }
     
     /// Show the requested waveforms. Current waveforms are displayed for the given Segments while voltage waveforms are shown for nodes located above and below the given Segments
     /// - note: If both 'showVoltage" and 'showCurrent' are false, the routine does nothing
-    func doShowWaveforms(segments:Range<Int>, showVoltage:Bool, showCurrent:Bool) {
+    func doShowWaveforms(segments:Range<Int>, showVoltage:Bool, showCurrent:Bool, showFourier:Bool) {
         
-        guard let simResult = latestSimulationResult, let model = currentModel, !segments.isEmpty && (showVoltage || showCurrent) else {
+        guard let simResult = latestSimulationResult, let model = currentModel, !segments.isEmpty && (showVoltage || showCurrent || showFourier) else {
             
             return
         }
@@ -938,6 +930,115 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             
             waveformWind.data = wfData
             waveformWind.showWindow(self)
+        }
+        
+        if showFourier {
+            
+            // only show the Fourier transform for the last segment in the range
+            let signal = simResult.ampsFor(segment: segments.upperBound - 1).compactMap({ Float($0)})
+            let n = simResult.stepResults.count
+            let log2n = vDSP_Length(log2(Float(n)))
+            
+            guard let fftSetUp = vDSP.FFT(log2n: log2n, radix: .radix2, ofType: DSPSplitComplex.self) else {
+                                            
+                DLog("Can't create FFT Setup.")
+                return
+            }
+            
+            let halfN = Int(n / 2)
+            var forwardInputReal = [Float](repeating: 0, count: halfN)
+            var forwardInputImag = [Float](repeating: 0, count: halfN)
+            var forwardOutputReal = [Float](repeating: 0, count: halfN)
+            var forwardOutputImag = [Float](repeating: 0, count: halfN)
+            
+            forwardInputReal.withUnsafeMutableBufferPointer { forwardInputRealPtr in
+                forwardInputImag.withUnsafeMutableBufferPointer { forwardInputImagPtr in
+                    forwardOutputReal.withUnsafeMutableBufferPointer { forwardOutputRealPtr in
+                        forwardOutputImag.withUnsafeMutableBufferPointer { forwardOutputImagPtr in
+                            
+                            // Create a `DSPSplitComplex` to contain the signal.
+                            var forwardInput = DSPSplitComplex(realp: forwardInputRealPtr.baseAddress!,
+                                                               imagp: forwardInputImagPtr.baseAddress!)
+                            
+                            // Convert the real values in `signal` to complex numbers.
+                            signal.withUnsafeBytes {
+                                vDSP.convert(interleavedComplexVector: [DSPComplex]($0.bindMemory(to: DSPComplex.self)),
+                                             toSplitComplexVector: &forwardInput)
+                            }
+                            
+                            // Create a `DSPSplitComplex` to receive the FFT result.
+                            var forwardOutput = DSPSplitComplex(realp: forwardOutputRealPtr.baseAddress!,
+                                                                imagp: forwardOutputImagPtr.baseAddress!)
+                            
+                            // Perform the forward FFT.
+                            fftSetUp.forward(input: forwardInput,
+                                             output: &forwardOutput)
+                        }
+                    }
+                }
+            }
+            
+            let autospectrum = [Float](unsafeUninitializedCapacity: halfN) {
+                autospectrumBuffer, initializedCount in
+                
+                // The `vDSP_zaspec` function accumulates its output. Clear the
+                // uninitialized `autospectrumBuffer` before computing the spectrum.
+                vDSP.clear(&autospectrumBuffer)
+                
+                forwardOutputReal.withUnsafeMutableBufferPointer { forwardOutputRealPtr in
+                    forwardOutputImag.withUnsafeMutableBufferPointer { forwardOutputImagPtr in
+                        
+                        var frequencyDomain = DSPSplitComplex(realp: forwardOutputRealPtr.baseAddress!,
+                                                              imagp: forwardOutputImagPtr.baseAddress!)
+                        
+                        vDSP_zaspec(&frequencyDomain,
+                                    autospectrumBuffer.baseAddress!,
+                                    vDSP_Length(halfN))
+                    }
+                }
+                
+                initializedCount = halfN
+            }
+            
+            let waveformWind = WaveFormDisplayWindow(windowNibName: "WaveFormDisplayWindow")
+            waveformWind.windowTitle = "Fourier transform for segment: \(segments.upperBound - 1)"
+            
+            var maxValue = -Double.greatestFiniteMagnitude
+            var minValue = Double.greatestFiniteMagnitude
+            
+            var wfData:[[NSPoint]] = []
+            
+            var x = 0.5
+            for nextValue in autospectrum {
+                
+                maxValue = max(Double(nextValue), maxValue)
+                minValue = min(Double(nextValue), minValue)
+                let newPoint = NSPoint(x: x, y: Double(nextValue))
+                wfData.append([newPoint])
+                x += 1.0
+            }
+            
+            // only calculate and apply a multiplier if the results are not all zeros
+            if abs(minValue) > 0 || abs(maxValue) > 0 {
+                
+                // we want to keep the NSPoints in the "low-integer" (say, 0 to 1000) range:
+                let height = abs(maxValue - minValue)
+                var multiplier = 1000.0 / height
+                // We want to round the multiplier down to the nearest power of 10: 10^(floor(log10(x)))
+                multiplier = pow(10.0, floor(log10(multiplier)))
+                
+                for i in 0..<wfData.count {
+                    
+                    for j in 0..<wfData[i].count {
+                        
+                        wfData[i][j].y *= multiplier
+                    }
+                }
+            }
+            
+            waveformWind.data = wfData
+            waveformWind.showWindow(self)
+            
         }
         
         if showVoltage {
@@ -1010,7 +1111,6 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             
             waveformWind.data = wfData
             waveformWind.showWindow(self)
-            
         }
     }
     

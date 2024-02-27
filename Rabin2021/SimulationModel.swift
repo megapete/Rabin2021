@@ -207,15 +207,25 @@ struct SimulationModel {
             
             // rhoCopper is 1/conductivity_of_copper
             let jouleFactor = effRadius / 2 * sqrt(π * µ0 * newFreq / rhoCopper)
-            let dcLossFreq = jouleFactor * dc
+            let jouleResAtNewFreq = jouleFactor * dc
             
-            return 0.0
+            let bAx = strandAxial
+            let bRa = strandRadial
+            let eddyBaseFactor = 6.0 * sqrt(newFreq) / (pow(π * µ0 / rhoCopper, 1.5) * (freq * freq))
+            let eddyRadialFactor = eddyBaseFactor / (bAx * bAx * bAx)
+            let eddyAxialFactor = eddyBaseFactor / (bRa * bRa * bRa)
+            
+            let eddyResAtNewFreq = dc * (eddyRadialFactor * eddyPURadial + eddyAxialFactor * eddyPUAxial)
+            
+            let newResistanceFactor = (jouleResAtNewFreq + eddyResAtNewFreq) / (dc * (1 + eddyPUAxial + eddyPURadial))
+            
+            return jouleResAtNewFreq + eddyResAtNewFreq
         }
     }
     
     var R:[Resistance] = []
     // The frequency for each disc at each time step needs to be calculated properly. For now, we'll just give everybody the same number, based on a wavelength of 200µs
-    static let defaultEddyFreq = 1.0 / 200.0E-6
+    static let defaultEddyFreq = 0.15E6
     
     let eddyFreqs:[Double]? = nil
     
