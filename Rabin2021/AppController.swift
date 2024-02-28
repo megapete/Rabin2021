@@ -837,7 +837,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             let wfIndex = simDetailsDlog.waveFormPopUp.indexOfSelectedItem
             let waveForm = SimulationModel.WaveForm(type: SimulationModel.WaveForm.Types.allCases[wfIndex], pkVoltage: peakVoltage)
             
-            let simResult = simModel.SimulateRK45(waveForm: waveForm, startTime: 0.0, endTime: waveForm.timeToZero, epsilon: 100.0 / 0.05E-6)
+            let simResult = simModel.DoSimulate(waveForm: waveForm, startTime: 0.0, endTime: waveForm.timeToZero, epsilon: 100.0 / 0.05E-6)
             
             if simResult.isEmpty {
                 
@@ -935,8 +935,21 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         if showFourier {
             
             // only show the Fourier transform for the last segment in the range
-            let signal = simResult.ampsFor(segment: segments.upperBound - 1).compactMap({ Float($0)})
-            let n = simResult.stepResults.count
+            let origSignal = simResult.ampsFor(segment: segments.upperBound - 1).compactMap({ Float($0)})
+            
+            // get rid of the dc-component of the signal (from https://sam-koblenski.blogspot.com/2015/11/everyday-dsp-for-programmers-dc-and.html)
+            var signal:[Float] = []
+            
+            let alpha:Float = 0.9
+            var wPrev:Float = 0.0
+            for x_t in origSignal {
+                
+                var wNew = x_t + alpha * wPrev;
+                signal.append(wNew - wPrev)
+                wPrev = wNew
+            }
+            
+            let n = signal.count
             let log2n = vDSP_Length(log2(Float(n)))
             
             guard let fftSetUp = vDSP.FFT(log2n: log2n, radix: .radix2, ofType: DSPSplitComplex.self) else {
@@ -977,6 +990,26 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                     }
                 }
             }
+            
+            var xFFT:[Double] = []
+            var maxIndex = -1
+            var maxMag = 0.0
+            for i in 0..<halfN {
+                
+                let compVal = Complex(Double(forwardOutputReal[i]), Double(forwardOutputImag[i]))
+                let mag = compVal.length
+                if mag > maxMag {
+                    
+                    maxMag = mag
+                    maxIndex = i
+                }
+                
+                xFFT.append(mag)
+            }
+            
+            let fs = 1.0 / (100.0E-6 / Double(n))
+            let fundFreq = Double(maxIndex) * fs / Double(n)
+            DLog("Fundamental frequency: \(fundFreq)")
             
             let autospectrum = [Float](unsafeUninitializedCapacity: halfN) {
                 autospectrumBuffer, initializedCount in

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Accelerate
 import ComplexModule
 import RealModule
 import PchBasePackage
@@ -105,7 +106,7 @@ private extension Array<Double> {
     }
 }
 
-struct SimulationModel {
+class SimulationModel {
     
     struct WaveForm {
         
@@ -224,10 +225,10 @@ struct SimulationModel {
     }
     
     var R:[Resistance] = []
-    // The frequency for each disc at each time step needs to be calculated properly. For now, we'll just give everybody the same number, based on a wavelength of 200µs
+    // The frequency for each disc at each time step needs to be calculated properly. First time through we'll give everybody the same number based on what is written in DelVecchio (3E) 12.11.2 (between eqs 12.103 and 12.104)
     static let defaultEddyFreq = 0.15E6
     
-    let eddyFreqs:[Double]? = nil
+    var eddyFreqs:[Double]? = nil
     
     var impulsedNodes:Set<Node> = []
     var groundedNodes:Set<Node> = []
@@ -446,6 +447,118 @@ struct SimulationModel {
         let volts:[Double]
         let amps:[Double]
         let time:Double
+    }
+    
+    func DoSimulate(waveForm:WaveForm, startTime:Double, endTime:Double, epsilon:Double, deltaT:Double = 0.05E-6, Vstart:[Double]? = nil, Istart:[Double]? = nil) -> [SimulationStepResult] {
+        
+        // We run the simulation twice: the first time with the default fundamental frequency at each disc, then calculate the real fundamental frequencies (storing them), then run the sim a second time with the calculated fundamental frequencies
+        
+        let interimResult = SimulateRK45(waveForm: waveForm, startTime: startTime, endTime: endTime, epsilon: epsilon, deltaT: deltaT, Vstart: Vstart, Istart: Istart)
+        
+        guard !interimResult.isEmpty else {
+            
+            return []
+        }
+        
+        var segmentAmps:[[Double]] = Array(repeating: [], count: interimResult[0].amps.count)
+        for nextResult in interimResult {
+            
+            for i in 0..<segmentAmps.count {
+                
+                segmentAmps[i].append(nextResult.amps[i])
+            }
+        }
+        
+        var newEddyFreqs = Array(repeating: SimulationModel.defaultEddyFreq, count: segmentAmps.count)
+        for nextSignal in 0..<segmentAmps.count {
+            
+            newEddyFreqs[nextSignal] = GetFundamentalFrequency(Isignal: segmentAmps[nextSignal], startTime: startTime, endTime: endTime)
+        }
+        
+        eddyFreqs = newEddyFreqs
+        
+        let result = SimulateRK45(waveForm: waveForm, startTime: startTime, endTime: endTime, epsilon: epsilon, deltaT: deltaT, Vstart: Vstart, Istart: Istart)
+        
+        return result
+    }
+    
+    func GetFundamentalFrequency(Isignal:[Double], startTime:Double, endTime:Double) -> Double {
+        
+        // get rid of the dc-component of the signal (from https://sam-koblenski.blogspot.com/2015/11/everyday-dsp-for-programmers-dc-and.html)
+        var signal:[Float] = []
+        
+        let alpha:Float = 0.9
+        var wPrev:Float = 0.0
+        for x_t in Isignal {
+            
+            let wNew = Float(x_t) + alpha * wPrev;
+            signal.append(wNew - wPrev)
+            wPrev = wNew
+        }
+        
+        // This next bunch of stuff is essential cut-and-paste from Apple's documentation. It could probably be optimized but for now I'll just use it as-is
+        let n = signal.count
+        let log2n = vDSP_Length(log2(Float(n)))
+        
+        guard let fftSetUp = vDSP.FFT(log2n: log2n, radix: .radix2, ofType: DSPSplitComplex.self) else {
+                                        
+            ALog("Can't create FFT Setup.")
+            return Double.greatestFiniteMagnitude
+        }
+        
+        let halfN = Int(n / 2)
+        var forwardInputReal = [Float](repeating: 0, count: halfN)
+        var forwardInputImag = [Float](repeating: 0, count: halfN)
+        var forwardOutputReal = [Float](repeating: 0, count: halfN)
+        var forwardOutputImag = [Float](repeating: 0, count: halfN)
+        
+        forwardInputReal.withUnsafeMutableBufferPointer { forwardInputRealPtr in
+            forwardInputImag.withUnsafeMutableBufferPointer { forwardInputImagPtr in
+                forwardOutputReal.withUnsafeMutableBufferPointer { forwardOutputRealPtr in
+                    forwardOutputImag.withUnsafeMutableBufferPointer { forwardOutputImagPtr in
+                        
+                        // Create a `DSPSplitComplex` to contain the signal.
+                        var forwardInput = DSPSplitComplex(realp: forwardInputRealPtr.baseAddress!,
+                                                           imagp: forwardInputImagPtr.baseAddress!)
+                        
+                        // Convert the real values in `signal` to complex numbers.
+                        signal.withUnsafeBytes {
+                            vDSP.convert(interleavedComplexVector: [DSPComplex]($0.bindMemory(to: DSPComplex.self)),
+                                         toSplitComplexVector: &forwardInput)
+                        }
+                        
+                        // Create a `DSPSplitComplex` to receive the FFT result.
+                        var forwardOutput = DSPSplitComplex(realp: forwardOutputRealPtr.baseAddress!,
+                                                            imagp: forwardOutputImagPtr.baseAddress!)
+                        
+                        // Perform the forward FFT.
+                        fftSetUp.forward(input: forwardInput,
+                                         output: &forwardOutput)
+                    }
+                }
+            }
+        }
+        
+        var xFFT:[Double] = []
+        var maxIndex = -1
+        var maxMag = 0.0
+        for i in 0..<halfN {
+            
+            let compVal = Complex(Double(forwardOutputReal[i]), Double(forwardOutputImag[i]))
+            let mag = compVal.length
+            if mag > maxMag {
+                
+                maxMag = mag
+                maxIndex = i
+            }
+            
+            xFFT.append(mag)
+        }
+        
+        let fundFreq = Double(maxIndex) / (endTime - startTime)
+        DLog("Fundamental frequency: \(fundFreq) Hz")
+        
+        return fundFreq
     }
     
     /// Call to simulate the impulse shot using the given parameters and 'self'
