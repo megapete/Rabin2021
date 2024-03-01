@@ -567,7 +567,7 @@ class Segment: Codable, Equatable, Hashable {
             throw SegmentError(info: "", type: .AxialAndRadialGapsAreNonNil)
         }
         
-        guard axialGaps != nil && (self.wdgType == .disc || self.wdgType == .helical) else {
+        guard axialGaps == nil || (self.wdgType == .disc || self.wdgType == .helical) else {
             
             throw SegmentError(info: "", type: .IllegalWindingType)
         }
@@ -737,9 +737,20 @@ class Segment: Codable, Equatable, Hashable {
                     return Cgeneral
                 }
             }
-            /* else if self.wdgType == .layer {
+            else if self.wdgType == .layer {
                 
-            } */
+                // we'll just consider the layer-oriented capacitances since they will overwhelm the turn-turn capacitance
+                DLog("Layer winding...")
+                
+                do {
+                    
+                    return try BasicSectionSeriesCapacitance()
+                }
+                catch {
+                    
+                    throw error
+                }
+            }
             else {
                 
                 throw SegmentError(info: "", type: .UnimplementedWdgType)

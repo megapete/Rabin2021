@@ -43,6 +43,8 @@
                 <outlet property="saveFixedCmatrixMenuItem" destination="5eK-yU-3ra" id="efd-Ze-oBc"/>
                 <outlet property="saveMmatrixMenuItem" destination="I9o-un-V1m" id="GXy-pI-eYq"/>
                 <outlet property="saveUnfactoredMmatrixMenuItem" destination="I9o-un-V1m" id="PE5-k6-rUA"/>
+                <outlet property="showCoilResultsMenuItem" destination="P8O-Vr-t1K" id="Ihl-J1-x5K"/>
+                <outlet property="showWaveformsMenuItem" destination="QjX-pp-fL5" id="sb0-tI-ej0"/>
                 <outlet property="showWdgAsSingleSegmentMenuItem" destination="Aqp-v7-qka" id="wWQ-tl-Wef"/>
                 <outlet property="simulateMenuItem" destination="qgl-wB-C1d" id="6gm-BU-6n3"/>
                 <outlet property="splitSegmentToBasicSectionsMenuItem" destination="hmW-Yq-C8J" id="aNg-xP-L1a"/>
@@ -539,6 +541,13 @@
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
                                     <action selector="handleShowWaveforms:" target="XWq-sU-B2V" id="FsU-il-qPE"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem isSeparatorItem="YES" id="e0t-hG-akE"/>
+                            <menuItem title="Show Coil Results" id="P8O-Vr-t1K">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleShowCoilResults:" target="XWq-sU-B2V" id="406-kZ-IGI"/>
                                 </connections>
                             </menuItem>
                         </items>

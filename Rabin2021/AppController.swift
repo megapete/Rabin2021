@@ -75,7 +75,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     /// Simulation
     @IBOutlet weak var createSimModelMenuItem: NSMenuItem!
     @IBOutlet weak var simulateMenuItem: NSMenuItem!
-    
+    @IBOutlet weak var showWaveformsMenuItem: NSMenuItem!
+    @IBOutlet weak var showCoilResultsMenuItem: NSMenuItem!
     
     /// Inductance Calculations
     @IBOutlet weak var mainWdgInductanceMenuItem: NSMenuItem!
@@ -119,6 +120,50 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             }
         }
         
+        var timeSpan:(begin:Double, end:Double) {
+            
+            get {
+                
+                guard let beginTime = stepResults.first?.time, let endTime = stepResults.last?.time else {
+                    
+                    DLog("No results!")
+                    return (begin:Double.greatestFiniteMagnitude, end:-Double.greatestFiniteMagnitude)
+                }
+                
+                return (beginTime, endTime)
+            }
+        }
+        
+        var extremeVolts:(min:Double, max:Double) {
+            
+            get {
+                
+                var result = (min:Double.greatestFiniteMagnitude, max:-Double.greatestFiniteMagnitude)
+                for nextStep in stepResults {
+                    
+                    result.min = min(nextStep.volts.min()!, result.min)
+                    result.max = max(nextStep.volts.max()!, result.max)
+                }
+                
+                return result
+            }
+        }
+        
+        var extremeAmps:(min:Double, max:Double) {
+            
+            get {
+                
+                var result = (min:Double.greatestFiniteMagnitude, max:-Double.greatestFiniteMagnitude)
+                for nextStep in stepResults {
+                    
+                    result.min = min(nextStep.amps.min()!, result.min)
+                    result.max = max(nextStep.amps.max()!, result.max)
+                }
+                
+                return result
+            }
+        }
+        
         func ampsFor(segment:Int) -> [Double] {
             
             guard segment <= stepResults[0].amps.count else {
@@ -136,6 +181,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             return result
         }
     }
+    
     /// The result of the latest simulation run that was executed
     var latestSimulationResult:SimulationResults? = nil
     
@@ -1144,6 +1190,26 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             
             waveformWind.data = wfData
             waveformWind.showWindow(self)
+        }
+    }
+    
+    @IBAction func handleShowCoilResults(_ sender: Any) {
+        
+        guard let phModel = self.currentModel, let simModel = self.currentSimModel else {
+            
+            DLog("No simulation model!")
+            return
+        }
+        
+        guard let showCoilResultsDlog = ShowCoilResultsDialog(phaseModel: phModel, simModel: simModel) else {
+            
+            DLog("Couldn't open dialog box!")
+            return
+        }
+        
+        if showCoilResultsDlog.runModal() == .OK {
+            
+            DLog("Yahoo!")
         }
     }
     
@@ -2229,6 +2295,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         if menuItem == self.simulateMenuItem {
             
             return self.currentModel != nil && self.currentModel!.C != nil && self.currentModel!.M != nil && self.currentSimModel != nil
+        }
+        
+        if menuItem == self.showWaveformsMenuItem || menuItem == self.showCoilResultsMenuItem {
+            
+            return self.currentModel != nil && self.currentSimModel != nil && self.latestSimulationResult != nil
         }
         
         if menuItem == self.saveBaseCmatrixMenuItem {

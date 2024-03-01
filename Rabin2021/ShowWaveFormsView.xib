@@ -145,7 +145,7 @@
                 <button verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="95U-mS-RVk">
                     <rect key="frame" x="171" y="183" width="177" height="18"/>
                     <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
-                    <buttonCell key="cell" type="check" title="Show Fourier Waveforms" bezelStyle="regularSquare" imagePosition="left" inset="2" id="RId-eS-ODE">
+                    <buttonCell key="cell" type="check" title="Show Fourier Waveforms" bezelStyle="regularSquare" imagePosition="left" enabled="NO" inset="2" id="RId-eS-ODE">
                         <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
                         <font key="font" metaFont="system"/>
                     </buttonCell>
