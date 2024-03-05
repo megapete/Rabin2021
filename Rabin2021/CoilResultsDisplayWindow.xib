@@ -7,6 +7,10 @@
     <objects>
         <customObject id="-2" userLabel="File's Owner" customClass="CoilResultsDisplayWindow" customModule="ImpulseDistribution" customModuleProvider="target">
             <connections>
+                <outlet property="continueButton" destination="se5-gp-TjO" id="3VC-TW-3AL"/>
+                <outlet property="continuePauseButton" destination="3qM-6b-HMk" id="AWV-8h-Dqo"/>
+                <outlet property="startButton" destination="dhT-dy-tAP" id="rBQ-91-F8S"/>
+                <outlet property="stopButton" destination="d0W-Rn-abM" id="X4n-dj-7mM"/>
                 <outlet property="window" destination="F0z-JX-Cv5" id="gIp-Ho-8D9"/>
             </connections>
         </customObject>
@@ -28,6 +32,9 @@
                             <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                             <font key="font" metaFont="system"/>
                         </buttonCell>
+                        <connections>
+                            <action selector="handleStartPushed:" target="-2" id="HQi-RL-y88"/>
+                        </connections>
                     </button>
                     <button verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="d0W-Rn-abM">
                         <rect key="frame" x="78" y="612" width="63" height="32"/>
@@ -36,19 +43,25 @@
                             <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                             <font key="font" metaFont="system"/>
                         </buttonCell>
-                    </button>
-                    <button verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="3qM-6b-HMk">
-                        <rect key="frame" x="139" y="612" width="78" height="32"/>
-                        <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
-                        <buttonCell key="cell" type="push" title="Restart" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="SHs-YL-wWp">
-                            <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
-                            <font key="font" metaFont="system"/>
-                        </buttonCell>
+                        <connections>
+                            <action selector="handleStopPushed:" target="-2" id="dqL-BH-Crr"/>
+                        </connections>
                     </button>
                     <customView fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="as7-V1-1Z7" customClass="CoilResultsDisplayView" customModule="ImpulseDistribution" customModuleProvider="target">
                         <rect key="frame" x="0.0" y="0.0" width="960" height="599"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                     </customView>
+                    <button verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="3qM-6b-HMk">
+                        <rect key="frame" x="139" y="612" width="89" height="32"/>
+                        <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
+                        <buttonCell key="cell" type="push" title="Continue" bezelStyle="rounded" alignment="center" enabled="NO" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="SHs-YL-wWp">
+                            <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
+                            <font key="font" metaFont="system"/>
+                        </buttonCell>
+                        <connections>
+                            <action selector="handleContPushed:" target="-2" id="2a1-ar-35Q"/>
+                        </connections>
+                    </button>
                 </subviews>
             </view>
             <connections>

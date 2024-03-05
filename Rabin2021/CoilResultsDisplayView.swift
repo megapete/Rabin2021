@@ -18,15 +18,15 @@ class CoilResultsDisplayView: NSView {
     let axisColor = NSColor.darkGray
     let lineColor = NSColor.red
     
-    private var scaleMultiplier:NSPoint = NSPoint()
+    var scaleMultiplier:NSPoint = NSPoint()
     
     private var scale:CGFloat = 1.0
     
     private var extrema:NSRect = NSRect()
     
     // The data line currently being displayed
-    private var currentData:NSBezierPath = NSBezierPath()
-    private var dataStore:[[NSPoint]] = []
+    var currentData:NSBezierPath = NSBezierPath()
+    // private var dataStore:[[NSPoint]] = []
     
     func UpdateScaleAndZoomWindow(extremaRect:NSRect) {
         
@@ -46,8 +46,6 @@ class CoilResultsDisplayView: NSView {
         let scaledMarginY = screenRes.height * margin * scale
         
         self.bounds = newBoundsRect.insetBy(dx: -scaledMarginX, dy: -scaledMarginY)
-        
-        DLog("\(self.bounds)")
         
         self.needsDisplay = true
     }
