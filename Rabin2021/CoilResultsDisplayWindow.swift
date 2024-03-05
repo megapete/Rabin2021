@@ -127,6 +127,7 @@ class CoilResultsDisplayWindow: NSWindowController {
     @IBAction func handleStartPushed(_ sender: Any) {
         
         currentSimIndex = 0
+        currentSimTime = simTimeBrackets.lowerBound
         doStartAnimation()
     }
     
@@ -149,7 +150,7 @@ class CoilResultsDisplayWindow: NSWindowController {
         simTimer = Timer.scheduledTimer(withTimeInterval: animationTimeInterval, repeats: true) { timer in
             
             self.UpdatePathWithCurrentSimIndex()
-            self.currentSimIndex += 1
+            self.currentSimIndex += self.animationStride
             
             if self.currentSimIndex >= results.stepResults.count {
                 
@@ -164,9 +165,47 @@ class CoilResultsDisplayWindow: NSWindowController {
     }
     
     @IBAction func handleStopPushed(_ sender: Any) {
+        
+        doStopSimulationAndReset()
+    }
+    
+    func doStopSimulationAndReset() {
+        
+        // stop the simulation
+        if let timer = simTimer {
+            
+            timer.invalidate()
+        }
+        
+        self.simIsRunning = false
+        self.simIsPaused = false
+        
+        self.SetButtonStates()
     }
     
     @IBAction func handleContPushed(_ sender: Any) {
+        
+        guard simIsRunning else {
+            
+            return
+        }
+        
+        if simIsPaused {
+            
+            doStartAnimation()
+        }
+        else {
+            
+            if let timer = simTimer {
+                
+                timer.invalidate()
+            }
+            
+            self.simIsPaused = true
+            
+            self.SetButtonStates()
+        }
+        
     }
     
     func UpdatePathWithCurrentSimIndex() {
