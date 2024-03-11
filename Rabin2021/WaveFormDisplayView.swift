@@ -112,6 +112,7 @@ class WaveFormDisplayView: NSView {
             return
         }
         
+        let oldLineWidth = NSBezierPath.defaultLineWidth
         NSBezierPath.defaultLineWidth = scale
         var waveForms:[NSBezierPath] = []
         
@@ -158,6 +159,8 @@ class WaveFormDisplayView: NSView {
                 colorHue = 0.0
             }
         }
+        
+        NSBezierPath.defaultLineWidth = oldLineWidth
     }
     
 }

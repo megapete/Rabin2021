@@ -89,6 +89,9 @@ class CoilResultsDisplayView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
+        let oldLineWidth = NSBezierPath.defaultLineWidth
+        NSBezierPath.defaultLineWidth = 1.0
+        
         // we only show the x-axis (but the code is left here to draw the y-axis if we ever decide to do so)
         let Axes = NSBezierPath()
         let xAxisGap = screenRes.width * margin * scale / 2
@@ -106,8 +109,19 @@ class CoilResultsDisplayView: NSView {
             return
         }
         
+        /*
+        print("Bounds: \(self.bounds)")
+        for i in 0..<currentData.elementCount {
+            
+            let pointArray = NSPointArray.allocate(capacity: 3)
+            let getElement = currentData.element(at: i, associatedPoints: pointArray)
+            print("Point: \(pointArray[0])")
+        } */
+        
         lineColor.setStroke()
         currentData.stroke()
+        
+        NSBezierPath.defaultLineWidth = oldLineWidth
     }
     
 }

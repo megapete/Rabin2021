@@ -10,33 +10,74 @@ import PchBasePackage
 
 class CoilResultsDisplayWindow: NSWindowController {
 
+    override var windowNibName: String! {
+        
+            return "CoilResultsDisplayWindow"
+    }
+    
     @IBOutlet weak var coilResultsView: CoilResultsDisplayView!
     
     @IBOutlet weak var startButton: NSButton!
     @IBOutlet weak var stopButton: NSButton!
-    @IBOutlet weak var continuePauseButton: NSButton!
+    @IBOutlet weak var continueButton: NSButton!
     
-    var simTimeBrackets:ClosedRange<Double> = ClosedRange(uncheckedBounds: (0.0, 0.0))
-    var currentSimTime:Double = 0.0
-    var currentSimIndex:Int = 0
-    var simIsRunning:Bool = false
-    var simIsPaused:Bool = false
+    let simTimeBrackets:ClosedRange<Double>
+    private var currentSimTime:Double = 0.0
+    private var currentSimIndex:Int = 0
+    private var simIsRunning:Bool = false
+    private var simIsPaused:Bool = false
     
-    var simTimer:Timer? = nil
-    var animationTimeInterval:TimeInterval = 0.05 // default to updating the waveform every 20th of a second.
-    var animationStride:Int = 1
+    private var simTimer:Timer? = nil
+    let totalAnimationTime:TimeInterval
+    private var animationTimeInterval:TimeInterval = 1.0 / 50.0 // default to updating the waveform every 50th of a second.
+    private var minimumAnimationTimeInterval = 1.0 / 50.0
+    private var animationStride:Int = 1
     
-    var windowTitle:String = "Results"
+    let windowTitle:String
     
     /// If true, display the voltages, otherwise display the amps
-    var showVoltages:Bool = true
+    let showVoltages:Bool
     
     /// The count of xDimensions must equal either the count of the 'voltages' member of resultData or the count of the 'amps' member of resultData, depending on the setting of 'showVoltages'.
     /// - Note: These dimensions correspond to the height of the nodes/discs. They should be in mm.
-    var xDimensions:[Double] = []
-    var resultData:AppController.SimulationResults? = nil
+    let xDimensions:[Double]
+    let resultData:AppController.SimulationResults
+    let segmentsToDisplay:ClosedRange<Int>
+    private var heightMultiplier:Double = 1.0
     
-    var heightMultiplier:Double = 1.0
+    override var acceptsFirstResponder: Bool {
+        
+        return true
+    }
+    
+    init(windowTitle:String, showVoltages:Bool, xDimensions:[Double], resultData:AppController.SimulationResults, segmentsToDisplay:ClosedRange<Int>, totalAnimationTime:TimeInterval) {
+        
+        self.windowTitle = windowTitle
+        self.xDimensions = xDimensions
+        self.resultData = resultData
+        self.segmentsToDisplay = segmentsToDisplay
+        self.totalAnimationTime = totalAnimationTime
+        self.showVoltages = showVoltages
+        let timeSpan = resultData.timeSpan
+        self.simTimeBrackets = ClosedRange(uncheckedBounds: (timeSpan.begin, timeSpan.end))
+        
+        super.init(window: nil)
+    }
+    
+    /// We have to implement this init to create a custom initializer. It basically creates a lot of unusable ivars then calls 'super'.
+    required init?(coder: NSCoder) {
+        
+        self.simTimeBrackets = ClosedRange(uncheckedBounds: (0,0))
+        self.totalAnimationTime = 0
+        self.windowTitle = ""
+        self.xDimensions = []
+        self.resultData = AppController.SimulationResults(waveForm: SimulationModel.WaveForm(type: .FullWave, pkVoltage: 0.0), peakVoltage: 0.0, stepResults: [])
+        self.showVoltages = false
+        self.segmentsToDisplay = ClosedRange(uncheckedBounds: (0,0))
+        
+        super.init(coder: coder)
+        ALog("Unimplemented initializer")
+    }
     
     override func windowDidLoad() {
         super.windowDidLoad()
@@ -44,6 +85,8 @@ class CoilResultsDisplayWindow: NSWindowController {
         // Implement this method to handle any initialization after your window controller's window has been loaded from its nib file.
         
         if let mainScreen = NSScreen.main {
+            
+            minimumAnimationTimeInterval = mainScreen.minimumRefreshInterval
             
             if let mainScreenResolution = mainScreen.deviceDescription[.resolution] as? NSSize {
                 
@@ -70,31 +113,40 @@ class CoilResultsDisplayWindow: NSWindowController {
         coilResultsView.layer?.backgroundColor = .black
         
         var extremaRect = NSRect(x: 0, y: 0, width: 1000, height: 800)
-        if let results = resultData, !results.stepResults.isEmpty {
+        if !resultData.stepResults.isEmpty, !segmentsToDisplay.isEmpty {
             
-            simTimeBrackets = ClosedRange(uncheckedBounds: (results.stepResults.first!.time, results.stepResults.last!.time))
+            // simTimeBrackets = ClosedRange(uncheckedBounds: (results.stepResults.first!.time, results.stepResults.last!.time))
+            
+            animationTimeInterval = totalAnimationTime / Double(resultData.stepResults.count)
+            while animationTimeInterval < minimumAnimationTimeInterval {
+                
+                animationStride += 1
+                animationTimeInterval = totalAnimationTime / Double(resultData.stepResults.count / animationStride)
+            }
             
             if showVoltages {
                 
-                guard xDimensions.count == results.stepResults.first!.volts.count else {
+                guard xDimensions.count == (segmentsToDisplay.upperBound - segmentsToDisplay.lowerBound + 2) else {
                     
                     DLog("Incompatible dimensions!")
                     return
                 }
                 
-                let extremeVolts = results.extremeVolts
+                let extremeVolts = resultData.ExtremeVoltsInSegmentRange(range: segmentsToDisplay)
                 extremaRect.size.height = extremeVolts.max - extremeVolts.min
+                extremaRect.origin.y = extremeVolts.min
             }
             else {
                 
-                guard xDimensions.count == results.stepResults.first!.amps.count else {
+                guard xDimensions.count == (segmentsToDisplay.upperBound - segmentsToDisplay.lowerBound + 1) else {
                     
                     DLog("Incompatible dimensions!")
                     return
                 }
                 
-                let extremeAmps = results.extremeAmps
+                let extremeAmps = resultData.ExtremeAmpsInSegmentRange(range: segmentsToDisplay)
                 extremaRect.size.height = extremeAmps.max - extremeAmps.min
+                extremaRect.origin.y = extremeAmps.min
             }
         }
         else {
@@ -108,6 +160,7 @@ class CoilResultsDisplayWindow: NSWindowController {
         // We want to round the multiplier down to the nearest power of 10: 10^(floor(log10(x)))
         heightMultiplier = pow(10.0, floor(log10(multiplier)))
         
+        extremaRect.origin.y *= heightMultiplier
         extremaRect.size.height *= heightMultiplier
         
         coilResultsView.UpdateScaleAndZoomWindow(extremaRect: extremaRect)
@@ -117,11 +170,11 @@ class CoilResultsDisplayWindow: NSWindowController {
     
     func SetButtonStates() {
         
-        startButton.isEnabled = !(xDimensions.isEmpty || resultData == nil || simIsRunning)
+        startButton.isEnabled = !(xDimensions.isEmpty || simIsRunning)
         stopButton.isEnabled = simIsRunning
         
-        continuePauseButton.title = simIsPaused ? "Continue" : "Pause"
-        continuePauseButton.isEnabled = simIsRunning
+        continueButton.title = simIsPaused ? "Continue" : "Pause"
+        continueButton.isEnabled = simIsRunning
     }
     
     @IBAction func handleStartPushed(_ sender: Any) {
@@ -133,12 +186,6 @@ class CoilResultsDisplayWindow: NSWindowController {
     
     func doStartAnimation() {
         
-        guard let results = resultData else {
-            
-            DLog("No results")
-            return
-        }
-        
         if let timer = simTimer {
             
             timer.invalidate()
@@ -146,21 +193,20 @@ class CoilResultsDisplayWindow: NSWindowController {
         
         simIsRunning = true
         simIsPaused = false
+        SetButtonStates()
         
         simTimer = Timer.scheduledTimer(withTimeInterval: animationTimeInterval, repeats: true) { timer in
-            
+                        
             self.UpdatePathWithCurrentSimIndex()
             self.currentSimIndex += self.animationStride
             
-            if self.currentSimIndex >= results.stepResults.count {
+            if self.resultData.stepResults.isEmpty || self.currentSimIndex >= self.resultData.stepResults.count {
                 
-                // simulation is done
-                timer.invalidate()
-                self.simIsRunning = false
-                self.simIsPaused = false
-                
-                self.SetButtonStates()
+                self.doStopSimulationAndReset()
+                return
             }
+            
+            self.currentSimTime = self.resultData.stepResults[self.currentSimIndex].time
         }
     }
     
@@ -210,7 +256,7 @@ class CoilResultsDisplayWindow: NSWindowController {
     
     func UpdatePathWithCurrentSimIndex() {
         
-        guard currentSimIndex >= 0, let results = resultData, !results.stepResults.isEmpty, currentSimIndex < results.stepResults.count else {
+        guard currentSimIndex >= 0, !resultData.stepResults.isEmpty, currentSimIndex < resultData.stepResults.count, !segmentsToDisplay.isEmpty else {
             
             ALog("Bad index or no results!")
             return
@@ -221,14 +267,15 @@ class CoilResultsDisplayWindow: NSWindowController {
             return
         }
         
-        let step = results.stepResults[currentSimIndex]
+        let step = resultData.stepResults[currentSimIndex]
         let newPath = NSBezierPath()
         let yMultiplier = heightMultiplier * coilResultsView.scaleMultiplier.y
         
         // in the interest of speed, we don't check that xDimensions has the correct count
+        let valOffset = segmentsToDisplay.lowerBound
         for i in 0..<xDimensions.count {
             
-            var nextPoint = NSPoint(x: xDimensions[i], y: yMultiplier * (showVoltages ? step.volts[i] : step.amps[i]))
+            let nextPoint = NSPoint(x: xDimensions[i], y: yMultiplier * (showVoltages ? step.volts[i + valOffset] : step.amps[i + valOffset]))
             
             if i == 0 {
                 

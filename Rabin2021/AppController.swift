@@ -180,7 +180,37 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             
             return result
         }
+        
+        func ExtremeVoltsInSegmentRange(range:ClosedRange<Int>) -> (min:Double, max:Double) {
+            
+            var result = (min:Double.greatestFiniteMagnitude, max:-Double.greatestFiniteMagnitude)
+            for nextStep in stepResults {
+                
+                let segVolts = nextStep.volts[range]
+                result.min = min(segVolts.min()!, result.min)
+                result.max = max(segVolts.max()!, result.max)
+            }
+            
+            return result
+        }
+        
+        func ExtremeAmpsInSegmentRange(range:ClosedRange<Int>) -> (min:Double, max:Double) {
+            
+            var result = (min:Double.greatestFiniteMagnitude, max:-Double.greatestFiniteMagnitude)
+            for nextStep in stepResults {
+                
+                let segAmps = nextStep.amps[range]
+                result.min = min(segAmps.min()!, result.min)
+                result.max = max(segAmps.max()!, result.max)
+            }
+            
+            return result
+        }
+        
     }
+    
+    /// Coil Reslts windows
+    var coilResultsWindow:CoilResultsDisplayWindow? = nil
     
     /// The result of the latest simulation run that was executed
     var latestSimulationResult:SimulationResults? = nil
@@ -990,7 +1020,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             var wPrev:Float = 0.0
             for x_t in origSignal {
                 
-                var wNew = x_t + alpha * wPrev;
+                let wNew = x_t + alpha * wPrev;
                 signal.append(wNew - wPrev)
                 wPrev = wNew
             }
@@ -1209,10 +1239,60 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         
         if showCoilResultsDlog.runModal() == .OK {
             
-            DLog("Yahoo!")
+            let coilSelected = showCoilResultsDlog.coilPicker.indexOfSelectedItem
+            
+            var segmentRange:ClosedRange<Int> = 0...0
+            
+            do {
+                
+                let coilBase = coilSelected == 0 ? 0 : try phModel.GetHighestSection(coil: coilSelected - 1) + 1
+                let coilTop = try phModel.GetHighestSection(coil: coilSelected) + coilBase
+                segmentRange = coilBase...coilTop
+            }
+            catch {
+                
+                PCH_ErrorAlert(message: error.localizedDescription)
+                return
+            }
+            
+            doShowCoilResults(totalAnimationTime: showCoilResultsDlog.animationTimeTextField.doubleValue, segments: segmentRange, showVoltage: showCoilResultsDlog.voltagesCheckBox.state == .on, showCurrent: showCoilResultsDlog.currentsCheckBox.state == .on)
         }
     }
     
+    func doShowCoilResults(totalAnimationTime:Double, segments:ClosedRange<Int>, showVoltage:Bool, showCurrent:Bool) {
+        
+        guard let phModel = self.currentModel, let simResult = self.latestSimulationResult, !segments.isEmpty else {
+            
+            DLog("No model or simulation results!")
+            return
+        }
+        
+        if showVoltage {
+            
+            do {
+                
+                var runningDim = try phModel.AxialSpacesAboutSegment(segment: phModel.segments[segments.lowerBound]).below / 2.0
+                var xDims:[Double] = [runningDim * 1000.0]
+                for segIndex in segments {
+                    
+                    let theSegment = phModel.segments[segIndex]
+                    let axialSpaces = try phModel.AxialSpacesAboutSegment(segment: theSegment)
+                    runningDim += axialSpaces.below / 2.0 + theSegment.rect.height + axialSpaces.above / 2.0
+                    // segment dimensions are in meters, convert to mm
+                    xDims.append(runningDim * 1000.0)
+                }
+                
+                self.coilResultsWindow = CoilResultsDisplayWindow(windowTitle: "Voltage: Segments [\(segments.lowerBound)-\(segments.upperBound)]", showVoltages: true, xDimensions: xDims, resultData: simResult, segmentsToDisplay: segments, totalAnimationTime: totalAnimationTime)
+                
+                self.coilResultsWindow!.showWindow(self)
+            }
+            catch {
+                
+                PCH_ErrorAlert(message: error.localizedDescription)
+                return
+            }
+        }
+    }
     
     // MARK: File routines
     func doOpen(fileURL:URL) -> Bool {

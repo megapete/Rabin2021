@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="22505" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="32700.99.1234" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
     <dependencies>
-        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="22505"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="22689"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
     <objects>
         <customObject id="-2" userLabel="File's Owner" customClass="CoilResultsDisplayWindow" customModule="ImpulseDistribution" customModuleProvider="target">
             <connections>
-                <outlet property="continueButton" destination="se5-gp-TjO" id="3VC-TW-3AL"/>
-                <outlet property="continuePauseButton" destination="3qM-6b-HMk" id="AWV-8h-Dqo"/>
+                <outlet property="coilResultsView" destination="as7-V1-1Z7" id="o7d-Bt-Unf"/>
+                <outlet property="continueButton" destination="3qM-6b-HMk" id="CaZ-cy-hge"/>
                 <outlet property="startButton" destination="dhT-dy-tAP" id="rBQ-91-F8S"/>
                 <outlet property="stopButton" destination="d0W-Rn-abM" id="X4n-dj-7mM"/>
                 <outlet property="window" destination="F0z-JX-Cv5" id="gIp-Ho-8D9"/>
