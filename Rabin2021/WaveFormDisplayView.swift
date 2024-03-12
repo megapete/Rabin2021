@@ -47,7 +47,7 @@ class WaveFormDisplayView: NSView {
         
         // figure out the margin values using our scale
         let scaledMarginX = screenRes.width * margin * scale
-        let scaledMarginY = screenRes.height * margin * scale
+        let scaledMarginY = screenRes.height * margin * scale * scaleMultiplier.y
         
         self.bounds = newBoundsRect.insetBy(dx: -scaledMarginX, dy: -scaledMarginY)
         

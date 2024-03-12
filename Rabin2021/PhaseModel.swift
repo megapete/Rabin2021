@@ -331,6 +331,18 @@ class PhaseModel:Codable {
         return nil
     }
     
+    /// Function return the nodes directly associated with a segment . The nodes are returned as integer indices into the voltage matrix
+    func AdjacentNodes(to:Segment) -> (below:Int, above:Int) {
+        
+        guard let belowNode = nodes.first(where: { $0.aboveSegment == to }), let aboveNode = nodes.first(where: { $0.belowSegment == to }) else {
+            
+            DLog("No nodes match the segment!")
+            return (-1, -1)
+        }
+        
+        return (belowNode.number, aboveNode.number)
+    }
+    
     /// Function to return the axially adjacent Segments below and above the given Segment
     func AxiallyAdjacentSegments(to:Segment) throws -> (below:Segment?, above:Segment?) {
         

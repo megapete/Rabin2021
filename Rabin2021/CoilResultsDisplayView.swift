@@ -35,7 +35,8 @@ class CoilResultsDisplayView: NSView {
         var newBoundsRect = extremaRect
         
         // scale is always based on the x (coil-height, preferably in millimeters) axis
-        scale = extremaRect.width / self.frame.width
+        // don't use the margin space in the calcualtion of scale
+        scale = extremaRect.width / (self.frame.width - screenRes.width * margin)
         scaleMultiplier = NSPoint(x: 1.0, y: self.frame.height * scale / extremaRect.height)
         newBoundsRect.origin.y *= scaleMultiplier.y
         newBoundsRect.size.height *= scaleMultiplier.y
@@ -43,9 +44,10 @@ class CoilResultsDisplayView: NSView {
         
         // figure out the margin values using our scale
         let scaledMarginX = screenRes.width * margin * scale
-        let scaledMarginY = screenRes.height * margin * scale
+        let scaledMarginY = screenRes.height * margin * scale * scaleMultiplier.y
         
         self.bounds = newBoundsRect.insetBy(dx: -scaledMarginX, dy: -scaledMarginY)
+        DLog("Bounds: \(self.bounds)")
         
         self.needsDisplay = true
     }

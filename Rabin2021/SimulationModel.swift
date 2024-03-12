@@ -121,6 +121,24 @@ class SimulationModel {
         let pkVoltage:Double
         let type:Types
         
+        var timeToPeak:Double {
+            
+            get {
+                
+                switch self.type {
+                    
+                case .FullWave:
+                    return 1.2E-6
+                    
+                case .ChoppedWave:
+                    return 1.2E-6
+                    
+                case .Switching:
+                    return 100.0E-6
+                }
+            }
+        }
+        
         var timeToZero:Double {
             
             get {
@@ -218,7 +236,7 @@ class SimulationModel {
             
             let eddyResAtNewFreq = dc * (eddyRadialFactor * eddyPURadial + eddyAxialFactor * eddyPUAxial)
             
-            let newResistanceFactor = (jouleResAtNewFreq + eddyResAtNewFreq) / (dc * (1 + eddyPUAxial + eddyPURadial))
+            // let newResistanceFactor = (jouleResAtNewFreq + eddyResAtNewFreq) / (dc * (1 + eddyPUAxial + eddyPURadial))
             
             return jouleResAtNewFreq + eddyResAtNewFreq
         }

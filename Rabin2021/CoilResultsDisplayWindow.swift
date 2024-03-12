@@ -42,7 +42,7 @@ class CoilResultsDisplayWindow: NSWindowController {
     /// - Note: These dimensions correspond to the height of the nodes/discs. They should be in mm.
     let xDimensions:[Double]
     let resultData:AppController.SimulationResults
-    let segmentsToDisplay:ClosedRange<Int>
+    let indicesToDisplay:ClosedRange<Int>
     private var heightMultiplier:Double = 1.0
     
     override var acceptsFirstResponder: Bool {
@@ -50,12 +50,12 @@ class CoilResultsDisplayWindow: NSWindowController {
         return true
     }
     
-    init(windowTitle:String, showVoltages:Bool, xDimensions:[Double], resultData:AppController.SimulationResults, segmentsToDisplay:ClosedRange<Int>, totalAnimationTime:TimeInterval) {
+    init(windowTitle:String, showVoltages:Bool, xDimensions:[Double], resultData:AppController.SimulationResults, indicesToDisplay:ClosedRange<Int>, totalAnimationTime:TimeInterval) {
         
         self.windowTitle = windowTitle
         self.xDimensions = xDimensions
         self.resultData = resultData
-        self.segmentsToDisplay = segmentsToDisplay
+        self.indicesToDisplay = indicesToDisplay
         self.totalAnimationTime = totalAnimationTime
         self.showVoltages = showVoltages
         let timeSpan = resultData.timeSpan
@@ -73,7 +73,7 @@ class CoilResultsDisplayWindow: NSWindowController {
         self.xDimensions = []
         self.resultData = AppController.SimulationResults(waveForm: SimulationModel.WaveForm(type: .FullWave, pkVoltage: 0.0), peakVoltage: 0.0, stepResults: [])
         self.showVoltages = false
-        self.segmentsToDisplay = ClosedRange(uncheckedBounds: (0,0))
+        self.indicesToDisplay = ClosedRange(uncheckedBounds: (0,0))
         
         super.init(coder: coder)
         ALog("Unimplemented initializer")
@@ -112,8 +112,8 @@ class CoilResultsDisplayWindow: NSWindowController {
         coilResultsView.wantsLayer = true
         coilResultsView.layer?.backgroundColor = .black
         
-        var extremaRect = NSRect(x: 0, y: 0, width: 1000, height: 800)
-        if !resultData.stepResults.isEmpty, !segmentsToDisplay.isEmpty {
+        var extremaRect = NSRect(x: xDimensions.first!, y: 0, width: xDimensions.last! - xDimensions.first!, height: 800)
+        if !resultData.stepResults.isEmpty, !indicesToDisplay.isEmpty {
             
             // simTimeBrackets = ClosedRange(uncheckedBounds: (results.stepResults.first!.time, results.stepResults.last!.time))
             
@@ -126,27 +126,28 @@ class CoilResultsDisplayWindow: NSWindowController {
             
             if showVoltages {
                 
-                guard xDimensions.count == (segmentsToDisplay.upperBound - segmentsToDisplay.lowerBound + 2) else {
+                guard xDimensions.count == indicesToDisplay.count else {
                     
                     DLog("Incompatible dimensions!")
                     return
                 }
                 
-                let extremeVolts = resultData.ExtremeVoltsInSegmentRange(range: segmentsToDisplay)
+                
+                let extremeVolts = resultData.ExtremeVoltsInSegmentRange(nodeRange: indicesToDisplay)
+                extremaRect.origin.y = min(0, extremeVolts.min)
                 extremaRect.size.height = extremeVolts.max - extremeVolts.min
-                extremaRect.origin.y = extremeVolts.min
             }
             else {
                 
-                guard xDimensions.count == (segmentsToDisplay.upperBound - segmentsToDisplay.lowerBound + 1) else {
+                guard xDimensions.count == indicesToDisplay.count else {
                     
                     DLog("Incompatible dimensions!")
                     return
                 }
                 
-                let extremeAmps = resultData.ExtremeAmpsInSegmentRange(range: segmentsToDisplay)
+                let extremeAmps = resultData.ExtremeAmpsInSegmentRange(range: indicesToDisplay)
+                extremaRect.origin.y = min(0, extremeAmps.min)
                 extremaRect.size.height = extremeAmps.max - extremeAmps.min
-                extremaRect.origin.y = extremeAmps.min
             }
         }
         else {
@@ -256,7 +257,7 @@ class CoilResultsDisplayWindow: NSWindowController {
     
     func UpdatePathWithCurrentSimIndex() {
         
-        guard currentSimIndex >= 0, !resultData.stepResults.isEmpty, currentSimIndex < resultData.stepResults.count, !segmentsToDisplay.isEmpty else {
+        guard currentSimIndex >= 0, !resultData.stepResults.isEmpty, currentSimIndex < resultData.stepResults.count, !indicesToDisplay.isEmpty else {
             
             ALog("Bad index or no results!")
             return
@@ -272,7 +273,7 @@ class CoilResultsDisplayWindow: NSWindowController {
         let yMultiplier = heightMultiplier * coilResultsView.scaleMultiplier.y
         
         // in the interest of speed, we don't check that xDimensions has the correct count
-        let valOffset = segmentsToDisplay.lowerBound
+        let valOffset = indicesToDisplay.lowerBound
         for i in 0..<xDimensions.count {
             
             let nextPoint = NSPoint(x: xDimensions[i], y: yMultiplier * (showVoltages ? step.volts[i + valOffset] : step.amps[i + valOffset]))

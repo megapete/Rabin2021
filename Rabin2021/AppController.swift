@@ -138,14 +138,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             
             get {
                 
-                var result = (min:Double.greatestFiniteMagnitude, max:-Double.greatestFiniteMagnitude)
-                for nextStep in stepResults {
-                    
-                    result.min = min(nextStep.volts.min()!, result.min)
-                    result.max = max(nextStep.volts.max()!, result.max)
-                }
+                let nodeRange:ClosedRange<Int> = 0...stepResults[0].volts.count-1
                 
-                return result
+                return ExtremeVoltsInSegmentRange(nodeRange: nodeRange)
             }
         }
         
@@ -181,12 +176,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             return result
         }
         
-        func ExtremeVoltsInSegmentRange(range:ClosedRange<Int>) -> (min:Double, max:Double) {
+        func ExtremeVoltsInSegmentRange(nodeRange:ClosedRange<Int>) -> (min:Double, max:Double) {
             
             var result = (min:Double.greatestFiniteMagnitude, max:-Double.greatestFiniteMagnitude)
             for nextStep in stepResults {
                 
-                let segVolts = nextStep.volts[range]
+                let segVolts = nextStep.volts[nodeRange]
                 result.min = min(segVolts.min()!, result.min)
                 result.max = max(segVolts.max()!, result.max)
             }
@@ -1282,7 +1277,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                     xDims.append(runningDim * 1000.0)
                 }
                 
-                self.coilResultsWindow = CoilResultsDisplayWindow(windowTitle: "Voltage: Segments [\(segments.lowerBound)-\(segments.upperBound)]", showVoltages: true, xDimensions: xDims, resultData: simResult, segmentsToDisplay: segments, totalAnimationTime: totalAnimationTime)
+                let lowNode = phModel.AdjacentNodes(to: phModel.segments[segments.lowerBound]).below
+                let hiNode = phModel.AdjacentNodes(to: phModel.segments[segments.upperBound]).above
+                self.coilResultsWindow = CoilResultsDisplayWindow(windowTitle: "Voltage: Segments [\(segments.lowerBound)-\(segments.upperBound)]", showVoltages: true, xDimensions: xDims, resultData: simResult, indicesToDisplay: ClosedRange(uncheckedBounds: (lowNode, hiNode)), totalAnimationTime: totalAnimationTime)
                 
                 self.coilResultsWindow!.showWindow(self)
             }
