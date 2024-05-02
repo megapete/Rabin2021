@@ -52,6 +52,9 @@ class PhaseModel:Codable {
     /// This matrix is multiplied by the voltage vector to yield the voltage drop across each section. The matrix is made up of 1's and -1's to achieve this.
     var B:PchMatrix? = nil
     
+    /// The inductance for the model in unfactored form. ** NOTE: This is currently being used for debugging purposes only and may eventually be removed,
+    var unfactoredM:PchMatrix? = nil
+    
     /// The inductance matrix for the model. **NOTE: This matrix is in Cholesky-factorized form
     var M:PchMatrix? = nil
     
@@ -105,6 +108,7 @@ class PhaseModel:Codable {
             case CapacitanceNotCalculated
             case NodeHasNoSegments
             case SameCoilTwice
+            case SegmentIsShieldingElement
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -201,6 +205,10 @@ class PhaseModel:Codable {
                     
                     return "The same coil has been used for both parameters (they must be different)."
                 }
+                else if self.type == .SegmentIsShieldingElement {
+                    
+                    return "The segment specified is a static ring or radial shield."
+                }
                 
                 return "An unknown error occurred."
             }
@@ -237,12 +245,46 @@ class PhaseModel:Codable {
         return result
     }
     
+    /// Get the range of the segments that make up the given coil, as a closed range of the indices into the inductance matrix, with lowerbound equal to the lowest disc and upperbound equal to the highest
+    func SegmentRange(coil:Int) throws -> ClosedRange<Int> {
+        
+        guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+            
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
+        }
+        
+        let coilSegments = CoilSegments()
+        
+        do {
+            
+            var lowBound = 0
+            for i in 0..<coil {
+                
+                lowBound += try GetHighestSection(coil: i) + 1
+            }
+            
+            let highestSegment = try GetHighestSection(coil: coil)
+            let highBound = lowBound + highestSegment
+            
+            return ClosedRange(uncheckedBounds: (lowBound, highBound))
+        }
+        catch {
+            
+            throw error
+        }
+    }
+    
     /// Return the index into the inductance matrix for the given Segment
     func SegmentIndex(segment:Segment) throws -> Int {
         
         guard self.segments.contains(segment) else {
             
             throw PhaseModelError(info: "", type: .SegmentNotInModel)
+        }
+        
+        guard !segment.isStaticRing && !segment.isRadialShield else {
+            
+            throw PhaseModelError(info: "Illegal Segment!", type: .SegmentIsShieldingElement)
         }
         
         var result = 0
@@ -332,7 +374,15 @@ class PhaseModel:Codable {
     }
     
     /// Function return the nodes directly associated with a segment . The nodes are returned as integer indices into the voltage matrix
+    /// - Parameter to: A segment in the model (this must not be a shielding element, otherwise an error occurs)
+    /// - Note: The segment passed to the routine must not be either a static ring or a radial shield. It is an error to pass a shielding element.
     func AdjacentNodes(to:Segment) -> (below:Int, above:Int) {
+        
+        guard !to.isStaticRing && !to.isRadialShield else {
+            
+            ALog("Shielding elements do not have NODES!")
+            return (-1, -1)
+        }
         
         guard let belowNode = nodes.first(where: { $0.aboveSegment == to }), let aboveNode = nodes.first(where: { $0.belowSegment == to }) else {
             
@@ -972,10 +1022,10 @@ class PhaseModel:Codable {
                 }
                 else { // topmost segment of the coil
                     
-                    let newNode = Node(number: nextNodeNum, aboveSegment: nil, belowSegment: thisSegment, z: thisSegment.z2)
+                    let topNode = Node(number: nextNodeNum, aboveSegment: nil, belowSegment: thisSegment, z: thisSegment.z2)
                     result.append(nextNodeNum)
                     nextNodeNum += 1
-                    self.nodeStore.append(newNode)
+                    self.nodeStore.append(topNode)
                 }
             }
         }
@@ -993,10 +1043,11 @@ class PhaseModel:Codable {
         
         do {
             
+            let coilSegments = self.CoilSegments()
             // start with the series capacitances
-            for i in 0..<self.segments.count {
+            for i in 0..<coilSegments.count {
                 
-                let nextSegment = self.segments[i]
+                let nextSegment = coilSegments[i]
                 
                 if nextSegment.radialPos < 0 || nextSegment.axialPos < 0 {
                     
@@ -1312,10 +1363,17 @@ class PhaseModel:Codable {
                 var sumK = 0.0
                 for nextShuntCap in nextNode.shuntCapacitances {
                     
-                    // ground nodes are not included in the capacitance matrix
+                    // ground nodes are not included in the capacitance matrix, but everything else is
                     if nextShuntCap.toNode >= 0 {
                     
-                        // C[nextNode.number, nextShuntCap.toNode] = -nextShuntCap.capacitance
+                        // in case there's alrady something in that cell
+                        var existingCap = 0.0
+                        if let cap:Double = C[nextNode.number, nextShuntCap.toNode] {
+                            
+                            existingCap = cap
+                        }
+                        
+                        C[nextNode.number, nextShuntCap.toNode] = existingCap - nextShuntCap.capacitance
                     }
                     
                     sumK += nextShuntCap.capacitance
@@ -1345,7 +1403,7 @@ class PhaseModel:Codable {
     // Calculate the capacitance to the tank and to the other coils of the outermost coil (per Kulkarne 7.15)
     func OuterShuntCapacitance() throws -> Double {
         
-        guard let lastCoilSeg = self.segmentStore.last else {
+        guard let lastCoilSeg = self.CoilSegments().last else {
             
             throw PhaseModelError(info: "Outermost coil", type: .CoilDoesNotExist)
         }
@@ -1949,7 +2007,7 @@ class PhaseModel:Codable {
     /// Check if there is a Segment at the specified location and if so, return it (otherwise, return nil)
     func SegmentAt(location:LocStruct) -> Segment? {
         
-        return self.segmentStore.first(where: {$0.location == location})
+        return self.CoilSegments().first(where: {$0.location == location})
     }
     
     
@@ -1963,7 +2021,7 @@ class PhaseModel:Codable {
         }
         
         // I believe that this is in order but it should be tested
-        let coilSections = self.segmentStore.filter({$0.radialPos == coil})
+        let coilSections = self.segmentStore.filter({$0.radialPos == coil && !$0.isStaticRing && !$0.isRadialShield})
         
         return coilSections.last!.axialPos
     }

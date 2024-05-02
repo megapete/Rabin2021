@@ -206,9 +206,9 @@ class SimulationModel {
     let A:[Double] = []
     let B:[Double] = []
     
-    /// vDropInd is the voltage drop across a segment represented as an array with the segment index as the index into the array, and a 2-element tuple as the value. The tuple holds the node indices: (i-1, i)
+    /// vDropInd is the voltage drop across a segment represented as an array with the segment index as the index into the array, and a 2-element tuple as the value. The tuple holds the node indices: (i-1, i), where 'i' is as defined in DelVecchio
     var vDropInd:[(belowNode:Int, aboveNode:Int)] = []
-    /// iDrop is the current drop at a node represented as an array with the node index as the index into the array, and a 2-element tuple as the value. The tuple holds the segment indices: (j, j+1)
+    /// iDrop is the current drop at a node represented as an array with the node index as the index into the array, and a 2-element tuple as the value. The tuple holds the segment indices: (j, j+1), where 'j' is as defined in Delvecchio
     var iDropInd:[(belowSeg:Int, aboveSeg:Int)] = []
     
     struct Resistance {
@@ -389,13 +389,13 @@ class SimulationModel {
             }
         }
         
-        vDropInd = Array(repeating: (-1,-1), count: model.segments.count)
+        vDropInd = Array(repeating: (-1,-1), count: model.CoilSegments().count)
         iDropInd = Array(repeating: (-1,-1), count: model.nodes.count)
         
         // Populate the xDrop arrays. Note that any tuple entry with a '-1' in it should be ignored (there shouldn't be any in vDropInd, but there will be some in iDropInd)
         for nextNode in model.nodes {
             
-            if let belowSegment = nextNode.belowSegment {
+            if let belowSegment = nextNode.belowSegment, !belowSegment.isStaticRing, !belowSegment.isRadialShield {
                 
                 do {
                     
@@ -410,7 +410,7 @@ class SimulationModel {
                 }
             }
             
-            if let aboveSegment = nextNode.aboveSegment {
+            if let aboveSegment = nextNode.aboveSegment, !aboveSegment.isStaticRing, !aboveSegment.isRadialShield {
                 
                 do {
                     
@@ -449,6 +449,8 @@ class SimulationModel {
                 modelC[fromIndex, toIndex] = -1.0
             }
         }
+        
+        model.fixedC = modelC
         
         DLog("Sparsity of C': \(modelC.Sparsity())")
         guard let sparseC = modelC.asSparseMatrix() else {

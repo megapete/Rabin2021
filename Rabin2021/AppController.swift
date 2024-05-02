@@ -282,6 +282,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         
         // save the Cholesky-factored form of the inductance matrix for later computations
         let indMatrix = PchMatrix(srcMatrix: feIndMatrix)
+        // first we'll copy and save the unfactored matrix for debugging
+        model.unfactoredM = PchMatrix(srcMatrix: indMatrix)
         guard indMatrix.TestPositiveDefinite(overwriteExistingMatrix: true) else {
             
             DLog("Matrix is not positive-definite!")
@@ -1151,7 +1153,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             
             // we need to convert the segment numbers passed in to their associated nodes (top and bottom) without repeats
             var nodeSet:Set<Int> = []
-            let segmentsToShow = model.segments[segments]
+            let segmentsToShow = model.CoilSegments()[segments]
             for nextNode in model.nodes {
                 
                 if let belowSeg = nextNode.belowSegment {
@@ -1240,9 +1242,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             
             do {
                 
-                let coilBase = coilSelected == 0 ? 0 : try phModel.GetHighestSection(coil: coilSelected - 1) + 1
-                let coilTop = try phModel.GetHighestSection(coil: coilSelected) + coilBase
-                segmentRange = coilBase...coilTop
+                segmentRange = try phModel.SegmentRange(coil: coilSelected)
+                // let coilBase = coilSelected == 0 ? 0 : try phModel.GetHighestSection(coil: coilSelected - 1) + 1
+                // let coilTop = try phModel.GetHighestSection(coil: coilSelected) + coilBase
+                // segmentRange = coilBase...coilTop
             }
             catch {
                 
@@ -1264,21 +1267,37 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         
         if showVoltage {
             
+            // The node dimensions will look wrong for end discs that do not have static rings (the above/below value returned by AxialSpacesAboutSegment() will be half the distance to the core) so we'll set a maximum for those
+            let greatestExtremeDimension = 0.1 * meterPerInch
+            
             do {
                 
-                var runningDim = try phModel.AxialSpacesAboutSegment(segment: phModel.segments[segments.lowerBound]).below / 2.0
+                let coilSegments = phModel.CoilSegments()
+                let coilIndex = coilSegments[segments.lowerBound].radialPos
+                let highestSection = try phModel.GetHighestSection(coil: coilIndex)
+                
+                var runningDim = try phModel.AxialSpacesAboutSegment(segment: coilSegments[segments.lowerBound]).below / 2.0
+                
+                if coilSegments[segments.lowerBound].axialPos == 0 {
+                    
+                    runningDim = min(greatestExtremeDimension, runningDim)
+                }
+                
                 var xDims:[Double] = [runningDim * 1000.0]
                 for segIndex in segments {
                     
-                    let theSegment = phModel.segments[segIndex]
-                    let axialSpaces = try phModel.AxialSpacesAboutSegment(segment: theSegment)
-                    runningDim += axialSpaces.below / 2.0 + theSegment.rect.height + axialSpaces.above / 2.0
+                    let theSegment = coilSegments[segIndex]
+                    let realAxialSpaces = try phModel.AxialSpacesAboutSegment(segment: theSegment)
+                    let axialSpaceBelow = theSegment.axialPos == 0 ? min(greatestExtremeDimension, realAxialSpaces.below / 2.0) : realAxialSpaces.below / 2.0
+                    let axialSpaceAbove = theSegment.axialPos == highestSection ? min(greatestExtremeDimension, realAxialSpaces.above / 2.0) : realAxialSpaces.above / 2.0
+                    runningDim += axialSpaceBelow + theSegment.rect.height + axialSpaceAbove
                     // segment dimensions are in meters, convert to mm
                     xDims.append(runningDim * 1000.0)
                 }
                 
-                let lowNode = phModel.AdjacentNodes(to: phModel.segments[segments.lowerBound]).below
-                let hiNode = phModel.AdjacentNodes(to: phModel.segments[segments.upperBound]).above
+                let lowNode = phModel.AdjacentNodes(to: coilSegments[segments.lowerBound]).below
+                let hiNode = phModel.AdjacentNodes(to: coilSegments[segments.upperBound]).above
+                
                 self.coilResultsWindow = CoilResultsDisplayWindow(windowTitle: "Voltage: Segments [\(segments.lowerBound)-\(segments.upperBound)]", showVoltages: true, xDimensions: xDims, resultData: simResult, indicesToDisplay: ClosedRange(uncheckedBounds: (lowNode, hiNode)), totalAnimationTime: totalAnimationTime)
                 
                 self.coilResultsWindow!.showWindow(self)
@@ -1327,11 +1346,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         }
     }
     
+    /// Save the unfactored inductance matrix as a CSV file
     @IBAction func handleSaveRawMmatrix(_ sender: Any) {
         
-        guard let feModel = self.currentFePhase, let Mmatrix = feModel.inductanceMatrix, feModel.inductanceMatrixIsValid else {
+        guard let model = self.currentModel, let Mmatrix = model.unfactoredM else {
             
-            DLog("FeModel or inductance matrix nil (or invalid)!")
             return
         }
         
@@ -1368,6 +1387,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         }
     }
     
+    /// Save the factored inductance 
     @IBAction func handleSaveMmatrix(_ sender: Any) {
         
         guard let model = self.currentModel, let Mmatrix = model.M else {
@@ -1498,9 +1518,15 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     }
     
     @IBAction func handleSaveFixedCmatrix(_ sender: Any) {
-        /*
+        
         guard let model = self.currentModel, let Cmatrix = model.fixedC else {
             
+            return
+        }
+        
+        guard let uttptxtType = UTType(filenameExtension: "txt") else {
+            
+            DLog("Couldn't create UTType for txt!")
             return
         }
         
@@ -1509,7 +1535,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         let savePanel = NSSavePanel()
         savePanel.title = "Fixed Capacitance Matrix"
         savePanel.message = "Save Capacitance Matrix as CSV file"
-        savePanel.allowedFileTypes = ["txt"]
+        savePanel.allowedContentTypes = [uttptxtType]
         savePanel.allowsOtherFileTypes = false
         
         if savePanel.runModal() == .OK
@@ -1528,7 +1554,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                 }
             }
         }
-         */
+         
     }
     
     
