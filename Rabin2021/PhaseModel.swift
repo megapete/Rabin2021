@@ -52,7 +52,7 @@ class PhaseModel:Codable {
     /// This matrix is multiplied by the voltage vector to yield the voltage drop across each section. The matrix is made up of 1's and -1's to achieve this.
     var B:PchMatrix? = nil
     
-    /// The inductance for the model in unfactored form. ** NOTE: This is currently being used for debugging purposes only and may eventually be removed,
+    /// The inductance for the model in unfactored form. 
     var unfactoredM:PchMatrix? = nil
     
     /// The inductance matrix for the model. **NOTE: This matrix is in Cholesky-factorized form

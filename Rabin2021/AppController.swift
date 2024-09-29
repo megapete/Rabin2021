@@ -27,6 +27,54 @@ import PchDialogBoxPackage
 import PchProgressIndicatorPackage
 import PchFiniteElementPackage
 
+extension PchMatrix {
+    
+    func SubMatrix(rowRange:Range<Int>, colRange:Range<Int>) -> PchMatrix? {
+        
+        guard !rowRange.isEmpty && !colRange.isEmpty else {
+            
+            return nil
+        }
+        
+        // clamp the range extrema to the actual matrix dimensions
+        let minRow = max(0, rowRange.lowerBound)
+        let minCol = max(0, colRange.lowerBound)
+        let maxRow = min(rowRange.upperBound, self.rows)
+        let maxCol = min(colRange.upperBound, self.columns)
+        
+        let subMatrix = PchMatrix(matrixType: .general, numType: self.numType, rows: UInt(maxRow - minRow), columns: UInt(maxCol - minCol))
+        
+        var newI = 0
+        for i in minRow..<maxRow {
+            
+            var newJ = 0
+            for j in minCol..<maxCol {
+                
+                if self.numType == .Double {
+                    
+                    if let newValue:Double = self[i, j]  {
+                        
+                        subMatrix[newI, newJ] = newValue
+                    }
+                }
+                else {
+                    
+                    if let newValue:Complex = self[i, j] {
+                        
+                        subMatrix[newI, newJ] = newValue
+                    }
+                }
+                
+                newJ += 1
+            }
+            
+            newI += 1
+        }
+        
+        return subMatrix
+    }
+}
+
 class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhaseDelegate {
     
     /// The main window of the program
@@ -282,7 +330,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         
         // save the Cholesky-factored form of the inductance matrix for later computations
         let indMatrix = PchMatrix(srcMatrix: feIndMatrix)
-        // first we'll copy and save the unfactored matrix for debugging
+        // before we factor the matrix, we'll copy and save the unfactored matrix for other uses
         model.unfactoredM = PchMatrix(srcMatrix: indMatrix)
         guard indMatrix.TestPositiveDefinite(overwriteExistingMatrix: true) else {
             
@@ -1196,6 +1244,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                 
                 wfData.append(stepData)
             }
+            
+            DLog("Max / Min Voltages: \(maxValue)V / \(minValue)V")
             
             // only calculate and apply a multiplier if the results are not all zeros
             if abs(minValue) > 0 || abs(maxValue) > 0 {
@@ -2266,21 +2316,81 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     
     @IBAction func handleMainWdgInductances(_ sender: Any) {
         
-        
+        let indMatrix = self.doMainWindingInductances()
         
     }
     
     /// Function to calculate the self-inductance of each main winding (as defined by the XL file) as well as the mutual inductance to every other main winding. It is assumed that all Segments of all Windings are in the circuit. The amp values are those calculated using the highest kVA in the XL file.
     /// - Returns: A matrix where entry i,i is the self-inductance of the winding in the 'i' radial position (0 closest to the core), and entry i,j (and j,i) is the mutual inductance beyween coil i and coil j
-    func doMainWindingInductances() /* -> PCH_BaseClass_Matrix? */ {
+    func doMainWindingInductances() -> PchMatrix? {
         
-        guard let model = self.currentModel, let xlFile = currentXLfile else {
+        guard let model = self.currentModel, let xlFile = currentXLfile, let indMatrix = model.unfactoredM, let fePhase = self.currentFePhase else {
             
-            DLog("Both a valid model and a valid XL file must be defined!")
-            return // nil
+            DLog("A valid model, a valid XL file, and an unfactored inductance matrix must be defined!")
+            return nil
         }
         
-        return // nil
+        let segments = model.CoilSegments()
+        let numCoils = segments.last!.radialPos + 1
+        
+        let coilIndMatrix = PchMatrix(matrixType: .general, numType: .Double, rows: UInt(numCoils), columns: UInt(numCoils))
+        
+        // NOTE: This all assumes that the index in the 'segments' array matches the index in the 'indMatrix' matrix, which I believe it does
+        do {
+            for i in 0..<numCoils {
+            
+                let segRange = try model.SegmentRange(coil: i)
+                
+                for nextRow in segRange {
+                    
+                    for nextCol in segRange {
+                        
+                        if let nextValue:Double = indMatrix[nextRow, nextCol], let oldValue:Double = coilIndMatrix[i, i] {
+                            
+                            // The mutual inductances should be doubled, but ONLY if we are reading them once. The matrix is symmetrical and we'll just go over every single entry and add it.
+                            coilIndMatrix[i, i] = oldValue + nextValue
+                        }
+                        else {
+                            
+                            ALog("Error!")
+                        }
+                    }
+                }
+            }
+        }
+        catch {
+            
+            let alert = NSAlert(error: error)
+            let _ = alert.runModal()
+            return nil
+        }
+        
+        // get the energy from the last PchFePhase used
+        let leakageEnergy = fePhase.EnergyFromInductance()
+        DLog("Energy: \(leakageEnergy)")
+        
+        // use DelVecchio eq. 4.22 to solve for M12
+        let section0 = fePhase.window.sections[0]
+        // Current calculations are a pain because this routine assumes all turns are in the circuit. For a coil with off-load taps, this is the low-current tap, which is NOT what is saved as the 'seriesRMSCurremt'. That is actually the nominal current.
+        let I0 = (section0.seriesRmsCurrent * Complex(sqrt(2))).length
+        guard let section1Index = try? model.SegmentRange(coil: 1).lowerBound else {
+            
+            DLog("Bad section index!")
+            return nil
+        }
+        let section1 = fePhase.window.sections[section1Index]
+        let I1 = -(section1.seriesRmsCurrent * Complex(sqrt(2))).length
+        var M12 = 2 * leakageEnergy
+        M12 -= coilIndMatrix[0, 0]! * I0 * I0
+        M12 -= coilIndMatrix[1, 1]! * I1 * I1
+        M12 /= 2
+        M12 /= I0
+        M12 /= I1
+        coilIndMatrix[0, 1] = M12
+        coilIndMatrix[1, 0] = M12
+        
+        print(coilIndMatrix)
+        return coilIndMatrix
     }
     
     /*
@@ -2332,7 +2442,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         
         if menuItem == self.mainWdgInductanceMenuItem || menuItem == self.mainWdgImpedanceMenuItem {
             
-            return self.currentModel != nil && self.currentXLfile != nil
+            return self.currentModel != nil && self.currentXLfile != nil && self.currentModel?.unfactoredM != nil
         }
         
         // get local copies of variables that we access often
