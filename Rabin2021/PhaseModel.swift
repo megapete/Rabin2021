@@ -1049,6 +1049,7 @@ class PhaseModel:Codable {
                 
                 let nextSegment = coilSegments[i]
                 
+                // this shouldn't happen
                 if nextSegment.radialPos < 0 || nextSegment.axialPos < 0 {
                     
                     continue
@@ -1063,10 +1064,11 @@ class PhaseModel:Codable {
                 let staticRingUnder = try StaticRingBelow(segment: nextSegment, recursiveCheck: false)
                 let staticRingOver = try StaticRingAbove(segment: nextSegment, recursiveCheck: false)
                 
+                /*
                 if staticRingOver != nil {
                     
                     print("Stop here")
-                }
+                } */
                 
                 if staticRingOver != nil && staticRingUnder != nil {
                     
@@ -1132,6 +1134,8 @@ class PhaseModel:Codable {
                 
                 // Get the shunt capacitance between the 'i-th' coil and the i-1 coil
                 let totalCapacitance = try CoilInnerShuntCapacitance(coil: i)
+                
+                ZAssert(totalCapacitance > 0.0, message: "Got negative total capacitance")
                 
                 // choose the higher of the two heights as the reference to use
                 let referenceHt = max(innerCoilHt, outerCoilHt)
@@ -1543,7 +1547,7 @@ class PhaseModel:Codable {
             throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
         
-        let coilSections = self.segmentStore.filter({$0.radialPos == coil})
+        let coilSections = self.CoilSegments().filter({$0.radialPos == coil})
         let coilBottom = coilSections[0].z1
         let coilTop = coilSections.last!.z2
         let coilHeight = coilTop - coilBottom

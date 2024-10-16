@@ -206,9 +206,9 @@ class SimulationModel {
     let A:[Double] = []
     let B:[Double] = []
     
-    /// vDropInd is the voltage drop across a segment represented as an array with the segment index as the index into the array, and a 2-element tuple as the value. The tuple holds the node indices: (i-1, i), where 'i' is as defined in DelVecchio
+    /// vDropInd is the voltage drop across a segment represented as an array with the segment index as the index into the COIL-SEGMENT array, and a 2-element tuple as the value. The tuple holds the node indices: (i-1, i), where 'i' is as defined in DelVecchio
     var vDropInd:[(belowNode:Int, aboveNode:Int)] = []
-    /// iDrop is the current drop at a node represented as an array with the node index as the index into the array, and a 2-element tuple as the value. The tuple holds the segment indices: (j, j+1), where 'j' is as defined in Delvecchio
+    /// iDrop is the current drop at a node represented as an array with the node index as the index into the NODE array, and a 2-element tuple as the value. The tuple holds the segment indices: (j, j+1), where 'j' is as defined in Delvecchio
     var iDropInd:[(belowSeg:Int, aboveSeg:Int)] = []
     
     struct Resistance {
