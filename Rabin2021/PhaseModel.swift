@@ -2014,7 +2014,6 @@ class PhaseModel:Codable {
         return self.CoilSegments().first(where: {$0.location == location})
     }
     
-    
     /// Get the axial index of the highest (max Z) section for the given coil
     /// - note: This returns the axial position equal to: highestDiscNumber - lowestDiscNumber for the coil in question
     func GetHighestSection(coil:Int) throws -> Int {
