@@ -593,7 +593,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         }
     }
     
-    /// Initialize the model using the xlFile. If there is already a model in memory, it is lost.
+    /// Initialize the model using the BasicSections already created. If currentXLFile is non-nil, some extra initialziation is done _USING THAT FILE_. **If this behaviour is not desired, set currentXLFile to nil before calling this function.** If there is already a model in memory, it is lost.
     func initializeModel(basicSections:[BasicSection]) -> PhaseModel?
     {
         // a transformer needs at least two basic sections, so...
@@ -615,7 +615,22 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         
         for coil in 0..<numCoils {
             
-            // print("Doing connectors for coil \(coil)")
+            var coilIsDoubleStack = false
+            var coilHasEmbeddedTaps = false
+            var coilCenterGap = 0.0
+            var coilLowerDvGap = 0.0
+            var coilUpperDvGap = 0.0
+            
+            if let xlFile = self.currentXLfile {
+                
+                let wdg = xlFile.windings[coil]
+                coilIsDoubleStack = wdg.isDoubleStack
+                coilHasEmbeddedTaps = wdg.numTurns.max != wdg.numTurns.nom || wdg.numTurns.min != wdg.numTurns.nom
+                coilCenterGap = wdg.centerGap
+                coilLowerDvGap = wdg.bottomDvGap
+                coilUpperDvGap = wdg.topDvGap
+            }
+            
             
             let axialIndices = BasicSection.CoilEnds(coil: coil, basicSections: basicSections)
             
@@ -656,6 +671,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                     
                     let newSegment = try Segment(basicSections: [nextSection],  realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentWindowMultiplier * self.currentCore!.realWindowHeight)
                     
+                    /*
+                    if newSegment.serialNumber == 81 {
+                        
+                        print("Stop")
+                    } */
+                    
                     // The "incoming" connection
                     let incomingConnection = Segment.Connection(segment: lastSegment, connector: incomingConnector, equivalentConnections: [])
                     newSegment.connections.append(incomingConnection)
@@ -665,6 +686,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                         
                         let outgoingConnection = Segment.Connection(segment: newSegment, connector: outgoingConnector)
                         prevSegment.connections.append(outgoingConnection)
+                        prevSegment.AddEquivalentConnections(to: outgoingConnection, equ: [Segment.Connection.EquivalentConnection(parent: newSegment, connection: incomingConnection)])
                         // The outgoingConnection of the previous section is equivalent to the incomingConnection of this section, so mark it as such
                         newSegment.AddEquivalentConnections(to: incomingConnection, equ: [Segment.Connection.EquivalentConnection(parent: prevSegment, connection: outgoingConnection)])
                     }

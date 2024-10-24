@@ -503,6 +503,7 @@ class PhaseModel:Codable {
     func NodesOfType(connType:Connector.Location) -> [Node] {
         
         var result:[Node] = []
+        
         for nextNode in nodes {
             
             if let aboveSegment = nextNode.aboveSegment {
@@ -517,6 +518,7 @@ class PhaseModel:Codable {
             }
             
             if let belowSegment = nextNode.belowSegment {
+                
                 
                 for nextConnection in belowSegment.connections {
                     
@@ -951,7 +953,7 @@ class PhaseModel:Codable {
         return true
     }
     
-    /// Essentially, this function creates (overwrites) the Nodes that are attached to the top and bottom of each segment in the current model. A Node may be shared, as in when a Segment.Connection exists between two Segments, _particularly_ the top of one Segment that is connected to the bottom of the next axial Segment. All other Connections (ie: between different coils or non-contiguous Segments) will only be handled when refining the capacitance matrix prior to impulse simulation. The function returns an array of Ints that are the index (in the Nodes array) to  the LAST (uppermost) Node for each *coil*.
+    /// Essentially, this function creates (overwrites) the Nodes that are attached to the top and bottom of each segment in the current model. A Node may be shared, as in when a Segment.Connection exists between two Segments, _particularly_ the top of one Segment that is connected to the bottom of the next axial Segment.Note that if there is no connection between two adjacent segments, a floating node is created on each segment. All other Connections (ie: between different coils or non-contiguous Segments) will only be handled when refining the capacitance matrix prior to impulse simulation. The function returns an array of Ints that are the index (in the Nodes array) to  the LAST (uppermost) Node for each *coil*.
     func SetNodes() throws -> [Int] {
         
         guard self.segments.count > 0 else {

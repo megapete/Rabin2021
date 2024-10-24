@@ -1097,7 +1097,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         let fixedLineWidthSize = self.convert(NSSize(width: self.defaultLineWidth, height: self.defaultLineWidth), from: self.scrollView)
         NSBezierPath.defaultLineWidth = fixedLineWidthSize.width
         
-        // In the interest of speed, we do not simply set "needsDisplay" to true for every single update that is required (that will cause a complete redraw of the entire view rectangle, which takes time). Instead, most of the routines will call setNeedsDisplay(invalidRect:NSRect) with a rectangle (in TransformerView coordinates) that needs to be redrawn. The system collects these rectangles and then passes it through to the draw routine. We could either check ourselves if we need to redraw certain elements, or use the NSView routine "needsToDraw" and oly redraw if that routine returns 'true'. This is the kind of advanced programming that is needed if you are drawing a LOT of different elements at a somewhat high speed (for instance, the zoom and select rectangles).
+        // In the interest of speed, we do not simply set "needsDisplay" to true for every single update that is required (that will cause a complete redraw of the entire view rectangle, which takes time). Instead, most of the routines will call setNeedsDisplay(invalidRect:NSRect) with a rectangle (in TransformerView coordinates) that needs to be redrawn. The system collects these rectangles and then passes it through to the draw routine. We could either check ourselves if we need to redraw certain elements, or use the NSView routine "needsToDraw" and only redraw if that routine returns 'true'. This is the kind of advanced programming that is needed if you are drawing a LOT of different elements at a somewhat high speed (for instance, the zoom and select rectangles).
         
         if self.needsToDraw(self.boundary) {
             
@@ -1671,7 +1671,20 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 }
                 
                 // segmentPath.SetUpConnectors(maskSegments: maskSegments)
+                
                 self.needsDisplay = true
+                
+                do {
+                    
+                    let _ = try model.SetNodes()
+                }
+                catch {
+                    
+                    let alert = NSAlert(error: error)
+                    let _ = alert.runModal()
+                    return
+                }
+                
                 break
             }
         }

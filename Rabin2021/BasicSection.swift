@@ -197,6 +197,23 @@ struct BasicSection:Codable {
     
     // MARK: Convenience routines for arrays of BasicSections
     
+    /// Routine to find the locations of any non-standard axial gaps in a collection of BasicSections. The return value is an array of indices of the section(s) directly BELOW the gap(s)
+    static func AxialGapIndices(basicSections:[BasicSection]) -> [Int] {
+        
+        if basicSections.isEmpty {
+            
+            return []
+        }
+        
+        var result:[Int] = []
+        
+        for i in 0..<basicSections.count {
+            
+        }
+        
+        return result
+    }
+    
     /// Routine to find the number of coils (radial positions) in the given array of BasicSections. It is assumed that the array is in the order of the locations of the BasicSections.
     static func NumberOfCoils(basicSections:[BasicSection]) -> Int {
         

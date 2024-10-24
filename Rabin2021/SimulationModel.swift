@@ -254,6 +254,8 @@ class SimulationModel {
     
     var finalConnectedNodes:[Node:Set<Node>] = [:]
     
+    /// Initialize the simulation model using the PhaseModel
+    /// - parameter model: A properly set-up phase model, complete with grounding and impulsed nodes
     init?(model:PhaseModel) {
         
         guard !model.nodes.isEmpty, !model.segments.isEmpty, model.M != nil, model.C != nil else {
