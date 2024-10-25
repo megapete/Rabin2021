@@ -620,6 +620,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             var coilCenterGap = 0.0
             var coilLowerDvGap = 0.0
             var coilUpperDvGap = 0.0
+            // locations are the basicSection index immediately UNDER the pertinent gap
+            var centerGapLocation = -1
+            var lowerGapLocation = -1
+            var upperGapLocation = -1
             
             if let xlFile = self.currentXLfile {
                 
@@ -629,8 +633,20 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                 coilCenterGap = wdg.centerGap
                 coilLowerDvGap = wdg.bottomDvGap
                 coilUpperDvGap = wdg.topDvGap
+                
+                // use != for XOR
+                if coilIsDoubleStack != coilHasEmbeddedTaps {
+                    
+                    centerGapLocation = basicSections.count / 2
+                }
+                
+                // only cut the upper and lower gaps if the coil is double-stacked AND has taps
+                if coilIsDoubleStack && coilHasEmbeddedTaps {
+                    
+                    lowerGapLocation = basicSections.count / 4
+                    upperGapLocation = basicSections.count * 3 / 4
+                }
             }
-            
             
             let axialIndices = BasicSection.CoilEnds(coil: coil, basicSections: basicSections)
             
@@ -697,14 +713,17 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                     outgoingConnector = Connector(fromLocation: fromConnection, toLocation: toConnection)
                     incomingConnector = Connector(fromLocation: toConnection, toLocation: fromConnection)
                     
-                    // we need to add the final outgoing connector for the last axial section
-                    if nextSectionIndex == axialIndices.last {
+                    // we need to add the final outgoing connector for the last axial section (or tapping/DV gaps)
+                    if nextSectionIndex == axialIndices.last || nextSectionIndex == centerGapLocation || nextSectionIndex == lowerGapLocation || nextSectionIndex == upperGapLocation {
                         
                         outgoingConnector = Connector(fromLocation: fromConnection, toLocation: .floating)
                         newSegment.connections.append(Segment.Connection(segment: nil, connector: outgoingConnector))
+                        lastSegment = nil
                     }
-                    
-                    lastSegment = newSegment
+                    else {
+                        
+                        lastSegment = newSegment
+                    }
                     
                     result.append(newSegment)
                 }
