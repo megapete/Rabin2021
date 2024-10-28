@@ -617,9 +617,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             
             var coilIsDoubleStack = false
             var coilHasEmbeddedTaps = false
-            var coilCenterGap = 0.0
-            var coilLowerDvGap = 0.0
-            var coilUpperDvGap = 0.0
+            
             // locations are the basicSection index immediately UNDER the pertinent gap
             var centerGapLocation = -1
             var lowerGapLocation = -1
@@ -630,21 +628,19 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                 let wdg = xlFile.windings[coil]
                 coilIsDoubleStack = wdg.isDoubleStack
                 coilHasEmbeddedTaps = wdg.numTurns.max != wdg.numTurns.nom || wdg.numTurns.min != wdg.numTurns.nom
-                coilCenterGap = wdg.centerGap
-                coilLowerDvGap = wdg.bottomDvGap
-                coilUpperDvGap = wdg.topDvGap
+                let numDiscs = wdg.numAxialSections
                 
                 // use != for XOR
                 if coilIsDoubleStack != coilHasEmbeddedTaps {
                     
-                    centerGapLocation = basicSections.count / 2
+                    centerGapLocation = numDiscs / 2 - 1
                 }
                 
                 // only cut the upper and lower gaps if the coil is double-stacked AND has taps
                 if coilIsDoubleStack && coilHasEmbeddedTaps {
                     
-                    lowerGapLocation = basicSections.count / 4
-                    upperGapLocation = basicSections.count * 3 / 4
+                    lowerGapLocation = numDiscs / 4 - 1
+                    upperGapLocation = numDiscs * 3 / 4 - 1
                 }
             }
             
@@ -654,6 +650,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                 
                 return nil
             }
+            
+            centerGapLocation = centerGapLocation >= 0 ? centerGapLocation + axialIndices.first : -1
+            lowerGapLocation = lowerGapLocation >= 0 ? lowerGapLocation + axialIndices.first : -1
+            upperGapLocation = upperGapLocation >= 0 ? upperGapLocation + axialIndices.first : -1
             
             // Initialize the first connector as though the coil type is a layer/sheet
             var incomingConnector = Connector(fromLocation: .inside_lower, toLocation: .floating)
@@ -678,6 +678,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             
             var lastSegment:Segment? = nil
             var outgoingConnector = incomingConnector
+            var forceUpperConnector = false
+            
             
             do {
                 
@@ -708,6 +710,22 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                     }
                     
                     // set up the connector for the outgoing connection next time through the loop
+                    
+                    // first we need to fix things if we had offload tapping gaps on the previous pass through the loop
+                    if forceUpperConnector {
+                        
+                        if incomingConnector.fromIsOutside {
+                            
+                            incomingConnector = Connector(fromLocation: .outside_lower, toLocation: incomingConnector.toLocation)
+                        }
+                        else {
+                            
+                            incomingConnector = Connector(fromLocation: .inside_lower, toLocation: incomingConnector.toLocation)
+                        }
+                        
+                        forceUpperConnector = false
+                    }
+                    
                     let fromConnection = Connector.AlternatingLocation(lastLocation: incomingConnector.fromLocation)
                     let toConnection = Connector.StandardToLocation(fromLocation: fromConnection)
                     outgoingConnector = Connector(fromLocation: fromConnection, toLocation: toConnection)
@@ -717,6 +735,24 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                     if nextSectionIndex == axialIndices.last || nextSectionIndex == centerGapLocation || nextSectionIndex == lowerGapLocation || nextSectionIndex == upperGapLocation {
                         
                         outgoingConnector = Connector(fromLocation: fromConnection, toLocation: .floating)
+                        
+                        // we need to do some fancy stuff for tapping gaps so that the view shows their terminations correctly
+                        if (nextSectionIndex != axialIndices.last) {
+                            
+                            if outgoingConnector.fromIsOutside {
+                                
+                                outgoingConnector = Connector(fromLocation: .outside_center, toLocation: .floating)
+                                incomingConnector = Connector(fromLocation: .outside_center, toLocation: .floating)
+                            }
+                            else {
+                                
+                                outgoingConnector = Connector(fromLocation: .inside_center, toLocation: .floating)
+                                incomingConnector = Connector(fromLocation: .inside_center, toLocation: .floating)
+                            }
+                            
+                            forceUpperConnector = true
+                        }
+                        
                         newSegment.connections.append(Segment.Connection(segment: nil, connector: outgoingConnector))
                         lastSegment = nil
                     }

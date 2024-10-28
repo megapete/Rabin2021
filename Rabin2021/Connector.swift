@@ -25,6 +25,7 @@ struct Connector:Codable, Hashable {
         case inside_lower
         
         // special locations (that are not really locations but more accurately, 'terminations')
+        case unassigned
         case floating
         case ground
         case impulse
@@ -46,6 +47,14 @@ struct Connector:Codable, Hashable {
         get {
             
             return self.fromLocation == .center_upper || self.fromLocation == .outside_upper || self.fromLocation == .inside_upper
+        }
+    }
+    
+    var fromIsCenter:Bool {
+        
+        get {
+            
+            return self.fromLocation == .outside_center || self.fromLocation == .inside_center
         }
     }
     
