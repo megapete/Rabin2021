@@ -1001,6 +1001,11 @@ class PhaseModel:Codable {
                 
                 let thisSegment = nextCoil[i]
                 
+                if thisSegment.serialNumber >= 80 && thisSegment.serialNumber <= 82 {
+                    
+                    print("Stop!")
+                }
+                
                 let nodeZ = prevSegment == nil ? thisSegment.z1 : (prevSegment!.z2 + thisSegment.z1) / 2.0
                 let newNode = Node(number: nextNodeNum, aboveSegment: thisSegment, belowSegment: prevSegment, z: nodeZ)
                 nextNodeNum += 1
@@ -1113,6 +1118,8 @@ class PhaseModel:Codable {
             
             // First, we update the Nodes array. This sets up the nodes on each Segment, and returns an array of the topmost nodes (as an Int index into the self.nodeStore array) for the coils.
             let coilTopNodes = try SetNodes()
+            
+            let floatingNodes = self.NodesOfType(connType: .floating)
             
             // Init some local vars
             var innerFirstNode = 0
