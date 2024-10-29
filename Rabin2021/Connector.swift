@@ -58,6 +58,14 @@ struct Connector:Codable, Hashable {
         }
     }
     
+    var fromIsLower:Bool {
+        
+        get {
+            
+            return self.fromLocation == .center_lower || self.fromLocation == .outside_lower || self.fromLocation == .inside_lower
+        }
+    }
+    
     var toIsOutside:Bool {
         
         get {

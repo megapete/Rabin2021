@@ -510,7 +510,7 @@ class PhaseModel:Codable {
                 
                 for nextConnection in aboveSegment.connections {
                     
-                    if nextConnection.segment == nil && !nextConnection.connector.fromIsUpper && nextConnection.connector.toLocation == connType {
+                    if nextConnection.segment == nil && nextConnection.connector.fromIsLower && nextConnection.connector.toLocation == connType {
                         
                         result.append(nextNode)
                     }
@@ -519,10 +519,9 @@ class PhaseModel:Codable {
             
             if let belowSegment = nextNode.belowSegment {
                 
-                
                 for nextConnection in belowSegment.connections {
                     
-                    if nextConnection.segment == nil && nextConnection.connector.fromIsUpper && nextConnection.connector.toLocation == connType {
+                    if nextConnection.segment == nil && !nextConnection.connector.fromIsLower && nextConnection.connector.toLocation == connType {
                         
                         result.append(nextNode)
                     }
