@@ -1000,10 +1000,11 @@ class PhaseModel:Codable {
                 
                 let thisSegment = nextCoil[i]
                 
+                /*
                 if thisSegment.serialNumber >= 80 && thisSegment.serialNumber <= 82 {
                     
                     print("Stop!")
-                }
+                } */
                 
                 let nodeZ = prevSegment == nil ? thisSegment.z1 : (prevSegment!.z2 + thisSegment.z1) / 2.0
                 let newNode = Node(number: nextNodeNum, aboveSegment: thisSegment, belowSegment: prevSegment, z: nodeZ)
