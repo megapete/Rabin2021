@@ -322,7 +322,7 @@ class PhaseModel:Codable {
         return abs(seg1index - seg2index) == 1
     }
     
-    /// Return an array of non-axially-adjacent connections that come to one of the segment's terminals. This is useful when "fixing" the C-array since the axial-adjacent connections are taken care of _implicitly_ in the array, while connections to other coils, non-adjacent discs, or impulse/ground need to be _explicity_ handled
+    /// Return an array of non-axially-adjacent connections (and tapping gap connections added by the user - these will be adjacent, but for the purposes of the simulation they will not be)  that come to one of the segment's terminals. This is useful when "fixing" the C-array since the axial-adjacent connections are taken care of _implicitly_ in the array, while connections to other coils, non-adjacent discs, or impulse/ground need to be _explicity_ handled
     func NonAdjacentConnections(segment:Segment) -> [Segment.Connection] {
         
         var result:[Segment.Connection] = []
@@ -333,6 +333,8 @@ class PhaseModel:Codable {
                 
                 if SegmentsAreAdjacent(segment1: segment, segment2: connSeg) {
                     
+                    // check if it's a tapping gap connection that bridges the gap
+                    
                     continue
                 }
             }
@@ -341,6 +343,37 @@ class PhaseModel:Codable {
         }
         
         return result
+    }
+    
+    func IsTappingGap(segment1:Segment, segment2:Segment) -> Bool {
+        
+        // the idea here is to check if there are "floating" connections between the two segments, and if so, this must be a tapping gap (used for offload taps)
+        
+        // take care of the case where these are not even adjacent, which is handled differently
+        guard !SegmentsAreAdjacent(segment1: segment1, segment2: segment2) else {
+            
+            return false
+        }
+        
+        // sort the segments by their serial numbers (axial positions)
+        var segments = [segment1, segment2]
+        segments.sort(by: {$0.serialNumber < $1.serialNumber})
+        
+        for nextConnection1 in segments[0].connections {
+            
+            if !nextConnection1.connector.fromIsLower && nextConnection1.connector.toLocation == .floating {
+                
+                for nextConnection2 in segments[1].connections {
+                    
+                    if !nextConnection2.connector.fromIsUpper && nextConnection2.connector.toLocation == .floating {
+                        
+                        return true
+                    }
+                }
+            }
+        }
+        
+        return false
     }
     
     func NodeAt(segment:Segment, connection:Segment.Connection) -> Node? {
@@ -499,31 +532,64 @@ class PhaseModel:Codable {
         return newB
     }
     
-    /// Function to return all nodes in the model that are of the given connector location (this includes impulse, ground, and floating)
+    /// Function to return all nodes in the model that are _directly_ connected to one of impulse, ground, or floating via a Segment.connection to one of those locations.
     func NodesOfType(connType:Connector.Location) -> [Node] {
         
         var result:[Node] = []
         
         for nextNode in nodes {
             
-            if let aboveSegment = nextNode.aboveSegment {
+            if let aboveSegment = nextNode.aboveSegment, let belowSegment = nextNode.belowSegment {
                 
+                var addedNode = false
+                // in this case, only ground and impulse are possible
+                if connType == .impulse || connType == .ground {
+                    
+                    for nextConnection in aboveSegment.connections {
+                        
+                        if nextConnection.connector.fromIsLower && nextConnection.connector.toLocation == connType {
+                            
+                            result.append(nextNode)
+                            addedNode = true
+                            break
+                        }
+                    }
+                    
+                    if !addedNode {
+                        
+                        for nextConnection in belowSegment.connections {
+                            
+                            if nextConnection.connector.fromIsUpper && nextConnection.connector.toLocation == connType {
+                                
+                                result.append(nextNode)
+                                break
+                            }
+                        }
+                    }
+                    
+                }
+            }
+            else if let aboveSegment = nextNode.aboveSegment {
+                
+                // belowSegment is nil
                 for nextConnection in aboveSegment.connections {
                     
-                    if nextConnection.segment == nil && nextConnection.connector.fromIsLower && nextConnection.connector.toLocation == connType {
+                    if !nextConnection.connector.fromIsUpper && nextConnection.connector.toLocation == connType {
                         
                         result.append(nextNode)
+                        break
                     }
                 }
             }
-            
-            if let belowSegment = nextNode.belowSegment {
+            else if let belowSegment = nextNode.belowSegment {
                 
+                // aboveSegment is nil
                 for nextConnection in belowSegment.connections {
                     
-                    if nextConnection.segment == nil && !nextConnection.connector.fromIsLower && nextConnection.connector.toLocation == connType {
+                    if !nextConnection.connector.fromIsLower && nextConnection.connector.toLocation == connType {
                         
                         result.append(nextNode)
+                        break
                     }
                 }
             }
@@ -1119,7 +1185,7 @@ class PhaseModel:Codable {
             // First, we update the Nodes array. This sets up the nodes on each Segment, and returns an array of the topmost nodes (as an Int index into the self.nodeStore array) for the coils.
             let coilTopNodes = try SetNodes()
             
-            let floatingNodes = self.NodesOfType(connType: .floating)
+            // let floatingNodes = self.NodesOfType(connType: .floating)
             
             // Init some local vars
             var innerFirstNode = 0
