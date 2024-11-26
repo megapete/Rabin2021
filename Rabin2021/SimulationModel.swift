@@ -252,6 +252,9 @@ class SimulationModel {
     var groundedNodes:Set<Node> = []
     var floatingNodes:Set<Node> = []
     
+    /// User-settable value to represent the resistance of a "floating" node (required to avoid problems with zeroes and infinities)
+    var floatingResistanceToGround = 1.0E50
+    
     var finalConnectedNodes:[Node:Set<Node>] = [:]
     
     /// Initialize the simulation model using the PhaseModel
@@ -394,7 +397,7 @@ class SimulationModel {
         vDropInd = Array(repeating: (-1,-1), count: model.CoilSegments().count)
         iDropInd = Array(repeating: (-1,-1), count: model.nodes.count)
         
-        // Populate the xDrop arrays. Note that any tuple entry with a '-1' in it should be ignored (there shouldn't be any in vDropInd, but there will be some in iDropInd)
+        // Populate the xDrop arrays. Note that after this loop, any tuple entry with a '-1' in it should be ignored (there shouldn't be any in vDropInd, but there will be some in iDropInd)
         for nextNode in model.nodes {
             
             if let belowSegment = nextNode.belowSegment, !belowSegment.isStaticRing, !belowSegment.isRadialShield {
@@ -866,6 +869,14 @@ class SimulationModel {
             
             let index = nextImpulse.number
             currentDrop[index] = waveForm.dV(t)
+        }
+        
+        // Add a huge resistance (Rs) to ground for any "floating nodes". According to DelVecchio 3E (in the paragraph immediately after equation 14.5), the value Vi/Rs is added to the left-hand side (so, subtracted from the RHS)
+        for nextFloater in floatingNodes {
+            
+            let index = nextFloater.number
+            let Rs = self.floatingResistanceToGround
+            currentDrop[index] -= (V[index] / Rs)
         }
         
         // Add the currentDrops of connected terminals to the "parent" terminal and then set the connected-terminal's currentDrop to 0

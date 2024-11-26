@@ -1396,6 +1396,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             
             // The node dimensions will look wrong for end discs that do not have static rings (the above/below value returned by AxialSpacesAboutSegment() will be half the distance to the core) so we'll set a maximum for those
             let greatestExtremeDimension = 0.1 * meterPerInch
+            // For offload taps (and, eventually, breaks within the coil) set the distance to the "floating" node as 1mm
+            let axialBreakDimension = 0.001
             
             do {
                 
@@ -1403,23 +1405,63 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                 let coilIndex = coilSegments[segments.lowerBound].radialPos
                 let highestSection = try phModel.GetHighestSection(coil: coilIndex)
                 
-                var runningDim = try phModel.AxialSpacesAboutSegment(segment: coilSegments[segments.lowerBound]).below / 2.0
-                
+                // var runningDim = 0.0 // try phModel.AxialSpacesAboutSegment(segment: coilSegments[segments.lowerBound]).below / 2.0
+                /*
                 if coilSegments[segments.lowerBound].axialPos == 0 {
                     
                     runningDim = min(greatestExtremeDimension, runningDim)
-                }
+                } */
                 
-                var xDims:[Double] = [runningDim * 1000.0]
+                var xDims:[Double] = [] // [runningDim * 1000.0]
+                
                 for segIndex in segments {
                     
                     let theSegment = coilSegments[segIndex]
+                    
+                    let realAxialSpaces = try phModel.AxialSpacesAboutSegment(segment: theSegment)
+                    var axialSpaceBelow = realAxialSpaces.below / 2.0
+                    var axialSpaceAbove = realAxialSpaces.above / 2.0
+                    
+                    // we'll fix some variables for taking care of coil starts, ends, and tapping breaks
+                    if theSegment.axialPos == 0 {
+                        
+                        xDims = [(theSegment.z1 - greatestExtremeDimension) * 1000.0]
+                        axialSpaceBelow = greatestExtremeDimension
+                    }
+                    else if segIndex == segments.lowerBound {
+                        
+                        xDims = [(theSegment.z1 - axialSpaceBelow) * 1000.0]
+                    }
+                    else if theSegment.axialPos == highestSection {
+                        
+                        axialSpaceAbove = greatestExtremeDimension
+                    }
+                    else {
+                        
+                        let prevSegment = coilSegments[segIndex - 1]
+                        let nextSegment = coilSegments[segIndex + 1]
+                        let tappingGapBelow = phModel.IsTappingGap(segment1: prevSegment, segment2: theSegment)
+                        let tappingGapAbove = phModel.IsTappingGap(segment1: theSegment, segment2: nextSegment)
+                        if tappingGapAbove {
+                            
+                            axialSpaceAbove = axialBreakDimension
+                        }
+                        else if tappingGapBelow {
+                            
+                            let startDim = theSegment.z1 - axialBreakDimension
+                            xDims.append(startDim * 1000.0)
+                            axialSpaceBelow = axialBreakDimension
+                        }
+                    }
+                    
+                    /*
                     let realAxialSpaces = try phModel.AxialSpacesAboutSegment(segment: theSegment)
                     let axialSpaceBelow = theSegment.axialPos == 0 ? min(greatestExtremeDimension, realAxialSpaces.below / 2.0) : realAxialSpaces.below / 2.0
                     let axialSpaceAbove = theSegment.axialPos == highestSection ? min(greatestExtremeDimension, realAxialSpaces.above / 2.0) : realAxialSpaces.above / 2.0
-                    runningDim += axialSpaceBelow + theSegment.rect.height + axialSpaceAbove
+                    */
+                    let newDim = xDims.last! / 1000.0 + axialSpaceBelow + theSegment.rect.height + axialSpaceAbove
                     // segment dimensions are in meters, convert to mm
-                    xDims.append(runningDim * 1000.0)
+                    xDims.append(newDim * 1000.0)
                 }
                 
                 let lowNode = phModel.AdjacentNodes(to: coilSegments[segments.lowerBound]).below

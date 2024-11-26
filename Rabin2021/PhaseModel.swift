@@ -253,7 +253,7 @@ class PhaseModel:Codable {
             throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
         
-        let coilSegments = CoilSegments()
+        // let coilSegments = CoilSegments()
         
         do {
             
@@ -350,14 +350,14 @@ class PhaseModel:Codable {
         // the idea here is to check if there are "floating" connections between the two segments, and if so, this must be a tapping gap (used for offload taps)
         
         // take care of the case where these are not even adjacent, which is handled differently
-        guard !SegmentsAreAdjacent(segment1: segment1, segment2: segment2) else {
+        guard SegmentsAreAdjacent(segment1: segment1, segment2: segment2) else {
             
             return false
         }
         
-        // sort the segments by their serial numbers (axial positions)
+        // sort the segments by their axial positions
         var segments = [segment1, segment2]
-        segments.sort(by: {$0.serialNumber < $1.serialNumber})
+        segments.sort(by: {$0.axialPos < $1.axialPos})
         
         for nextConnection1 in segments[0].connections {
             
@@ -404,6 +404,27 @@ class PhaseModel:Codable {
         }
         
         return nil
+    }
+    
+    /// Function to determine if there is a shared node between two segments (as in when two adjacent discs are actually connected together)
+    /// - Parameter segment1: The first segment to consider
+    /// - Parameter segment2: The other segment to consider
+    /// - returns: True if a shared node exists, otherwise false
+    /// - Note: If segment1 and segment2 are not adjacent, this function returns false
+    func SharedNodeExists(segment1:Segment, segment2:Segment) -> Bool {
+        
+        guard SegmentsAreAdjacent(segment1: segment1, segment2: segment2) else {
+            
+            return false
+        }
+        
+        var segments = [segment1, segment2]
+        segments.sort(by: {$0.axialPos < $1.axialPos})
+        
+        let aboveNodeLowerSegment = AdjacentNodes(to: segments[0]).above
+        let belowNodeUpperSegment = AdjacentNodes(to: segments[1]).below
+        
+        return aboveNodeLowerSegment == belowNodeUpperSegment
     }
     
     /// Function return the nodes directly associated with a segment . The nodes are returned as integer indices into the voltage matrix
