@@ -82,6 +82,14 @@ struct Connector:Codable, Hashable {
         }
     }
     
+    var toIsLower:Bool {
+        
+        get {
+            
+            return self.toLocation == .center_lower || self.toLocation == .outside_lower || self.toLocation == .inside_lower
+        }
+    }
+    
     func Inverse() -> Connector {
         
         return Connector(fromLocation: self.toLocation, toLocation: self.fromLocation)

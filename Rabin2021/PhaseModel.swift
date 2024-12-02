@@ -331,9 +331,8 @@ class PhaseModel:Codable {
             
             if let connSeg = nextConnection.segment {
                 
-                if SegmentsAreAdjacent(segment1: segment, segment2: connSeg) {
-                    
-                    // check if it's a tapping gap connection that bridges the gap
+                // If the segments are adjacent but they are NOT a tapping gap, ignore the connection
+                if SegmentsAreAdjacent(segment1: segment, segment2: connSeg) && !self.IsTappingGap(segment1: segment, segment2: connSeg) {
                     
                     continue
                 }
@@ -376,31 +375,70 @@ class PhaseModel:Codable {
         return false
     }
     
-    func NodeAt(segment:Segment, connection:Segment.Connection) -> Node? {
+    func NodeAt(fromSegment:Segment, toSegment:Segment?, connection:Segment.Connection) -> Node? {
         
         for nextNode in nodes {
             
-            if let aboveSegment = nextNode.aboveSegment {
+            if nextNode.aboveSegment != fromSegment && nextNode.belowSegment != fromSegment {
                 
-                if aboveSegment == segment {
+                continue
+            }
+            else if nextNode.aboveSegment == fromSegment {
                 
+                if !connection.connector.fromIsLower {
+                    
+                    continue
+                }
+                
+                if let otherSegment = toSegment {
+                    
+                    if nextNode.belowSegment == otherSegment && connection.connector.toIsUpper {
+                        
+                        return nextNode
+                    }
+                }
+            }
+            else if nextNode.belowSegment == fromSegment {
+                
+                if !connection.connector.fromIsUpper {
+                    
+                    continue
+                }
+                
+                if let otherSegment = toSegment {
+                    
+                    if nextNode.aboveSegment == otherSegment && connection.connector.toIsLower {
+                        
+                        return nextNode
+                    }
+                }
+            }
+            
+            // at this point, if fromSegment and toSegment are axially adjacent and the connection parameter was such that the only possible node was the "shared" node, that node would already have been returned
+            
+            if let otherSegment = toSegment {
+                
+                
+            }
+            else {
+                
+                // This is a bit ugly. We will return the first node that connects to fromSegment and matches all the connector criteria.
+                if nextNode.aboveSegment == fromSegment {
+                    
                     if !connection.connector.fromIsUpper {
                         
                         return nextNode
                     }
                 }
-            }
-            
-            if let belowSegment = nextNode.belowSegment {
-                
-                if belowSegment == segment {
-                
-                    if connection.connector.fromIsUpper {
+                else {
+                    
+                    if !connection.connector.fromIsLower {
                         
                         return nextNode
                     }
                 }
             }
+            
         }
         
         return nil
@@ -425,6 +463,25 @@ class PhaseModel:Codable {
         let belowNodeUpperSegment = AdjacentNodes(to: segments[1]).below
         
         return aboveNodeLowerSegment == belowNodeUpperSegment
+    }
+    
+    /// Function to return the shared node between two axially-adjacent segments, if any
+    /// - Parameter segment1: The first segment to consider
+    /// - Parameter segment2: The other segment to consider
+    /// - returns: An optional value equal to the shared node (if it exists), otherwise nil
+    /// - Note: If segment1 and segment2 are not adjacent, this function returns nil
+    func SharedNode(segment1:Segment, segment2:Segment) -> Node? {
+        
+        if SharedNodeExists(segment1: segment1, segment2: segment2) {
+            
+            var segments = [segment1, segment2]
+            segments.sort(by: {$0.axialPos < $1.axialPos})
+            
+            let aboveNodeLowerSegment = AdjacentNodes(to: segments[0]).above
+            return self.nodeStore[aboveNodeLowerSegment]
+        }
+        
+        return nil
     }
     
     /// Function return the nodes directly associated with a segment . The nodes are returned as integer indices into the voltage matrix
@@ -1259,7 +1316,7 @@ class PhaseModel:Codable {
                 else {
                     
                     let innerLastNode = coilTopNodes[i - 1]
-                    innerCoilHt = self.nodeStore[innerLastNode].z
+                    innerCoilHt = self.nodeStore[innerLastNode].z - self.nodeStore[innerFirstNode].z
                     
                     for j in innerFirstNode...innerLastNode {
                         

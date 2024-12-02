@@ -300,22 +300,25 @@ class SimulationModel {
                 
                 for nextConnection in nonAdjConns {
                     
-                    if let nodeKey = model.NodeAt(segment: nextSegment, connection: nextConnection) {
+                    if let nodeKey = model.NodeAt(fromSegment: nextSegment, toSegment: nil, connection: nextConnection) {
                         
                         if let connSegment = nextConnection.segment {
                             
-                            if let nodeValue = model.NodeAt(segment: connSegment, connection: nextConnection) {
+                            //if model.SharedNode(segment1: nextSegment, segment2: connSegment) != nodeKey {
                                 
-                                if var connArray = connectedNodes[nodeKey] {
+                            if let nodeValue = model.NodeAt(fromSegment: nextSegment, toSegment: connSegment, connection: nextConnection) {
                                     
-                                    connArray.insert(nodeValue)
-                                    connectedNodes[nodeKey] = connArray
+                                    if var connArray = connectedNodes[nodeKey] {
+                                        
+                                        connArray.insert(nodeValue)
+                                        connectedNodes[nodeKey] = connArray
+                                    }
+                                    else {
+                                        
+                                        connectedNodes[nodeKey] = [nodeValue]
+                                    }
                                 }
-                                else {
-                                    
-                                    connectedNodes[nodeKey] = [nodeValue]
-                                }
-                            }
+                            // }
                         }
                     }
                 }
