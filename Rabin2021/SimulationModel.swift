@@ -276,6 +276,8 @@ class SimulationModel {
         groundedNodes = Set(model.NodesOfType(connType: .ground))
         floatingNodes = Set(model.NodesOfType(connType: .floating))
         
+        finalConnectedNodes = [:]
+        
         guard !impulsedNodes.isEmpty && !groundedNodes.isEmpty else {
             
             DLog("Model requires at least one impulsed and one grounded node!")
@@ -300,26 +302,20 @@ class SimulationModel {
                 
                 for nextConnection in nonAdjConns {
                     
-                    if let nodeKey = model.NodeAt(fromSegment: nextSegment, toSegment: nil, connection: nextConnection) {
+                    // get the source and dest nodes of the connection
+                    guard let srcNode = model.NodeAt(segment: nextSegment, useFrom: true, connector: nextConnection.connector), let destSegment = nextConnection.segment, let destNode = model.NodeAt(segment: destSegment, useFrom: false, connector: nextConnection.connector) else {
                         
-                        if let connSegment = nextConnection.segment {
-                            
-                            //if model.SharedNode(segment1: nextSegment, segment2: connSegment) != nodeKey {
-                                
-                            if let nodeValue = model.NodeAt(fromSegment: nextSegment, toSegment: connSegment, connection: nextConnection) {
-                                    
-                                    if var connArray = connectedNodes[nodeKey] {
-                                        
-                                        connArray.insert(nodeValue)
-                                        connectedNodes[nodeKey] = connArray
-                                    }
-                                    else {
-                                        
-                                        connectedNodes[nodeKey] = [nodeValue]
-                                    }
-                                }
-                            // }
-                        }
+                        ALog("WTF?")
+                        break
+                    }
+                    
+                    if connectedNodes.keys.contains(srcNode) {
+                        
+                        connectedNodes[srcNode]!.insert(destNode)
+                    }
+                    else {
+                        
+                        connectedNodes[srcNode] = [destNode]
                     }
                 }
             }

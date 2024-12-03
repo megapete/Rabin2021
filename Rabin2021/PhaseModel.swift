@@ -331,14 +331,12 @@ class PhaseModel:Codable {
             
             if let connSeg = nextConnection.segment {
                 
-                // If the segments are adjacent but they are NOT a tapping gap, ignore the connection
-                if SegmentsAreAdjacent(segment1: segment, segment2: connSeg) && !self.IsTappingGap(segment1: segment, segment2: connSeg) {
+                // If the segments aren't adjacent or they are a tapping gap, add the connection
+                if !SegmentsAreAdjacent(segment1: segment, segment2: connSeg) || self.IsTappingGap(segment1: segment, segment2: connSeg) {
                     
-                    continue
+                    result.append(nextConnection)
                 }
             }
-            
-            result.append(nextConnection)
         }
         
         return result
@@ -375,7 +373,39 @@ class PhaseModel:Codable {
         return false
     }
     
-    func NodeAt(fromSegment:Segment, toSegment:Segment?, connection:Segment.Connection) -> Node? {
+    /// A function to return the node that is connected to the given segment at the given location.
+    /// - Parameter segment: The segment that connects to the node
+    /// - Parameter useFrom: If true, use the 'from...' field of 'connector', otherwise use the 'to...' field
+    /// - Parameter connector: The connector to check
+    /// - Returns: If the node exists, the Node; otherwise nil
+    func NodeAt(segment:Segment, useFrom:Bool, connector:Connector) -> Node? {
+        
+        // let connLocation:Connector.Location = useFrom ? connector.fromLocation : connector.toLocation
+        let connIsUpper = useFrom ? connector.fromIsUpper : connector.toIsUpper
+        let connIsLower = useFrom ? connector.fromIsLower : connector.toIsLower
+        
+        for nextNode in nodeStore {
+            
+            if nextNode.aboveSegment == segment {
+                
+                if connIsLower {
+                    
+                    return nextNode
+                }
+            }
+            else if nextNode.belowSegment == segment {
+                
+                if connIsUpper {
+                    
+                    return nextNode
+                }
+            }
+        }
+        
+        return nil
+    }
+    
+    func NodeAt_old(fromSegment:Segment, toSegment:Segment?, connection:Segment.Connection) -> Node? {
         
         for nextNode in nodes {
             
