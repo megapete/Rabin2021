@@ -380,11 +380,20 @@ class PhaseModel:Codable {
     /// - Returns: If the node exists, the Node; otherwise nil
     func NodeAt(segment:Segment, useFrom:Bool, connector:Connector) -> Node? {
         
-        // let connLocation:Connector.Location = useFrom ? connector.fromLocation : connector.toLocation
+        
         let connIsUpper = useFrom ? connector.fromIsUpper : connector.toIsUpper
         let connIsLower = useFrom ? connector.fromIsLower : connector.toIsLower
         
         for nextNode in nodeStore {
+            
+            // coding gymnastics for floating connectors that are on the outside_center or inside_center (used for center-taping gaps)
+            if !(connIsLower || connIsUpper) {
+                
+                if nextNode.belowSegment == segment && nextNode.aboveSegment == nil || nextNode.aboveSegment == segment && nextNode.belowSegment == nil {
+                    
+                    return nextNode
+                }
+            }
             
             if nextNode.aboveSegment == segment {
                 

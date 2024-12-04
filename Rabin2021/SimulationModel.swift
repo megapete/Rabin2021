@@ -309,6 +309,16 @@ class SimulationModel {
                         break
                     }
                     
+                    // if the source and/or destination node is in the 'floatingNodes' set, remove it/them
+                    if floatingNodes.contains(srcNode) {
+                        
+                        floatingNodes.remove(srcNode)
+                    }
+                    if floatingNodes.contains(destNode) {
+                        
+                        floatingNodes.remove(destNode)
+                    }
+                    
                     if connectedNodes.keys.contains(srcNode) {
                         
                         connectedNodes[srcNode]!.insert(destNode)

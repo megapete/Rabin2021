@@ -689,12 +689,6 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                     
                     let newSegment = try Segment(basicSections: [nextSection],  realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentWindowMultiplier * self.currentCore!.realWindowHeight)
                     
-                    /*
-                    if newSegment.serialNumber == 81 {
-                        
-                        print("Stop")
-                    } */
-                    
                     // The "incoming" connection
                     let incomingConnection = Segment.Connection(segment: lastSegment, connector: incomingConnector, equivalentConnections: [])
                     newSegment.connections.append(incomingConnection)
