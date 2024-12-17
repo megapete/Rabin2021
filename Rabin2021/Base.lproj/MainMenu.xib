@@ -343,9 +343,6 @@
                             </menuItem>
                             <menuItem title="Winding Impedance Pairs..." id="Fsb-Bk-n0a">
                                 <modifierMask key="keyEquivalentModifierMask"/>
-                                <connections>
-                                    <action selector="handleWdgImpedancePairs:" target="XWq-sU-B2V" id="mQq-is-0b5"/>
-                                </connections>
                             </menuItem>
                         </items>
                     </menu>
@@ -371,6 +368,12 @@
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
                                     <action selector="handleShowWaveforms:" target="XWq-sU-B2V" id="FsU-il-qPE"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Show Voltage Differences" id="2EP-Oc-ejX">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleShowVoltageDiffs:" target="XWq-sU-B2V" id="bmF-Kd-HYh"/>
                                 </connections>
                             </menuItem>
                             <menuItem isSeparatorItem="YES" id="e0t-hG-akE"/>

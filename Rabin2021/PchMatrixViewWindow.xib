@@ -6,9 +6,9 @@
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
     <objects>
-        <customObject id="-2" userLabel="File's Owner" customClass="WaveFormDisplayWindow" customModule="ImpulseDistribution" customModuleProvider="target">
+        <customObject id="-2" userLabel="File's Owner" customClass="PchMatrixViewWindow" customModule="ImpulseDistribution" customModuleProvider="target">
             <connections>
-                <outlet property="waveFormView" destination="er6-tU-V0n" id="TNI-5t-Szs"/>
+                <outlet property="viewController" destination="Wvu-C7-dcb" id="cVF-jO-hxm"/>
                 <outlet property="window" destination="F0z-JX-Cv5" id="gIp-Ho-8D9"/>
             </connections>
         </customObject>
@@ -17,22 +17,17 @@
         <window title="Window" allowsToolTipsWhenApplicationIsInactive="NO" autorecalculatesKeyViewLoop="NO" releasedWhenClosed="NO" animationBehavior="default" id="F0z-JX-Cv5">
             <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" resizable="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
-            <rect key="contentRect" x="196" y="240" width="814" height="561"/>
+            <rect key="contentRect" x="196" y="240" width="799" height="542"/>
             <rect key="screenRect" x="0.0" y="0.0" width="2560" height="1415"/>
             <view key="contentView" id="se5-gp-TjO">
-                <rect key="frame" x="0.0" y="0.0" width="814" height="561"/>
+                <rect key="frame" x="0.0" y="0.0" width="799" height="542"/>
                 <autoresizingMask key="autoresizingMask"/>
-                <subviews>
-                    <customView fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="er6-tU-V0n" customClass="WaveFormDisplayView" customModule="ImpulseDistribution" customModuleProvider="target">
-                        <rect key="frame" x="0.0" y="0.0" width="814" height="561"/>
-                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
-                    </customView>
-                </subviews>
             </view>
             <connections>
                 <outlet property="delegate" destination="-2" id="0bl-1N-AYu"/>
             </connections>
-            <point key="canvasLocation" x="306" y="289.5"/>
+            <point key="canvasLocation" x="298.5" y="280"/>
         </window>
+        <viewController id="Wvu-C7-dcb" customClass="PchMatrixView" customModule="ImpulseDistribution" customModuleProvider="target"/>
     </objects>
 </document>

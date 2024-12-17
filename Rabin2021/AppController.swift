@@ -254,6 +254,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     
     /// Coil Reslts windows
     var coilResultsWindow:CoilResultsDisplayWindow? = nil
+    var voltageDiffsWindow:PchMatrixViewWindow? = nil
     
     /// The result of the latest simulation run that was executed
     var latestSimulationResult:SimulationResults? = nil
@@ -1340,6 +1341,32 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             waveformWind.showWindow(self)
         }
     }
+    
+    @IBAction func handleShowVoltageDiffs(_ sender: Any) {
+        
+        doShowVoltageDiffs()
+    }
+    
+    func doShowVoltageDiffs() {
+        
+        /*
+        guard let phModel = self.currentModel, let simResult = self.latestSimulationResult else {
+            
+            DLog("No model or simulation results!")
+            return
+        } */
+        
+        let diffMatrix:PchMatrix = PchMatrix(numType: .Double, rows: 4, columns: 3)
+        for i in 0..<4 {
+            for j in 0..<3 {
+                
+                diffMatrix[i,j] = Double(i * j)
+            }
+        }
+        self.voltageDiffsWindow = PchMatrixViewWindow(matrix: diffMatrix)
+        self.voltageDiffsWindow!.showWindow(self)
+    }
+    
     
     @IBAction func handleShowCoilResults(_ sender: Any) {
         
