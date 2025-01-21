@@ -707,7 +707,7 @@ struct ViewConnector : Equatable {
     /// - Parameter owner: The TransformerView that is to display this connector
     /// - Parameter connectorDirection: The direction that the new connector should point in
     /// - Returns: A ViewConnector
-    static func ImpulseConnection(connectionPoint:NSPoint, segments:(from:Segment, to:Segment?), connector:Connector, owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
+    @MainActor static func ImpulseConnection(connectionPoint:NSPoint, segments:(from:Segment, to:Segment?), connector:Connector, owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
         
         // Get the scale from the scrollView
         let scaleSize = owner.convert(NSSize(width: 1.0, height: 1.0), from: owner.scrollView)
@@ -744,7 +744,7 @@ struct ViewConnector : Equatable {
     /// - Parameter owner: The TransformerView that is to display this connector
     /// - Parameter connectorDirection: The direction that the new connector should point in
     /// - Returns: A ViewConnector
-    static func GroundConnection(connectionPoint:NSPoint, segments:(from:Segment, to:Segment?), connector:Connector, owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
+    @MainActor static func GroundConnection(connectionPoint:NSPoint, segments:(from:Segment, to:Segment?), connector:Connector, owner:TransformerView, connectorDirection:ViewConnector.direction) -> ViewConnector {
         
         // set theta according to the direction that was passed into the routine - this value will be used to calculate the rotation matrix
         var theta = 0.0
