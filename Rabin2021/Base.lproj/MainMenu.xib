@@ -474,6 +474,13 @@
                                     <action selector="handleSaveFixedCmatrix:" target="XWq-sU-B2V" id="ZqY-Il-Hnq"/>
                                 </connections>
                             </menuItem>
+                            <menuItem isSeparatorItem="YES" id="H33-PS-oU4"/>
+                            <menuItem title="Show Base C-matrix..." id="pdK-0M-dK5">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleShowBaseCmatrix:" target="XWq-sU-B2V" id="EFZ-zL-Fqt"/>
+                                </connections>
+                            </menuItem>
                         </items>
                     </menu>
                 </menuItem>

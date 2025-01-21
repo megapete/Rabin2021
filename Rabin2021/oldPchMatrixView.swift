@@ -33,11 +33,20 @@ class PchMatrixView: NSViewController {
             
             let colIdentfier = NSUserInterfaceItemIdentifier("\(i)")
             let cellColumn = NSTableColumn(identifier: colIdentfier)
+            cellColumn.minWidth = PchMatrixViewItem.cellWidth
+            cellColumn.maxWidth = cellColumn.minWidth
             tableView.addTableColumn(cellColumn)
             tableView.register(NSNib(nibNamed: "PchMatrixViewItem", bundle: nil), forIdentifier:cellColumn.identifier)
         }
         
-        tableView.removeTableColumn(tableView.tableColumns[0])
+        // tableView.removeTableColumn(tableView.tableColumns[0])
+        tableView.reloadData()
+        
+        for nextColumn in tableView.tableColumns {
+            
+            let colWidth = nextColumn.width
+            print("ColWidth: \(colWidth)")
+        }
     }
     
     
@@ -52,6 +61,16 @@ extension PchMatrixView:NSTableViewDelegate {
             
             DLog("No matrix defined!")
             return nil
+        }
+        
+        
+        // take care of the case where it's the header row (holds row numbers)
+        if tableColumn == tableView.tableColumns[0] {
+            
+            let cellView = tableView.makeView(withIdentifier: tableColumn!.identifier, owner: self) as! NSTableCellView
+            cellView.textField?.integerValue = row
+            // print(cellView.textField!.stringValue)
+            return cellView
         }
         
         guard let columnID = tableColumn?.identifier else {
@@ -74,7 +93,8 @@ extension PchMatrixView:NSTableViewDelegate {
         
         let cellView = tableView.makeView(withIdentifier: columnID, owner: self) as! PchMatrixViewItem
         cellView.textField?.doubleValue = cellValue
-        print(cellView.textField!.stringValue)
+        
+        // print(cellView.textField!.stringValue)
         return cellView
     }
 }

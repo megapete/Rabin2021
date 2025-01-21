@@ -87,6 +87,7 @@ fileprivate extension NSImage {
 
 
 /// A struct for representing the segment paths that are displayed by the TransformeView class. Some of this comes from my AndersenFE-2020 program so there are a few things that aren't actually used. Eventually, I will remove unused code.
+@MainActor
 struct SegmentPath:Equatable {
     
     // This is kind of an ugly way to get "global" access to the TransformerView. Since my program only has one TransformerView available at a time, this works, but it would probably be better to declare it as an instance variable (in case I ever allow more than one TransformerView).
@@ -499,6 +500,7 @@ struct SegmentPath:Equatable {
 }
 
 /// Definition and drawing routines for Ground, Impulse, and connections between non-adjacent coil segments. Note that dimensions passed in to routines in the struct are expected to be in the model's coordiantes (including the 'dimensionMultiplier' global variable). The fancy cursors are also defined here.
+// @MainActor
 struct ViewConnector : Equatable {
     
     static func == (lhs: ViewConnector, rhs: ViewConnector) -> Bool {
@@ -793,6 +795,7 @@ struct ViewConnector : Equatable {
 
 
 /// The class that actually displays all the Segments the current model, along with all Connectors. There are also routines to update the mouse cursor depending on the current mode of the TransformerView, as well as mouseDown routines that do different things depending on the mode. See each function for a biref description of what it does. This class derives from NSView and conforms to the NSViewToolTipOwner and NSMenuItemValidation protocols.
+@MainActor
 class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     /// I suppose that I could get fancy and create a TransformerViewDelegate protocol but since the calls are so specific, I'm unable to justify the extra complexity, so I'll just save a weak reference to the AppController here. The AppController will need to stuff a pointer to itself in here, probably best done in awakeFromNib()

@@ -11,7 +11,7 @@ import Cocoa
 
 class PchMatrixViewItem: NSTableCellView {
 
-    // static let reuseIdentifier = NSUserInterfaceItemIdentifier("PCH_MatrixView_Reuse_ID")
+    static let cellWidth:CGFloat = 35
     
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)

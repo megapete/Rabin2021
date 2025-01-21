@@ -36,7 +36,14 @@ class PchMatrixViewWindow: NSWindowController {
         // Implement this method to handle any initialization after your window controller's window has been loaded from its nib file.
         viewController.matrix = self.matrix
         
-        self.window?.contentView?.addSubview(viewController.view)
+        guard let theWindow = self.window, let content = theWindow.contentView else {
+            
+            DLog("Either the window or the view was not loaded (??)")
+            return
+        }
+        
+        viewController.view.frame = content.bounds
+        content.addSubview(viewController.view)
     }
     
 }

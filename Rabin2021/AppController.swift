@@ -75,6 +75,7 @@ extension PchMatrix {
     }
 }
 
+@MainActor
 class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhaseDelegate {
     
     /// The main window of the program
@@ -254,7 +255,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     
     /// Coil Reslts windows
     var coilResultsWindow:CoilResultsDisplayWindow? = nil
-    var voltageDiffsWindow:PchMatrixViewWindow? = nil
+    // var voltageDiffsWindow:PchMatrixViewWindow? = nil
     
     /// The result of the latest simulation run that was executed
     var latestSimulationResult:SimulationResults? = nil
@@ -1363,8 +1364,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                 diffMatrix[i,j] = Double(i * j)
             }
         }
-        self.voltageDiffsWindow = PchMatrixViewWindow(matrix: diffMatrix)
-        self.voltageDiffsWindow!.showWindow(self)
+        // self.voltageDiffsWindow = PchMatrixViewWindow(matrix: diffMatrix)
+        // self.voltageDiffsWindow!.showWindow(self)
     }
     
     
@@ -1498,6 +1499,18 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                 return
             }
         }
+    }
+    
+    // MARK: Matrix display routines
+    
+    @IBAction func handleShowBaseCmatrix(_ sender: Any) {
+        
+        guard let model = self.currentModel, let Cmatrix = model.C else {
+            
+            return
+        }
+        
+        Cmatrix.ShowMatrix()
     }
     
     // MARK: File routines

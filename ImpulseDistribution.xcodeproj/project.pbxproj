@@ -43,12 +43,6 @@
 		F5EBD03F2B7FAC040043CC4C /* ShowWaveFormsView.xib in Resources */ = {isa = PBXBuildFile; fileRef = F5EBD03E2B7FAC040043CC4C /* ShowWaveFormsView.xib */; };
 		F5ED29ED270F1F9C003E84CB /* Segment.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED29EC270F1F9C003E84CB /* Segment.swift */; };
 		F5ED29EF271709B0003E84CB /* PhaseModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED29EE271709B0003E84CB /* PhaseModel.swift */; };
-		F5F075822D10674F00442FF5 /* PchMatrixView.xib in Resources */ = {isa = PBXBuildFile; fileRef = F5F075812D10674F00442FF5 /* PchMatrixView.xib */; };
-		F5F075832D10674F00442FF5 /* PchMatrixView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F075802D10674F00442FF5 /* PchMatrixView.swift */; };
-		F5F075932D10AFD500442FF5 /* PchMatrixViewItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F075922D10AFD500442FF5 /* PchMatrixViewItem.swift */; };
-		F5F075952D10B32600442FF5 /* PchMatrixViewItem.xib in Resources */ = {isa = PBXBuildFile; fileRef = F5F075942D10B32600442FF5 /* PchMatrixViewItem.xib */; };
-		F5F075982D10C7B300442FF5 /* PchMatrixViewWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F075962D10C7B300442FF5 /* PchMatrixViewWindow.swift */; };
-		F5F075992D10C7B300442FF5 /* PchMatrixViewWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = F5F075972D10C7B300442FF5 /* PchMatrixViewWindow.xib */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -81,12 +75,6 @@
 		F5EBD03E2B7FAC040043CC4C /* ShowWaveFormsView.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = ShowWaveFormsView.xib; sourceTree = "<group>"; };
 		F5ED29EC270F1F9C003E84CB /* Segment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Segment.swift; sourceTree = "<group>"; };
 		F5ED29EE271709B0003E84CB /* PhaseModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseModel.swift; sourceTree = "<group>"; };
-		F5F075802D10674F00442FF5 /* PchMatrixView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PchMatrixView.swift; sourceTree = "<group>"; };
-		F5F075812D10674F00442FF5 /* PchMatrixView.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = PchMatrixView.xib; sourceTree = "<group>"; };
-		F5F075922D10AFD500442FF5 /* PchMatrixViewItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PchMatrixViewItem.swift; sourceTree = "<group>"; };
-		F5F075942D10B32600442FF5 /* PchMatrixViewItem.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = PchMatrixViewItem.xib; sourceTree = "<group>"; };
-		F5F075962D10C7B300442FF5 /* PchMatrixViewWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PchMatrixViewWindow.swift; sourceTree = "<group>"; };
-		F5F075972D10C7B300442FF5 /* PchMatrixViewWindow.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = PchMatrixViewWindow.xib; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -141,12 +129,6 @@
 				F531E2802B7C0BC3004DE02F /* WaveFormDisplayView.swift */,
 				F531E27C2B7C0B9F004DE02F /* WaveFormDisplayWindow.swift */,
 				F531E27D2B7C0B9F004DE02F /* WaveFormDisplayWindow.xib */,
-				F5F075962D10C7B300442FF5 /* PchMatrixViewWindow.swift */,
-				F5F075972D10C7B300442FF5 /* PchMatrixViewWindow.xib */,
-				F5F075802D10674F00442FF5 /* PchMatrixView.swift */,
-				F5F075812D10674F00442FF5 /* PchMatrixView.xib */,
-				F5F075922D10AFD500442FF5 /* PchMatrixViewItem.swift */,
-				F5F075942D10B32600442FF5 /* PchMatrixViewItem.xib */,
 				F5EBD03C2B7FABD00043CC4C /* ShowWaveFormsDialog.swift */,
 				F5EBD03E2B7FAC040043CC4C /* ShowWaveFormsView.xib */,
 				F51D53C52B90DF4D00F92CB8 /* ShowCoilResultsDialog.swift */,
@@ -250,13 +232,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				F5EBD03F2B7FAC040043CC4C /* ShowWaveFormsView.xib in Resources */,
-				F5F075822D10674F00442FF5 /* PchMatrixView.xib in Resources */,
 				F531E27B2B7BFE03004DE02F /* GetSimDetailsView.xib in Resources */,
-				F5F075952D10B32600442FF5 /* PchMatrixViewItem.xib in Resources */,
 				F531E27F2B7C0B9F004DE02F /* WaveFormDisplayWindow.xib in Resources */,
 				F51D53C82B90DFB800F92CB8 /* ShowCoilResultsView.xib in Resources */,
 				F51D53D02B90FF4E00F92CB8 /* CoilResultsDisplayWindow.xib in Resources */,
-				F5F075992D10C7B300442FF5 /* PchMatrixViewWindow.xib in Resources */,
 				D39444F62718D9C700206019 /* GetNumber.xib in Resources */,
 				D30D3ADA270E2F2D00A39051 /* Assets.xcassets in Resources */,
 				D30D3ADD270E2F2D00A39051 /* MainMenu.xib in Resources */,
@@ -276,16 +255,13 @@
 				F51D53CC2B90FF2900F92CB8 /* CoilResultsDisplayView.swift in Sources */,
 				F531E2812B7C0BC3004DE02F /* WaveFormDisplayView.swift in Sources */,
 				D3B7FF22270E320E002537D3 /* BasicSection.swift in Sources */,
-				F5F075982D10C7B300442FF5 /* PchMatrixViewWindow.swift in Sources */,
 				D3FB7D6A2752B7A3009ACCB4 /* Connector.swift in Sources */,
-				F5F075932D10AFD500442FF5 /* PchMatrixViewItem.swift in Sources */,
 				D323F2CF27E14F3900D94DA1 /* Node.swift in Sources */,
 				D39311BC2710C44200A29D65 /* TransformerView.swift in Sources */,
 				D3573254270E5DAE000CCCF9 /* AppController.swift in Sources */,
 				D39444F72718D9C700206019 /* GetNumberDialog.swift in Sources */,
 				D3926C08270F3D3C00D2D17C /* Core.swift in Sources */,
 				F51D53CF2B90FF4E00F92CB8 /* CoilResultsDisplayWindow.swift in Sources */,
-				F5F075832D10674F00442FF5 /* PchMatrixView.swift in Sources */,
 				F53EB3CF2B6938A400299736 /* SimulationModel.swift in Sources */,
 				F5EBD03D2B7FABD00043CC4C /* ShowWaveFormsDialog.swift in Sources */,
 				F5ED29ED270F1F9C003E84CB /* Segment.swift in Sources */,

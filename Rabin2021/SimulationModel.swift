@@ -419,7 +419,10 @@ class SimulationModel {
                 }
                 catch {
                     
-                    PCH_ErrorAlert(message: error.localizedDescription)
+                    Task {
+                        
+                        await PCH_ErrorAlert(message: error.localizedDescription)
+                    }
                     return nil
                 }
             }
@@ -434,7 +437,10 @@ class SimulationModel {
                 }
                 catch {
                     
-                    PCH_ErrorAlert(message: error.localizedDescription)
+                    Task {
+                        
+                        await PCH_ErrorAlert(message: error.localizedDescription)
+                    }
                     return nil
                 }
             }
