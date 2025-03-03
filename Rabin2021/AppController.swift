@@ -18,7 +18,7 @@ var rb2021_progressIndicatorWindow:PCH_ProgressIndicatorWindow? = nil
 import Cocoa
 import Accelerate
 import UniformTypeIdentifiers
-import ComplexModule
+@preconcurrency import ComplexModule
 import RealModule
 import PchBasePackage
 import PchMatrixPackage
@@ -29,7 +29,7 @@ import PchFiniteElementPackage
 
 extension PchMatrix {
     
-    func SubMatrix(rowRange:Range<Int>, colRange:Range<Int>) -> PchMatrix? {
+    func SubMatrix(rowRange:Range<Int>, colRange:Range<Int>) async -> PchMatrix? {
         
         guard !rowRange.isEmpty && !colRange.isEmpty else {
             
@@ -54,14 +54,16 @@ extension PchMatrix {
                     
                     if let newValue:Double = self[i, j]  {
                         
-                        subMatrix[newI, newJ] = newValue
+                        await subMatrix.SetDoubleValue(value: newValue, row: newI, col: newJ)
+                        // subMatrix[newI, newJ] = newValue
                     }
                 }
                 else {
                     
                     if let newValue:Complex = self[i, j] {
                         
-                        subMatrix[newI, newJ] = newValue
+                        await subMatrix.SetComplexValue(value: newValue, row: newI, col: newJ)
+                        // subMatrix[newI, newJ] = newValue
                     }
                 }
                 
@@ -76,7 +78,8 @@ extension PchMatrix {
 }
 
 @MainActor
-class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhaseDelegate {
+class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePhaseDelegate*/ {
+    
     
     /// The main window of the program
     @IBOutlet weak var mainWindow: NSWindow!
@@ -307,43 +310,49 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     }
     
     // MARK: PchFePhaseDelegate routine(s)
-    func didFinishInductanceCalculation(phase:PchFePhase) {
+    /* func incrementInductanceCounter(totalSections: Int, phase: PchFiniteElementPackage.PchFePhase) {
+        
+    } */
+    
+    func didFinishInductanceCalculation() async {
         
         // the '===' operator compares references
-        guard let fePhase = self.currentFePhase, fePhase === phase else {
+        guard let fePhase = self.currentFePhase else {
             
             DLog("PchFePhase does not match the one in memory!")
             return
         }
         
         DLog("Got inductance completion message!")
-        self.inductanceLight.textColor = fePhase.inductanceMatrix != nil && fePhase.inductanceMatrixIsValid ? .green : .red
+        self.inductanceLight.textColor = await fePhase.inductanceMatrix != nil ? .green : .red
         
         self.indCalcProgInd.isHidden = true
         self.indCalcLabel.isHidden = true
         
-        guard let model = self.currentModel, let feIndMatrix = fePhase.inductanceMatrix, fePhase.inductanceMatrixIsValid else {
+        guard let model = self.currentModel, let feIndMatrix = await fePhase.inductanceMatrix else {
             
             DLog("Model is nil or matrix is invalid (or nil)!")
             return
         }
         
-        print("Energy (from Inductance): \(fePhase.EnergyFromInductance())")
+        DLog("Energy (from Inductance): \(await fePhase.EnergyFromInductance())")
         
-        // save the Cholesky-factored form of the inductance matrix for later computations
-        let indMatrix = PchMatrix(srcMatrix: feIndMatrix)
-        // before we factor the matrix, we'll copy and save the unfactored matrix for other uses
-        model.unfactoredM = PchMatrix(srcMatrix: indMatrix)
-        guard indMatrix.TestPositiveDefinite(overwriteExistingMatrix: true) else {
+        model.unfactoredM = await PchMatrix(srcMatrix: feIndMatrix)
+        
+        do {
             
-            DLog("Matrix is not positive-definite!")
+            model.M = try await feIndMatrix.FactorizedAs(.Cholesky)
+        }
+        catch {
+            
+            let alert = NSAlert(error: error)
+            let _ = alert.runModal()
             return
         }
-        
-        model.M = indMatrix
     }
     
-    func updatePuCompletedInductanceCalculation(puComplete: Double, phase: PchFePhase) {
+    /*
+    func updatePuCompletedInductanceCalculation(puComplete: Double, phase: PchFePhase) async {
         
         // the '===' operator compares references
         guard let fePhase = self.currentFePhase, fePhase === phase else {
@@ -353,7 +362,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         }
         
         self.indCalcProgInd.doubleValue = puComplete * 100.0
-    }
+    } */
     
     // MARK: Transformer update routines
     
@@ -362,7 +371,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     /// - Parameter newSegments: An array of Segments to insert into the model. Must be contiguous and in order.
     /// - Parameter xFile: The ExcelDesignFile that was inputted. If this is non-nil and 'reinitialize' is set to true, the existing model is overwtitten using the contents of the file.
     /// - Parameter reinitialize: Boolean value set to true if the entire memory should be reinitialized. If xlFile is non-nil, the it is used to overwrite the exisitng model. Otherwise, the model is reinitialized using the BasicSections in the AppController's currentSections array.
-    func updateModel(oldSegments:[Segment], newSegments:[Segment], xlFile:PCH_ExcelDesignFile?, reinitialize:Bool) {
+    func updateModel(oldSegments:[Segment], newSegments:[Segment], xlFile:PCH_ExcelDesignFile?, reinitialize:Bool) async {
         
         if reinitialize {
             
@@ -425,13 +434,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             return
         }
         
-        guard let feMesh = fePhase.CreateFE_Model() else {
+        guard let feMesh = await fePhase.CreateFE_Model() else {
             
             PCH_ErrorAlert(message: "Could not create mesh!")
             return
         }
         
-        fePhase.magneticMesh = feMesh
         self.currentFePhase = fePhase
         
         // To calculate the eddy losses, we need to make some assumptions regarding the amp-turn distribution. The method used here should be considered _temporary_. It would be better to have the program analyze the current connections (as selected by the user) and figure out the voltages and kVA.
@@ -537,7 +545,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                     
                     let currentDirection = excelFile.windings[wdgIndex].terminal.terminalNumber == 2 ? -1.0 : 1.0
                     // let currentDivider = excelFile.windings[wdgIndex].isDoubleStack ? 2.0 : 1.0
-                    fePhase.window.sections[segIndex].seriesRmsCurrent = Complex(currents[excelFile.windings[wdgIndex].terminal.terminalNumber - 1] * currentDirection) // / currentDivider)
+                    await fePhase.SetSeriesRmsCurrentForSection(segIndex, rmsAmps: Complex(currents[excelFile.windings[wdgIndex].terminal.terminalNumber - 1] * currentDirection))
+                    // fePhase.window.sections[segIndex].seriesRmsCurrent = Complex(currents[excelFile.windings[wdgIndex].terminal.terminalNumber - 1] * currentDirection) // / currentDivider)
                 }
                 
                 firstSegmentIndex = lastSegmentIndex + 1
@@ -550,13 +559,24 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             }
         }
         
+        do {
+            
+            try await fePhase.GetFullModelAndSolve()
+        }
+        catch {
+            
+            let alert = NSAlert(error: error)
+            let _ = alert.runModal()
+            return
+        }
+        /*
         guard let _ = fePhase.GetFullModelAndSolve() else {
             
             PCH_ErrorAlert(message: "Could not solve full model!")
             return
-        }
+        } */
         
-        guard fePhase.GetEddyLosses() else {
+        guard await fePhase.GetEddyLosses() else {
             
             PCH_ErrorAlert(message: "Could not get eddy losses!")
             return
@@ -564,8 +584,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         
         for i in 0..<model.segments.count {
             
-            model.segments[i].eddyLossAxialPU = fePhase.window.sections[i].eddyLossDueToAxialFlux / fePhase.window.sections[i].resistiveLoss
-            model.segments[i].eddyLossRadialPU = fePhase.window.sections[i].eddyLossDueToRadialFlux / fePhase.window.sections[i].resistiveLoss
+            model.segments[i].eddyLossAxialPU = await fePhase.window.sections[i].eddyLossDueToAxialFlux / fePhase.window.sections[i].resistiveLoss
+            model.segments[i].eddyLossRadialPU = await fePhase.window.sections[i].eddyLossDueToRadialFlux / fePhase.window.sections[i].resistiveLoss
         }
         
         self.inductanceLight.textColor = .red
@@ -573,14 +593,17 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         self.indCalcProgInd.isHidden = false
         self.indCalcProgInd.doubleValue = 0.0
         
-        fePhase.SetInductanceMatrix()
-        // model.M = fePhase.inductanceMatrix;
-        
         do {
         
-            try model.CalculateCapacitanceMatrix()
-            DLog("Coil 0 Cs: \(try model.CoilSeriesCapacitance(coil: 0))")
-            DLog("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: 1))")
+            try await fePhase.CalculateInductanceMatrix(useConcurrency: true, assumeSymmetric: true)
+            model.M = try await fePhase.inductanceMatrix?.FactorizedAs(.Cholesky)
+            Task {
+                
+                await didFinishInductanceCalculation()
+            }
+            try await model.CalculateCapacitanceMatrix()
+            // DLog("Coil 0 Cs: \(try model.CoilSeriesCapacitance(coil: 0))")
+            // DLog("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: 1))")
         }
         catch {
             
@@ -983,7 +1006,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         let constPotPt = NSPoint(x: coreCenterToTank, y: windowHt / 2)
         let feWindow = PchFePhase.Window(zMin: 0.0, zMax: windowHt, rMin: xlFile.core.radius, rMax: coreCenterToTank, constPotentialPoint: constPotPt, sections: feSections)
         
-        let fePhase = PchFePhase(window: feWindow, delegate: self)
+        let fePhase = PchFePhase(window: feWindow)
         
         return fePhase
     }
@@ -1350,22 +1373,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     
     func doShowVoltageDiffs() {
         
-        /*
-        guard let phModel = self.currentModel, let simResult = self.latestSimulationResult else {
-            
-            DLog("No model or simulation results!")
-            return
-        } */
         
-        let diffMatrix:PchMatrix = PchMatrix(numType: .Double, rows: 4, columns: 3)
-        for i in 0..<4 {
-            for j in 0..<3 {
-                
-                diffMatrix[i,j] = Double(i * j)
-            }
-        }
-        // self.voltageDiffsWindow = PchMatrixViewWindow(matrix: diffMatrix)
-        // self.voltageDiffsWindow!.showWindow(self)
     }
     
     
@@ -1510,7 +1518,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             return
         }
         
-        Cmatrix.ShowMatrix()
+        let capWindow = Cmatrix.GetViewer()
+        capWindow.window?.title = "Base (unfixed) Capacitance Matrix"
+        capWindow.showWindow(self)
     }
     
     // MARK: File routines
@@ -1535,7 +1545,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                 
             NSDocumentController.shared.noteNewRecentDocumentURL(fileURL)
             
-            self.updateModel(oldSegments: [], newSegments: [], xlFile: xlFile, reinitialize: true)
+            Task {
+                await self.updateModel(oldSegments: [], newSegments: [], xlFile: xlFile, reinitialize: true)
+            }
             
             self.mainWindow.title = fileURL.lastPathComponent
                         
@@ -1563,28 +1575,31 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             return;
         }
         
-        let csvFileString = Mmatrix.csv
-        
-        let savePanel = NSSavePanel()
-        savePanel.title = "Inductance Matrix"
-        savePanel.message = "Save Unfactored Inductance Matrix as CSV file"
-        // savePanel.allowedFileTypes = ["txt"]
-        savePanel.allowedContentTypes = [uttptxtType];
-        savePanel.allowsOtherFileTypes = false
-        
-        if savePanel.runModal() == .OK
-        {
-            if let fileUrl = savePanel.url
+        Task {
+            
+            let csvFileString = await Mmatrix.csv
+            
+            let savePanel = NSSavePanel()
+            savePanel.title = "Inductance Matrix"
+            savePanel.message = "Save Unfactored Inductance Matrix as CSV file"
+            // savePanel.allowedFileTypes = ["txt"]
+            savePanel.allowedContentTypes = [uttptxtType];
+            savePanel.allowsOtherFileTypes = false
+            
+            if savePanel.runModal() == .OK
             {
-                do {
-                    
-                    try csvFileString.write(to: fileUrl, atomically: false, encoding: .utf8)
-                }
-                catch {
-                    
-                    let alert = NSAlert(error: error)
-                    let _ = alert.runModal()
-                    return
+                if let fileUrl = savePanel.url
+                {
+                    do {
+                        
+                        try csvFileString.write(to: fileUrl, atomically: false, encoding: .utf8)
+                    }
+                    catch {
+                        
+                        let alert = NSAlert(error: error)
+                        let _ = alert.runModal()
+                        return
+                    }
                 }
             }
         }
@@ -1604,32 +1619,34 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             return;
         }
         
-        let csvFileString = Mmatrix.csv
-        
-        let savePanel = NSSavePanel()
-        savePanel.title = "Inductance Matrix"
-        savePanel.message = "Save Inductance Matrix as CSV file"
-        // savePanel.allowedFileTypes = ["txt"]
-        savePanel.allowedContentTypes = [uttptxtType];
-        savePanel.allowsOtherFileTypes = false
-        
-        if savePanel.runModal() == .OK
-        {
-            if let fileUrl = savePanel.url
+        Task {
+            
+            let csvFileString = await Mmatrix.csv
+            
+            let savePanel = NSSavePanel()
+            savePanel.title = "Inductance Matrix"
+            savePanel.message = "Save Inductance Matrix as CSV file"
+            // savePanel.allowedFileTypes = ["txt"]
+            savePanel.allowedContentTypes = [uttptxtType];
+            savePanel.allowsOtherFileTypes = false
+            
+            if savePanel.runModal() == .OK
             {
-                do {
-                    
-                    try csvFileString.write(to: fileUrl, atomically: false, encoding: .utf8)
-                }
-                catch {
-                    
-                    let alert = NSAlert(error: error)
-                    let _ = alert.runModal()
-                    return
+                if let fileUrl = savePanel.url
+                {
+                    do {
+                        
+                        try csvFileString.write(to: fileUrl, atomically: false, encoding: .utf8)
+                    }
+                    catch {
+                        
+                        let alert = NSAlert(error: error)
+                        let _ = alert.runModal()
+                        return
+                    }
                 }
             }
         }
-         
     }
     
     @IBAction func handleBmatrixSave(_ sender: Any) {
@@ -1645,35 +1662,34 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             return
         }
         
-        guard let Bmatrix = try? model.GetBmatrix() else {
+        Task {
             
-            DLog("Couldn't calculate B matrix!")
-            return
-        }
-        
-        let csvFileString = Bmatrix.csv
-        
-        let savePanel = NSSavePanel()
-        savePanel.title = "B Matrix"
-        savePanel.message = "Save B Matrix as CSV file"
-        // savePanel.allowedFileTypes = ["txt"]
-        savePanel.allowedContentTypes = [uttptxtType];
-        savePanel.allowsOtherFileTypes = false
-        
-        if savePanel.runModal() == .OK
-        {
-            if let fileUrl = savePanel.url
-            {
-                do {
-                    
-                    try csvFileString.write(to: fileUrl, atomically: false, encoding: .utf8)
+            do {
+                
+                let Bmatrix = try await model.GetBmatrix()
+                
+                let csvFileString = await Bmatrix.csv
+                
+                let savePanel = NSSavePanel()
+                savePanel.title = "B Matrix"
+                savePanel.message = "Save B Matrix as CSV file"
+                // savePanel.allowedFileTypes = ["txt"]
+                savePanel.allowedContentTypes = [uttptxtType];
+                savePanel.allowsOtherFileTypes = false
+                
+                if savePanel.runModal() == .OK
+                {
+                    if let fileUrl = savePanel.url
+                    {
+                        try csvFileString.write(to: fileUrl, atomically: false, encoding: .utf8)
+                    }
                 }
-                catch {
-                    
-                    let alert = NSAlert(error: error)
-                    let _ = alert.runModal()
-                    return
-                }
+            }
+            catch {
+                
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
+                return
             }
         }
     }
@@ -1692,32 +1708,34 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             return
         }
         
-        let csvFileString = Cmatrix.csv
-        
-        let savePanel = NSSavePanel()
-        savePanel.title = "Base Capacitance Matrix"
-        savePanel.message = "Save Capacitance Matrix as CSV file"
-        // savePanel.allowedFileTypes = ["txt"]
-        savePanel.allowedContentTypes = [uttptxtType]
-        savePanel.allowsOtherFileTypes = false
-        
-        if savePanel.runModal() == .OK
-        {
-            if let fileUrl = savePanel.url
+        Task {
+            
+            let csvFileString = await Cmatrix.csv
+            
+            let savePanel = NSSavePanel()
+            savePanel.title = "Base Capacitance Matrix"
+            savePanel.message = "Save Capacitance Matrix as CSV file"
+            // savePanel.allowedFileTypes = ["txt"]
+            savePanel.allowedContentTypes = [uttptxtType]
+            savePanel.allowsOtherFileTypes = false
+            
+            if savePanel.runModal() == .OK
             {
-                do {
-                    
-                    try csvFileString.write(to: fileUrl, atomically: false, encoding: .utf8)
-                }
-                catch {
-                    
-                    let alert = NSAlert(error: error)
-                    let _ = alert.runModal()
-                    return
+                if let fileUrl = savePanel.url
+                {
+                    do {
+                        
+                        try csvFileString.write(to: fileUrl, atomically: false, encoding: .utf8)
+                    }
+                    catch {
+                        
+                        let alert = NSAlert(error: error)
+                        let _ = alert.runModal()
+                        return
+                    }
                 }
             }
         }
-         
     }
     
     @IBAction func handleSaveFixedCmatrix(_ sender: Any) {
@@ -1733,31 +1751,33 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
             return
         }
         
-        let csvFileString = Cmatrix.csv
-        
-        let savePanel = NSSavePanel()
-        savePanel.title = "Fixed Capacitance Matrix"
-        savePanel.message = "Save Capacitance Matrix as CSV file"
-        savePanel.allowedContentTypes = [uttptxtType]
-        savePanel.allowsOtherFileTypes = false
-        
-        if savePanel.runModal() == .OK
-        {
-            if let fileUrl = savePanel.url
+        Task {
+            
+            let csvFileString = await Cmatrix.csv
+            
+            let savePanel = NSSavePanel()
+            savePanel.title = "Fixed Capacitance Matrix"
+            savePanel.message = "Save Capacitance Matrix as CSV file"
+            savePanel.allowedContentTypes = [uttptxtType]
+            savePanel.allowsOtherFileTypes = false
+            
+            if savePanel.runModal() == .OK
             {
-                do {
-                    
-                    try csvFileString.write(to: fileUrl, atomically: false, encoding: .utf8)
-                }
-                catch {
-                    
-                    let alert = NSAlert(error: error)
-                    let _ = alert.runModal()
-                    return
+                if let fileUrl = savePanel.url
+                {
+                    do {
+                        
+                        try csvFileString.write(to: fileUrl, atomically: false, encoding: .utf8)
+                    }
+                    catch {
+                        
+                        let alert = NSAlert(error: error)
+                        let _ = alert.runModal()
+                        return
+                    }
                 }
             }
         }
-         
     }
     
     
@@ -1904,48 +1924,49 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                 newBasicSectionArray.append(contentsOf: nextSegment.basicSections)
             }
                         
-            do {
-                
-                // we need to keep track of static rings that are at the ends of new (combined) Segments
-                let bottomStaticRing = try model.StaticRingBelow(segment: segments.first!, recursiveCheck: false)
-                let topStaticRing = try model.StaticRingAbove(segment: segments.last!, recursiveCheck: false)
-                
-                let combinedSegment = try Segment(basicSections: newBasicSectionArray, realWindowHeight: model.core.realWindowHeight, useWindowHeight: model.core.adjustedWindHt)
-                
-                self.updateModel(oldSegments: segments, newSegments: [combinedSegment], xlFile: nil, reinitialize: false)
-                
-                var capMatrixNeedsUpdate = false
-                
-                if bottomStaticRing != nil {
+            Task {
+                do {
                     
-                    let bSR = try model.AddStaticRing(adjacentSegment: combinedSegment, above: false)
-                    try model.InsertSegment(newSegment: bSR)
-                    try model.RemoveStaticRing(staticRing: bottomStaticRing!)
-                    capMatrixNeedsUpdate = true
+                    // we need to keep track of static rings that are at the ends of new (combined) Segments
+                    let bottomStaticRing = try model.StaticRingBelow(segment: segments.first!, recursiveCheck: false)
+                    let topStaticRing = try model.StaticRingAbove(segment: segments.last!, recursiveCheck: false)
+                    
+                    let combinedSegment = try Segment(basicSections: newBasicSectionArray, realWindowHeight: model.core.realWindowHeight, useWindowHeight: model.core.adjustedWindHt)
+                    
+                    await self.updateModel(oldSegments: segments, newSegments: [combinedSegment], xlFile: nil, reinitialize: false)
+                    
+                    var capMatrixNeedsUpdate = false
+                    
+                    if bottomStaticRing != nil {
+                        
+                        let bSR = try model.AddStaticRing(adjacentSegment: combinedSegment, above: false)
+                        try model.InsertSegment(newSegment: bSR)
+                        try model.RemoveStaticRing(staticRing: bottomStaticRing!)
+                        capMatrixNeedsUpdate = true
+                    }
+                    
+                    if topStaticRing != nil {
+                        
+                        let tSR = try model.AddStaticRing(adjacentSegment: combinedSegment, above: true)
+                        try model.InsertSegment(newSegment: tSR)
+                        try model.RemoveStaticRing(staticRing: topStaticRing!)
+                        capMatrixNeedsUpdate = true
+                    }
+                    
+                    if capMatrixNeedsUpdate {
+                        
+                        try model.CalculateCapacitanceMatrix()
+                        //print("Coil 0 Cs: \(try model.CoilSeriesCapacitance(coil: 0))")
+                        //print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: 1))")
+                    }
                 }
-                
-                if topStaticRing != nil {
+                catch {
                     
-                    let tSR = try model.AddStaticRing(adjacentSegment: combinedSegment, above: true)
-                    try model.InsertSegment(newSegment: tSR)
-                    try model.RemoveStaticRing(staticRing: topStaticRing!)
-                    capMatrixNeedsUpdate = true
-                }
-                
-                if capMatrixNeedsUpdate {
-                    
-                    try model.CalculateCapacitanceMatrix()
-                    print("Coil 0 Cs: \(try model.CoilSeriesCapacitance(coil: 0))")
-                    print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: 1))")
+                    let alert = NSAlert(error: error)
+                    let _ = alert.runModal()
+                    return
                 }
             }
-            catch {
-                
-                let alert = NSAlert(error: error)
-                let _ = alert.runModal()
-                return
-            }
-
         }
         else {
             
@@ -2002,24 +2023,25 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                 return
             }
             
-            do {
-                
-                var interleavedSegments:[Segment] = []
-                
-                for i in stride(from: 0, to: basicSections.count, by: 2) {
+            Task {
+                do {
                     
-                    interleavedSegments.append(try Segment(basicSections: [basicSections[i], basicSections[i+1]], interleaved: true, realWindowHeight: model.core.realWindowHeight, useWindowHeight: model.core.adjustedWindHt))
+                    var interleavedSegments:[Segment] = []
+                    
+                    for i in stride(from: 0, to: basicSections.count, by: 2) {
+                        
+                        interleavedSegments.append(try Segment(basicSections: [basicSections[i], basicSections[i+1]], interleaved: true, realWindowHeight: model.core.realWindowHeight, useWindowHeight: model.core.adjustedWindHt))
+                    }
+                    
+                    await self.updateModel(oldSegments: segments, newSegments: interleavedSegments, xlFile: nil, reinitialize: false)
                 }
-                
-                self.updateModel(oldSegments: segments, newSegments: interleavedSegments, xlFile: nil, reinitialize: false)
+                catch {
+                    
+                    let alert = NSAlert(error: error)
+                    let _ = alert.runModal()
+                    return
+                }
             }
-            catch {
-                
-                let alert = NSAlert(error: error)
-                let _ = alert.runModal()
-                return
-            }
-            
         }
         else {
             
@@ -2047,20 +2069,23 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         let segment = segmentPath.segment
         var newSegments:[Segment] = []
         
-        do {
+        Task {
             
-            for nextBasicSection in segment.basicSections {
+            do {
                 
-                newSegments.append(try Segment(basicSections: [nextBasicSection], interleaved: false, isStaticRing: false, isRadialShield: false, realWindowHeight: model.core.realWindowHeight, useWindowHeight: model.core.adjustedWindHt))
+                for nextBasicSection in segment.basicSections {
+                    
+                    newSegments.append(try Segment(basicSections: [nextBasicSection], interleaved: false, isStaticRing: false, isRadialShield: false, realWindowHeight: model.core.realWindowHeight, useWindowHeight: model.core.adjustedWindHt))
+                }
+                
+                await self.updateModel(oldSegments: [segment], newSegments: newSegments, xlFile: nil, reinitialize: false)
             }
-            
-            self.updateModel(oldSegments: [segment], newSegments: newSegments, xlFile: nil, reinitialize: false)
-        }
-        catch {
-            
-            let alert = NSAlert(error: error)
-            let _ = alert.runModal()
-            return
+            catch {
+                
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
+                return
+            }
         }
     }
     
@@ -2469,19 +2494,24 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
     
     @IBAction func handleMainWdgInductances(_ sender: Any) {
         
-        let indMatrix = self.doMainWindingInductances()
+        Task {
+            
+            let indMatrix = await self.doMainWindingInductances()
+        }
         
     }
     
     /// Function to calculate the self-inductance of each main winding (as defined by the XL file) as well as the mutual inductance to every other main winding. It is assumed that all Segments of all Windings are in the circuit. The amp values are those calculated using the highest kVA in the XL file.
     /// - Returns: A matrix where entry i,i is the self-inductance of the winding in the 'i' radial position (0 closest to the core), and entry i,j (and j,i) is the mutual inductance beyween coil i and coil j
-    func doMainWindingInductances() -> PchMatrix? {
+    func doMainWindingInductances() async -> PchMatrix? {
         
-        guard let model = self.currentModel, let xlFile = currentXLfile, let indMatrix = model.unfactoredM, let fePhase = self.currentFePhase else {
+        guard let model = self.currentModel, let xlFile = currentXLfile, let iMatrix = model.unfactoredM , let fePhase = self.currentFePhase else {
             
             DLog("A valid model, a valid XL file, and an unfactored inductance matrix must be defined!")
             return nil
         }
+        
+        let indMatrix = await PchMatrix(srcMatrix: iMatrix)
         
         let segments = model.CoilSegments()
         let numCoils = segments.last!.radialPos + 1
@@ -2498,10 +2528,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
                     
                     for nextCol in segRange {
                         
-                        if let nextValue:Double = indMatrix[nextRow, nextCol], let oldValue:Double = coilIndMatrix[i, i] {
+                        if let nextValue:Double = await indMatrix[nextRow, nextCol], let oldValue:Double = await coilIndMatrix[i, i] {
                             
                             // The mutual inductances should be doubled, but ONLY if we are reading them once. The matrix is symmetrical and we'll just go over every single entry and add it.
-                            coilIndMatrix[i, i] = oldValue + nextValue
+                            await coilIndMatrix.SetDoubleValue(value: oldValue + nextValue, row: i, col: i)
+                            // coilIndMatrix[i, i] = oldValue + nextValue
                         }
                         else {
                             
@@ -2519,28 +2550,30 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         }
         
         // get the energy from the last PchFePhase used
-        let leakageEnergy = fePhase.EnergyFromInductance()
+        let leakageEnergy = await fePhase.EnergyFromInductance()
         DLog("Energy: \(leakageEnergy)")
         
         // use DelVecchio eq. 4.22 to solve for M12
-        let section0 = fePhase.window.sections[0]
+        let section0 = await fePhase.window.sections[0]
         // Current calculations are a pain because this routine assumes all turns are in the circuit. For a coil with off-load taps, this is the low-current tap, which is NOT what is saved as the 'seriesRMSCurremt'. That is actually the nominal current.
-        let I0 = (section0.seriesRmsCurrent * Complex(sqrt(2))).length
+        let I0 = await (section0.seriesRmsCurrent * Complex(sqrt(2))).length
         guard let section1Index = try? model.SegmentRange(coil: 1).lowerBound else {
             
             DLog("Bad section index!")
             return nil
         }
-        let section1 = fePhase.window.sections[section1Index]
-        let I1 = -(section1.seriesRmsCurrent * Complex(sqrt(2))).length
+        let section1 = await fePhase.window.sections[section1Index]
+        let I1 = await -(section1.seriesRmsCurrent * Complex(sqrt(2))).length
         var M12 = 2 * leakageEnergy
-        M12 -= coilIndMatrix[0, 0]! * I0 * I0
-        M12 -= coilIndMatrix[1, 1]! * I1 * I1
+        M12 -= await coilIndMatrix[0, 0]! * I0 * I0
+        await M12 -= coilIndMatrix[1, 1]! * I1 * I1
         M12 /= 2
         M12 /= I0
         M12 /= I1
-        coilIndMatrix[0, 1] = M12
-        coilIndMatrix[1, 0] = M12
+        await coilIndMatrix.SetDoubleValue(value: M12, row: 0, col: 1)
+        await coilIndMatrix.SetDoubleValue(value: M12, row: 1, col: 0)
+        // coilIndMatrix[0, 1] = M12
+        // coilIndMatrix[1, 0] = M12
         
         print(coilIndMatrix)
         return coilIndMatrix
@@ -2650,7 +2683,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate, PchFePhas
         
         if menuItem == self.saveUnfactoredMmatrixMenuItem {
             
-            return self.currentFePhase != nil && self.currentFePhase!.inductanceMatrix != nil && self.currentFePhase!.inductanceMatrixIsValid
+            return self.currentModel != nil && self.currentModel!.unfactoredM != nil
         }
         
         if menuItem == self.createSimModelMenuItem {

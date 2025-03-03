@@ -14,7 +14,7 @@ import PchBasePackage
 import PchMatrixPackage
 import PchFiniteElementPackage
 
-class PhaseModel:Codable {
+class PhaseModel /*:Codable */ {
     
     /// The segments that make up the model. This array is kept sorted by the LocStruct of the segments (radial first, then axial).
     private var segmentStore:[Segment]
@@ -564,6 +564,7 @@ class PhaseModel:Codable {
     }
     
     /// Calculate the A matrix, save it to Aand return it. NOTE: In practice, I doubt that it is actually worth creating this matrix and multiplying it by the I (current) vector. It is probably better to simply maintain a current-drop vector - TBD.
+    /*
     func GetAmatrix() throws -> PchMatrix {
         
         guard !nodes.isEmpty && !segments.isEmpty else {
@@ -604,10 +605,10 @@ class PhaseModel:Codable {
         
         self.A = newA
         return newA
-    }
+    } */
     
     /// Calculate the B matrix, save it to B and return it. NOTE: In practice, I doubt that it is actually worth creating this matrix and multiplying it by the Voltage vector. It is probably better to simply maintain a voltage-drop vector - TBD.
-    func GetBmatrix() throws -> PchMatrix {
+    func GetBmatrix() async throws -> PchMatrix {
         
         guard !segments.isEmpty else {
             
@@ -623,7 +624,8 @@ class PhaseModel:Codable {
                 do {
                     
                     let row = try SegmentIndex(segment: aboveSeg)
-                    newB[row, nextNode.number] = 1.0
+                    await newB.SetDoubleValue(value: 1.0, row: row, col: nextNode.number)
+                    // newB[row, nextNode.number] = 1.0
                 }
                 catch {
                     
@@ -636,7 +638,8 @@ class PhaseModel:Codable {
                 do {
                     
                     let row = try SegmentIndex(segment: belowSegment)
-                    newB[row, nextNode.number] = -1.0
+                    await newB.SetDoubleValue(value: -1.0, row: row, col: nextNode.number)
+                    // newB[row, nextNode.number] = -1.0
                 }
                 catch {
                     
@@ -1224,7 +1227,7 @@ class PhaseModel:Codable {
     }
     
     
-    func CalculateCapacitanceMatrix() throws {
+    func CalculateCapacitanceMatrix() async throws {
         
         guard self.segments.count > 0 else {
             
@@ -1564,27 +1567,31 @@ class PhaseModel:Codable {
                     
                         // in case there's alrady something in that cell
                         var existingCap = 0.0
-                        if let cap:Double = C[nextNode.number, nextShuntCap.toNode] {
+                        if let cap:Double = await C[nextNode.number, nextShuntCap.toNode] {
                             
                             existingCap = cap
                         }
                         
-                        C[nextNode.number, nextShuntCap.toNode] = existingCap - nextShuntCap.capacitance
+                        // C[nextNode.number, nextShuntCap.toNode] = existingCap - nextShuntCap.capacitance
+                        await C.SetDoubleValue(value: existingCap - nextShuntCap.capacitance, row: nextNode.number, col: nextShuntCap.toNode)
                     }
                     
                     sumK += nextShuntCap.capacitance
                 }
                 
-                C[nextNode.number, nextNode.number] = Cj + Cj1 + sumK
+                // C[nextNode.number, nextNode.number] = Cj + Cj1 + sumK
+                await C.SetDoubleValue(value: Cj + Cj1 + sumK, row: nextNode.number, col: nextNode.number)
                 
                 if Cj != 0.0 {
                     
-                    C[nextNode.number, nextNode.number - 1] = -Cj
+                    // C[nextNode.number, nextNode.number - 1] = -Cj
+                    await C.SetDoubleValue(value: -Cj, row: nextNode.number, col: nextNode.number - 1)
                 }
                 
                 if Cj1 != 0.0 {
                     
-                    C[nextNode.number, nextNode.number + 1] = -Cj1
+                    // C[nextNode.number, nextNode.number + 1] = -Cj1
+                    await C.SetDoubleValue(value: -Cj1, row: nextNode.number, col: nextNode.number + 1)
                 }
             }
             

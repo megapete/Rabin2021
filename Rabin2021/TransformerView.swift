@@ -88,13 +88,13 @@ fileprivate extension NSImage {
 
 /// A struct for representing the segment paths that are displayed by the TransformeView class. Some of this comes from my AndersenFE-2020 program so there are a few things that aren't actually used. Eventually, I will remove unused code.
 @MainActor
-struct SegmentPath:Equatable {
+struct SegmentPath:Equatable  {
     
     // This is kind of an ugly way to get "global" access to the TransformerView. Since my program only has one TransformerView available at a time, this works, but it would probably be better to declare it as an instance variable (in case I ever allow more than one TransformerView).
     static var txfoView:TransformerView? = nil
     
     // The Segment that is displayed by this instance
-    let segment:Segment
+    nonisolated let segment:Segment
     
     // A holder for future ToolTips for the Segment (not sure what to show yet)
     var toolTipTag:NSView.ToolTipTag = 0
@@ -669,7 +669,7 @@ struct ViewConnector : Equatable {
             
             let result = NSBezierPath()
             
-            let inset = TransformerView.connectorDistanceTolerance * dimensionMultiplier
+            let inset = TransformerViewConstants.connectorDistanceTolerance * dimensionMultiplier
             
             let numElements = path.elementCount
             
@@ -793,6 +793,12 @@ struct ViewConnector : Equatable {
     }
 }
 
+/// Constants associated with TransformerView that are placed here to get them out of the MainActor
+struct TransformerViewConstants {
+    
+    /// The distance (in meters) that is used to highlight the connectors (used for certain modes)
+    static let connectorDistanceTolerance = 0.003 // meters
+}
 
 /// The class that actually displays all the Segments the current model, along with all Connectors. There are also routines to update the mouse cursor depending on the current mode of the TransformerView, as well as mouseDown routines that do different things depending on the mode. See each function for a biref description of what it does. This class derives from NSView and conforms to the NSViewToolTipOwner and NSMenuItemValidation protocols.
 @MainActor
@@ -800,9 +806,6 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     /// I suppose that I could get fancy and create a TransformerViewDelegate protocol but since the calls are so specific, I'm unable to justify the extra complexity, so I'll just save a weak reference to the AppController here. The AppController will need to stuff a pointer to itself in here, probably best done in awakeFromNib()
     weak var appController:AppController? = nil
-    
-    /// The distance (in meters) that is used to highlight the connectors (used for certain modes)
-    static let connectorDistanceTolerance = 0.003 // meters
     
     /// The different modes that are available
     enum Mode {
