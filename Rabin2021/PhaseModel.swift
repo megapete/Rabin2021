@@ -342,14 +342,18 @@ actor PhaseModel /*:Codable */ {
     }
     
     /// Return an array of non-axially-adjacent connections (and tapping gap connections added by the user - these will be adjacent, but for the purposes of the simulation they will not be)  that come to one of the segment's terminals. This is useful when "fixing" the C-array since the axial-adjacent connections are taken care of _implicitly_ in the array, while connections to other coils, non-adjacent discs, or impulse/ground need to be _explicity_ handled
-    func NonAdjacentConnections(segment:Segment) -> [Segment.Connection] {
+    func NonAdjacentConnections(segment:Segment) async -> [Segment.Connection] {
         
         var result:[Segment.Connection] = []
         
-        for nextConnection in segment.connections {
+        for nextConnection in await segment.connections {
             
-            if let connSeg = nextConnection.segment {
+            if let connSegID = nextConnection.segmentID {
                 
+                guard let connSeg = self.segmentStore.first(where: { $0.serialNumber == connSegID }) else {
+                    
+                    return result
+                }
                 // If the segments aren't adjacent or they are a tapping gap, add the connection
                 if !SegmentsAreAdjacent(segment1: segment, segment2: connSeg) || self.IsTappingGap(segment1: segment, segment2: connSeg) {
                     
@@ -361,7 +365,7 @@ actor PhaseModel /*:Codable */ {
         return result
     }
     
-    func IsTappingGap(segment1:Segment, segment2:Segment) -> Bool {
+    func IsTappingGap(segment1:Segment, segment2:Segment) async -> Bool {
         
         // the idea here is to check if there are "floating" connections between the two segments, and if so, this must be a tapping gap (used for offload taps)
         

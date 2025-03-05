@@ -9,9 +9,10 @@
 
 import Foundation
 import PchBasePackage
+import os.lock
 
 /// A Segment is, at its most basic, a collection of BasicSections. The collection MUST be from the same Winding and it must represent an axially contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (for disc coils, only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed). Static rings and radial shields are special Segments - creation routines (class functions) are provided for each.
-class Segment: Codable, Equatable, Hashable {
+actor Segment: Codable, Equatable /*, Hashable */ {
     
     /// flag used during debugging to identify a Segment for a breakpoint
     var debugFlag = false
@@ -41,11 +42,30 @@ class Segment: Codable, Equatable, Hashable {
         return lhs.serialNumber == rhs.serialNumber
     }
     
+    /*
     func hash(into hasher: inout Hasher) {
         
-        hasher.combine(self.serialnumberStore)
+        hasher.combine(self.serialNumber)
+    } */
+    
+    /// A locked value for storing the next serial number
+    nonisolated(unsafe) private static var nextSerialNumberStore: OSAllocatedUnfairLock<Int> = OSAllocatedUnfairLock(initialState: -1)
+    
+    /// Thread-safe way of getting the next available serial number
+    public static var nextSerialNumber: Int {
+        
+        get {
+            
+            let value = Self.nextSerialNumberStore.withLock { value in
+                value += 1
+                return value
+            }
+            
+            return value
+        }
     }
     
+    /*
     /// Global storage for the next serial number to assign
     private static var nextSerialNumberStore:Int = 0
     
@@ -57,20 +77,16 @@ class Segment: Codable, Equatable, Hashable {
             Segment.nextSerialNumberStore += 1
             return nextNum
         }
-    }
+    } */
     
     /// A class constant for the thickness of a standard static ring
     static let stdStaticRingThickness = 0.625 * meterPerInch
     
     /// This segment's serial number
-    private var serialnumberStore:Int
+    // private var serialnumberStore:Int
     
     /// Segment serial number (needed to make the "==" operator code simpler.
-    var serialNumber:Int {
-        get {
-            return serialnumberStore
-        }
-    }
+    let serialNumber:Int
     
     /// The first (index = 0) entry  has the lowest Z and the last entry has the highest.
     let basicSections:[BasicSection]
@@ -97,14 +113,14 @@ class Segment: Codable, Equatable, Hashable {
     let I:Double
     
     /// The radial position of the segment (0 = closest to core)
-    var radialPos:Int {
+    nonisolated var radialPos:Int {
         get {
             return self.basicSections[0].location.radial
         }
     }
     
     /// The axial position of the Segment. In the case where a Segment is made up of more than one BasicSection, the lowest BasicSection's axial position is used.
-    var axialPos:Int {
+    nonisolated var axialPos:Int {
         
         get {
             return self.basicSections[0].location.axial
@@ -142,8 +158,8 @@ class Segment: Codable, Equatable, Hashable {
     /// The rectangle that the segment occupies in the core window, with the origin at (LegCenter, BottomYoke)
     var rect:NSRect
     
-    /// Simple struct for connections. These work as follows: if the 'segment' property is nil, the connector property should have a 'fromLocation' at the actual location on self, and a 'toConnector' of one of the special connectors (floating, impulse, or ground). If, on the other hand, 'segment' is non-nil, then the fromLocation is still at the actual location on self, and toLocation is the actual location on 'segment'.
-    struct Connection:Codable, Equatable, Hashable {
+    /// Simple struct for connections. These work as follows: if the 'segmentID' property is nil, the connector property should have a 'fromLocation' at the actual location on self, and a 'toConnector' of one of the special connectors (floating, impulse, or ground). If, on the other hand, 'segmentID' is non-nil, then the fromLocation is still at the actual location on self, and toLocation is the actual location on the segment with serial number segmentID
+    struct Connection:Codable, Equatable, Hashable, Sendable {
         
         static func == (lhs: Segment.Connection, rhs: Segment.Connection) -> Bool {
             
@@ -152,16 +168,16 @@ class Segment: Codable, Equatable, Hashable {
                 return false
             }
             
-            if let lSegment = lhs.segment {
+            if let lSegment = lhs.segmentID {
                 
-                guard let rSegment = rhs.segment else {
+                guard let rSegment = rhs.segmentID else {
                     
                     return false
                 }
                 
                 return lSegment == rSegment
             }
-            else if rhs.segment != nil {
+            else if rhs.segmentID != nil {
                 
                 return false
             }
@@ -171,16 +187,17 @@ class Segment: Codable, Equatable, Hashable {
         
         func hash(into hasher: inout Hasher) {
             
-            hasher.combine(self.segment)
+            hasher.combine(self.segmentID)
             hasher.combine(self.connector)
         }
         
-        var segment:Segment?
+        // var segment:Segment?
+        var segmentID:Int?
         var connector:Connector
         
         struct EquivalentConnection:Codable, Equatable, Hashable {
             
-            let parent:Segment
+            let parent:Int
             let connection:Connection
         }
         
@@ -359,7 +376,7 @@ class Segment: Codable, Equatable, Hashable {
         self.rect = NSRect(x: first.r1, y: first.z1, width: first.width, height: last.z2 - first.z1)
         
         // if it's a static ring or radial shield, set the serial number to a dummy number, otherwise set it to the next available serial number
-        self.serialnumberStore = isStaticRing || isRadialShield ? -1 : Segment.nextSerialNumber
+        self.serialNumber = isStaticRing || isRadialShield ? -1 : Segment.nextSerialNumber
         self.isStaticRing = isStaticRing
         self.isRadialShield = isRadialShield
     }
@@ -431,15 +448,15 @@ class Segment: Codable, Equatable, Hashable {
     }
     
     /// Return all the destination segments (and locations) for the given location on this Segment
-    func ConnectionDestinations(fromLocation:Connector.Location) -> [(segment:Segment?, location:Connector.Location)] {
+    func ConnectionDestinations(fromLocation:Connector.Location) -> [(segmentID:Int?, location:Connector.Location)] {
         
-        var result:[(segment:Segment?, location:Connector.Location)] = []
+        var result:[(segmentID:Int?, location:Connector.Location)] = []
         
         for nextConnection in self.connections {
             
             if nextConnection.connector.fromLocation == fromLocation {
                 
-                result.append((nextConnection.segment, nextConnection.connector.toLocation))
+                result.append((nextConnection.segmentID, nextConnection.connector.toLocation))
             }
         }
         
@@ -455,14 +472,14 @@ class Segment: Codable, Equatable, Hashable {
         }
         
         self.connections[connIndex].equivalentConnections.formUnion(equ)
-        self.connections[connIndex].equivalentConnections.remove(Connection.EquivalentConnection(parent: self, connection: to))
+        self.connections[connIndex].equivalentConnections.remove(Connection.EquivalentConnection(parent: self.serialNumber, connection: to))
     }
     
     /// Remove the given connection and all of it's iterations (from connected segments, etc), except for segments in the maskSegments array.. If the connection is to ground or impulse, the connection is converted to a floating connection.
-    /// - Returns: A Set of all the Segments that were affected by the operation
-    func RemoveConnection(connection:Segment.Connection) -> Set<Segment> {
+    /// - Returns: An array of segment serial numbers that were affected by the operation
+    func RemoveConnection(segments:[Segment], connection:Segment.Connection) async -> [Int] {
         
-        var result:Set<Segment> = []
+        var result:[Int] = []
         
         guard let connIndex = self.connections.firstIndex(where: { $0 == connection }) else {
             
@@ -471,17 +488,22 @@ class Segment: Codable, Equatable, Hashable {
         
         for nextEquivalent in self.connections[connIndex].equivalentConnections {
             
-            let removeCheck = nextEquivalent.parent.DoRemoveConnection(connection: nextEquivalent.connection)
+            guard let segmentToRemoveFrom = segments.first(where: { $0.serialNumber == nextEquivalent.parent }) else {
+                
+                continue
+            }
+            
+            let removeCheck = await segmentToRemoveFrom.DoRemoveConnection(connection: nextEquivalent.connection)
             
             if removeCheck {
                 
-                result.insert(nextEquivalent.parent)
+                result.append(nextEquivalent.parent)
             }
         }
         
         if self.DoRemoveConnection(connection: connection) {
             
-            result.insert(self)
+            result.append(self.serialNumber)
         }
         
         return result
@@ -503,13 +525,19 @@ class Segment: Codable, Equatable, Hashable {
         
         if toLocation == .impulse || toLocation == .ground {
             
-            let newConnection = Segment.Connection(segment: connection.segment, connector: Connector(fromLocation: connection.connector.fromLocation, toLocation: .floating))
+            let newConnection = Segment.Connection(segmentID: connection.segmentID, connector: Connector(fromLocation: connection.connector.fromLocation, toLocation: .floating))
             self.connections.append(newConnection)
             
             return true
         }
         
         return self.connections.count < oldCount
+    }
+    
+    /// Private function to actually add a new connection (required due to actor status)
+    private func DoAddConnection(connection:Segment.Connection) {
+        
+        self.connections.append(connection)
     }
     
     
@@ -519,30 +547,34 @@ class Segment: Codable, Equatable, Hashable {
     /// If toLocation is .ground or .impulse and self.connection has a connection with a fromLocation the same as the parameter, and a toLocation equal to .floating, that connector is changed to the new connector definition.
     /// If toLocation is .ground, or .impulse, or .floating, and self.connection does not have a corresponding .floating connector, then the new connector is added to self.connections.
     /// - Returns: If toSegment is non-nil, the function returns tuple of the one or two equivalent connections that were created; otherwise it returns both nil
-    func AddConnector(fromLocation:Connector.Location, toLocation:Connector.Location, toSegment:Segment?) -> (from:Segment.Connection?, to:Segment.Connection?) {
+    func AddConnector(segments:[Segment], fromLocation:Connector.Location, toLocation:Connector.Location, toSegmentID:Int?) async -> (from:Segment.Connection?, to:Segment.Connection?) {
         
-        if let otherSegment = toSegment {
+        if let otherSegmentID = toSegmentID {
             
             // don't create a connector to self
-            if otherSegment == self {
+            if otherSegmentID == self.serialNumber {
                 
                 return (nil, nil)
             }
             
-            let newSelfConnection = Connection(segment: otherSegment, connector: Connector(fromLocation: fromLocation, toLocation: toLocation))
+            let newSelfConnection = Connection(segmentID: otherSegmentID, connector: Connector(fromLocation: fromLocation, toLocation: toLocation))
             self.connections.append(newSelfConnection)
-            let newOtherConnection = Connection(segment: self, connector: Connector(fromLocation: toLocation, toLocation: fromLocation))
-            otherSegment.connections.append(newOtherConnection)
+            let newOtherConnection = Connection(segmentID: self.serialNumber, connector: Connector(fromLocation: toLocation, toLocation: fromLocation))
             
-            self.AddEquivalentConnections(to: newSelfConnection, equ: [Connection.EquivalentConnection(parent: otherSegment, connection: newOtherConnection)])
-            otherSegment.AddEquivalentConnections(to: newOtherConnection, equ: [Connection.EquivalentConnection(parent: self, connection: newSelfConnection)])
+            if let otherSegment = segments.first(where: {$0.serialNumber == otherSegmentID})  {
+                
+                await otherSegment.DoAddConnection(connection: newOtherConnection)
+                
+                self.AddEquivalentConnections(to: newSelfConnection, equ: [Connection.EquivalentConnection(parent: otherSegmentID, connection: newOtherConnection)])
+                await otherSegment.AddEquivalentConnections(to: newOtherConnection, equ: [Connection.EquivalentConnection(parent: self.serialNumber, connection: newSelfConnection)])
+            }
             
             return (newSelfConnection, newOtherConnection)
         }
         else if let existingFloatingIndex = self.connections.firstIndex(where: {$0.connector.fromLocation == fromLocation && $0.connector.toLocation == .floating}) {
             
             self.connections.remove(at: existingFloatingIndex)
-            let newSelfConnection = Connection(segment: nil, connector: Connector(fromLocation: fromLocation, toLocation: toLocation))
+            let newSelfConnection = Connection(segmentID: nil, connector: Connector(fromLocation: fromLocation, toLocation: toLocation))
             self.connections.append(newSelfConnection)
             return (newSelfConnection, nil)
         }
@@ -554,14 +586,14 @@ class Segment: Codable, Equatable, Hashable {
         else {
             
             // add a new termination at a non-floating location
-            let newSelfConnection = Connection(segment: nil, connector: Connector(fromLocation: fromLocation, toLocation: toLocation))
+            let newSelfConnection = Connection(segmentID: nil, connector: Connector(fromLocation: fromLocation, toLocation: toLocation))
             self.connections.append(newSelfConnection)
             return (newSelfConnection, nil)
         }
     }
     
     /// The series capacitance of the Segment. For Segments that are made up of more than one (or two, for interleaved windings) axial BasicSections, the routine calls itself for each BasicSection.
-    func SeriesCapacitance(axialGaps:(above:Double, below:Double)?, radialGaps:(inside:Double, outside:Double)?, endDisc:(lowest:Bool, highest:Bool)?, adjStaticRing:(above:Bool, below:Bool)?) throws -> Double {
+    func SeriesCapacitance(axialGaps:(above:Double, below:Double)?, radialGaps:(inside:Double, outside:Double)?, endDisc:(lowest:Bool, highest:Bool)?, adjStaticRing:(above:Bool, below:Bool)?) async throws -> Double {
         
         guard axialGaps != nil || radialGaps != nil else {
             
@@ -605,7 +637,7 @@ class Segment: Codable, Equatable, Hashable {
                             
                             let tmpSeg = try Segment(basicSections: bs, interleaved: self.interleaved, isStaticRing: false, isRadialShield: false, realWindowHeight: self.realWindowHeight, useWindowHeight: self.useWindowHeight)
                             
-                            let serCap = try tmpSeg.SeriesCapacitance(axialGaps: axGaps, radialGaps: nil, endDisc: endD, adjStaticRing: staticRing)
+                            let serCap = try await tmpSeg.SeriesCapacitance(axialGaps: axGaps, radialGaps: nil, endDisc: endD, adjStaticRing: staticRing)
                             
                             result += 1 / serCap
                         }
@@ -621,7 +653,7 @@ class Segment: Codable, Equatable, Hashable {
                             
                             let tmpSeg = try Segment(basicSections: bs, interleaved: self.interleaved, isStaticRing: false, isRadialShield: false, realWindowHeight: self.realWindowHeight, useWindowHeight: self.useWindowHeight)
                             
-                            let serCap = try tmpSeg.SeriesCapacitance(axialGaps: axGaps, radialGaps: nil, endDisc: endD, adjStaticRing: staticRing)
+                            let serCap = try await tmpSeg.SeriesCapacitance(axialGaps: axGaps, radialGaps: nil, endDisc: endD, adjStaticRing: staticRing)
                             
                             result += 1 / serCap
                         }
@@ -636,7 +668,7 @@ class Segment: Codable, Equatable, Hashable {
                             
                             let tmpSeg = try Segment(basicSections: bs, interleaved: self.interleaved, isStaticRing: false, isRadialShield: false, realWindowHeight: self.realWindowHeight, useWindowHeight: self.useWindowHeight)
                             
-                            let serCap = try tmpSeg.SeriesCapacitance(axialGaps: axGaps, radialGaps: nil, endDisc: nil, adjStaticRing: nil)
+                            let serCap = try await tmpSeg.SeriesCapacitance(axialGaps: axGaps, radialGaps: nil, endDisc: nil, adjStaticRing: nil)
                             
                             result += 1 / serCap
                         }
@@ -914,14 +946,14 @@ class Segment: Codable, Equatable, Hashable {
     /// - Parameter adjacentSegment: The segment that is immediately outside the radial shield..
     /// - Parameter hiloToSegment: The radial gap between the shield and the adjacent Segment.
     /// - Parameter elecHt: The height of the radial shield
-    static func RadialShield(adjacentSegment:Segment, hiloToSegment:Double, elecHt:Double) throws -> Segment {
+    static func RadialShield(adjacentSegment:Segment, hiloToSegment:Double, elecHt:Double) async throws -> Segment {
         
         // Create the special BasicSection for a radial shield
-        let radialPos = adjacentSegment.radialPos == 0 ? Segment.negativeZeroPosition : -adjacentSegment.radialPos
+        let radialPos = await adjacentSegment.radialPos == 0 ? Segment.negativeZeroPosition : -adjacentSegment.radialPos
         let rsLocation = LocStruct(radial: radialPos, axial: 0)
         let rsThickness = 0.002 // 2mm standard thickness
-        let originX = adjacentSegment.rect.origin.x - hiloToSegment - rsThickness
-        let originY = adjacentSegment.rect.origin.y
+        let originX = await adjacentSegment.rect.origin.x - hiloToSegment - rsThickness
+        let originY = await adjacentSegment.rect.origin.y
         let rsRect = NSRect(x: originX, y: originY, width: rsThickness, height: elecHt)
         // create a dummy BSdata struct
         let rsWdgData = BasicSectionWindingData(type: .disc, discData: BasicSectionWindingData.DiscData(numAxialColumns: 10, axialColumnWidth: 0.038), layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: rsThickness, axialDimn: elecHt, turnInsulation: 0, resistancePerMeter: 0, strandRadial: 0, strandAxial: 0))
@@ -944,16 +976,16 @@ class Segment: Codable, Equatable, Hashable {
     /// - Parameter gapToSegment: The axial gap (shrunk) between the adjacent segment and the static ring
     /// - Parameter staticRingIsAbove: Boolean to indicate whether the static ring is above (true) or below (false) the adjacentSegment
     /// - Parameter staticRingThickness: An optional static ring thickness (axial height). If nil, then the "standard" thickness of 5/8" is used.
-    static func StaticRing(adjacentSegment:Segment, gapToSegment:Double, staticRingIsAbove:Bool, staticRingThickness:Double? = nil) throws -> Segment {
+    static func StaticRing(adjacentSegment:Segment, gapToSegment:Double, staticRingIsAbove:Bool, staticRingThickness:Double? = nil) async throws -> Segment {
         
         // Create a special BasicSection as follows
         // The location is the same as the adjacent segment EXCEPT the axial position is the NEGATIVE of the adjacent segment
-        let axialPos = adjacentSegment.axialPos == 0 ? Segment.negativeZeroPosition : -adjacentSegment.axialPos
-        let srLocation = LocStruct(radial: adjacentSegment.radialPos, axial: axialPos)
+        let axialPos = await adjacentSegment.axialPos == 0 ? Segment.negativeZeroPosition : -adjacentSegment.axialPos
+        let srLocation = await LocStruct(radial: adjacentSegment.radialPos, axial: axialPos)
         // The rect has the same x-origin and width as the adjacent segment but is offset by the gaptoSegment and the standard static-ring axial dimension
         let srThickness = staticRingThickness == nil ? stdStaticRingThickness : staticRingThickness!
-        let offsetY = staticRingIsAbove ? adjacentSegment.rect.height + gapToSegment : -(gapToSegment + srThickness)
-        var srRect = adjacentSegment.rect
+        let offsetY = await staticRingIsAbove ? adjacentSegment.rect.height + gapToSegment : -(gapToSegment + srThickness)
+        var srRect = await adjacentSegment.rect
         srRect.origin.y += offsetY
         srRect.size.height = srThickness
         // we need to create a dummy cable definition for the static ring
@@ -975,7 +1007,7 @@ class Segment: Codable, Equatable, Hashable {
     /// Reset the value of the next Segment serial number to be assigned to 0. NOTE:  Any Segments that may have been created by the user prior to calling this function SHOULD BE DESTROYED to avoid problems when testing for equality between Segments (the equality test reiles on the the serial number).
     static func resetSerialNumber()
     {
-        Segment.nextSerialNumberStore = 0
+        Segment.nextSerialNumberStore = OSAllocatedUnfairLock(initialState: -1)
     }
     
     /*
