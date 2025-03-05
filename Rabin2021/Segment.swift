@@ -299,6 +299,12 @@ class Segment: Codable, Equatable, Hashable {
     var eddyLossRadialPU:Double = 0.0
     var eddyLossAxialPU:Double = 0.0
     
+    func SetEddyLossesPU(radial:Double, axial:Double) {
+        
+        eddyLossRadialPU = radial
+        eddyLossAxialPU = axial
+    }
+    
     
     /// The series capacitance of the segment when it is considered within a coil (this property is set elsewhere)
     var seriesCapacitance:Double = 0.0

@@ -11,7 +11,7 @@ import Cocoa
 import PchBasePackage
 
 /// A LocStruct holds the physical location of a coil section in the window.
-struct LocStruct:Codable, CustomStringConvertible, Comparable {
+struct LocStruct:Codable, CustomStringConvertible, Comparable, Sendable {
     
     // Required function for Comparable. Note that the '==' operator is automatically created for us since the member properties of the class (radial and axial) are both of type Int, which is also Comparable.
     // Basically, a section that is part of a coil that is closer to the core is "less than" a section that is further away. If the two sections are in the same coil, then the one closer to the bottom yoke is the 'lesser' of the two.
@@ -40,7 +40,7 @@ struct LocStruct:Codable, CustomStringConvertible, Comparable {
 }
 
 /// A struct that holds data important to calculations like capacitance. I chose to create this structure instead of dragging around stuff form PCH_ExcelDesignFileReader_ (and thus requiring that that class be attched to any program that this class becomes a part of).
-struct BasicSectionWindingData:Codable {
+struct BasicSectionWindingData:Codable, Sendable {
     
     /// The winding types that we recognize
     enum WdgType:Int, Codable {
@@ -103,7 +103,7 @@ struct BasicSectionWindingData:Codable {
 }
 
 /// This struct defines  the most basic definitiion of a coil section. There are no "electrical" functions defined for the struct. It is basically just used to describe the physical and electrical characteristics of a coil section (either a single disc or a single layer). 
-struct BasicSection:Codable {
+struct BasicSection:Codable, Sendable {
     
     /// The location of the section
     let location:LocStruct

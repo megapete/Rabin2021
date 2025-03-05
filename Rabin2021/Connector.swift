@@ -9,9 +9,9 @@ import Foundation
 
 // A connector is the "jumper" that connects any two coil segments. To see how this is actually used, see the comment for Segment.Connection
 
-struct Connector:Codable, Hashable {
+struct Connector:Codable, Hashable, Sendable {
     
-    enum Location:Codable {
+    enum Location:Codable, Sendable {
         
         case outside_upper
         case center_upper

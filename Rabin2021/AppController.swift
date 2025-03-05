@@ -256,7 +256,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
     }
     
-    /// Coil Reslts windows
+    /// Coil Results windows
     var coilResultsWindow:CoilResultsDisplayWindow? = nil
     // var voltageDiffsWindow:PchMatrixViewWindow? = nil
     
@@ -281,6 +281,20 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// The colors of the different layers (for display purposes only)
     static let segmentColors:[NSColor] = [.red, .blue, .orange, .purple, .yellow]
     
+    /// The inductance calculation for the current model has ben done
+    var inductanceIsValid:Bool = false
+    
+    /// The capacitance calculation for the current model has been done
+    var capacitanceIsValid:Bool = false
+    
+    var designIsValid:Bool {
+        
+        get {
+            
+            return inductanceIsValid && capacitanceIsValid
+        }
+    }
+    
     // MARK: Initialization
     override func awakeFromNib() {
         
@@ -298,6 +312,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         self.zLocationTextField.doubleValue = 0
         
         self.inductanceLight.textColor = .red
+        self.inductanceIsValid = false
         self.indCalcProgInd.isHidden = true
         self.indCalcProgInd.minValue = 0.0
         self.indCalcProgInd.maxValue = 100.0
@@ -337,11 +352,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         DLog("Energy (from Inductance): \(await fePhase.EnergyFromInductance())")
         
-        model.unfactoredM = await PchMatrix(srcMatrix: feIndMatrix)
-        
         do {
             
-            model.M = try await feIndMatrix.FactorizedAs(.Cholesky)
+            let unfactoredM = await PchMatrix(srcMatrix: feIndMatrix)
+            let M = try await feIndMatrix.FactorizedAs(.Cholesky)
+            await model.SetInductanceMatrices(unfactoreM: unfactoredM, M:M)
+            inductanceIsValid = true
         }
         catch {
             
@@ -406,13 +422,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 return
             }
             
-            model.RemoveSegments(badSegments: oldSegments)
+            await model.RemoveSegments(badSegments: oldSegments)
             
             do {
                 
-                try model.UpdateConnectors(oldSegments: oldSegments, newSegments: newSegments)
+                try await model.UpdateConnectors(oldSegments: oldSegments, newSegments: newSegments)
                 
-                try model.AddSegments(newSegments: newSegments)
+                try await model.AddSegments(newSegments: newSegments)
             }
             catch {
                 
@@ -428,7 +444,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return
         }
         
-        guard let fePhase = CreateFePhase(xlFile: excelFile, model: model) else {
+        inductanceIsValid = false
+        capacitanceIsValid = false
+        
+        guard let fePhase = await CreateFePhase(xlFile: excelFile, model: model) else {
             
             PCH_ErrorAlert(message: "Could not create finite element model!")
             return
@@ -540,7 +559,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             
             do {
                 
-                let lastSegmentIndex = try model.GetHighestSection(coil: wdgIndex) + firstSegmentIndex
+                let lastSegmentIndex = try await model.GetHighestSection(coil: wdgIndex) + firstSegmentIndex
                 for segIndex in firstSegmentIndex...lastSegmentIndex {
                     
                     let currentDirection = excelFile.windings[wdgIndex].terminal.terminalNumber == 2 ? -1.0 : 1.0
@@ -582,10 +601,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return
         }
         
-        for i in 0..<model.segments.count {
+        for i in await 0..<model.segments.count {
             
-            model.segments[i].eddyLossAxialPU = await fePhase.window.sections[i].eddyLossDueToAxialFlux / fePhase.window.sections[i].resistiveLoss
-            model.segments[i].eddyLossRadialPU = await fePhase.window.sections[i].eddyLossDueToRadialFlux / fePhase.window.sections[i].resistiveLoss
+            let axialPU = await fePhase.window.sections[i].eddyLossDueToAxialFlux / fePhase.window.sections[i].resistiveLoss
+            let radialPU = await fePhase.window.sections[i].eddyLossDueToRadialFlux / fePhase.window.sections[i].resistiveLoss
+            await model.segments[i].SetEddyLossesPU(radial: radialPU, axial: axialPU)
+            
         }
         
         self.inductanceLight.textColor = .red
@@ -596,12 +617,19 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         do {
         
             try await fePhase.CalculateInductanceMatrix(useConcurrency: true, assumeSymmetric: true)
-            model.M = try await fePhase.inductanceMatrix?.FactorizedAs(.Cholesky)
-            Task {
+            
+            guard let indMatrix = await fePhase.inductanceMatrix else {
                 
-                await didFinishInductanceCalculation()
+                PCH_ErrorAlert(message: "An impossible error has occurred!")
+                return
             }
+            
+            await model.SetInductanceMatrices(unfactoreM: indMatrix, M: try await indMatrix.FactorizedAs(.Cholesky))
+        
+            await didFinishInductanceCalculation()
+            
             try await model.CalculateCapacitanceMatrix()
+            capacitanceIsValid = true
             // DLog("Coil 0 Cs: \(try model.CoilSeriesCapacitance(coil: 0))")
             // DLog("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: 1))")
         }
@@ -793,7 +821,6 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             
         }
 
-        
         return PhaseModel(segments: result, core: self.currentCore!, tankDepth: self.tankDepth)
     }
     
@@ -937,9 +964,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     }
     
     /// Function to create the finite-element model that we'll use to get the inductance matrix and eddy losses for the current PhaseModel. It is assumed that 'model' has already been updated (or created) using 'xlFile'.
-    func CreateFePhase(xlFile:PCH_ExcelDesignFile, model:PhaseModel) -> PchFePhase? {
+    func CreateFePhase(xlFile:PCH_ExcelDesignFile, model:PhaseModel) async -> PchFePhase? {
         
-        let coilSegments = model.CoilSegments()
+        let coilSegments = await model.CoilSegments()
         // do some simple checks to see if the xlFile and the model match, at least in terms of the number of coils and their basic sections
         guard let lastSegment = coilSegments.last, lastSegment.radialPos == xlFile.windings.count - 1 else {
             
@@ -1085,13 +1112,15 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             let segmentRange = showWaveFormDlog.segmentRange
             DLog("Segment range: \(segmentRange)")
             
-            self.doShowWaveforms(segments: segmentRange, showVoltage: showWaveFormDlog.showVoltagesCheckBox.state == .on, showCurrent: showWaveFormDlog.showCurrentsCheckBox.state == .on, showFourier: showWaveFormDlog.showFourierCheckBox.state == .on)
+            Task {
+                await self.doShowWaveforms(segments: segmentRange, showVoltage: showWaveFormDlog.showVoltagesCheckBox.state == .on, showCurrent: showWaveFormDlog.showCurrentsCheckBox.state == .on, showFourier: showWaveFormDlog.showFourierCheckBox.state == .on)
+            }
         }
     }
     
     /// Show the requested waveforms. Current waveforms are displayed for the given Segments while voltage waveforms are shown for nodes located above and below the given Segments
     /// - note: If both 'showVoltage" and 'showCurrent' are false, the routine does nothing
-    func doShowWaveforms(segments:Range<Int>, showVoltage:Bool, showCurrent:Bool, showFourier:Bool) {
+    func doShowWaveforms(segments:Range<Int>, showVoltage:Bool, showCurrent:Bool, showFourier:Bool) async {
         
         guard let simResult = latestSimulationResult, let model = currentModel, !segments.isEmpty && (showVoltage || showCurrent || showFourier) else {
             
@@ -1297,8 +1326,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             
             // we need to convert the segment numbers passed in to their associated nodes (top and bottom) without repeats
             var nodeSet:Set<Int> = []
-            let segmentsToShow = model.CoilSegments()[segments]
-            for nextNode in model.nodes {
+            let segmentsToShow = await model.CoilSegments()[segments]
+            for nextNode in await model.nodes {
                 
                 if let belowSeg = nextNode.belowSegment {
                     
@@ -1385,36 +1414,40 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return
         }
         
-        guard let showCoilResultsDlog = ShowCoilResultsDialog(phaseModel: phModel, simModel: simModel) else {
+        Task {
             
-            DLog("Couldn't open dialog box!")
-            return
-        }
-        
-        if showCoilResultsDlog.runModal() == .OK {
-            
-            let coilSelected = showCoilResultsDlog.coilPicker.indexOfSelectedItem
-            
-            var segmentRange:ClosedRange<Int> = 0...0
-            
-            do {
+            let coilCount = await phModel.CoilCount()
+            guard let showCoilResultsDlog = ShowCoilResultsDialog(numCoils: coilCount) else {
                 
-                segmentRange = try phModel.SegmentRange(coil: coilSelected)
-                // let coilBase = coilSelected == 0 ? 0 : try phModel.GetHighestSection(coil: coilSelected - 1) + 1
-                // let coilTop = try phModel.GetHighestSection(coil: coilSelected) + coilBase
-                // segmentRange = coilBase...coilTop
-            }
-            catch {
-                
-                PCH_ErrorAlert(message: error.localizedDescription)
+                DLog("Couldn't open dialog box!")
                 return
             }
             
-            doShowCoilResults(totalAnimationTime: showCoilResultsDlog.animationTimeTextField.doubleValue, segments: segmentRange, showVoltage: showCoilResultsDlog.voltagesCheckBox.state == .on, showCurrent: showCoilResultsDlog.currentsCheckBox.state == .on)
+            if showCoilResultsDlog.runModal() == .OK {
+                
+                let coilSelected = showCoilResultsDlog.coilPicker.indexOfSelectedItem
+                
+                var segmentRange:ClosedRange<Int> = 0...0
+                
+                do {
+                    
+                    segmentRange = try await phModel.SegmentRange(coil: coilSelected)
+                    // let coilBase = coilSelected == 0 ? 0 : try phModel.GetHighestSection(coil: coilSelected - 1) + 1
+                    // let coilTop = try phModel.GetHighestSection(coil: coilSelected) + coilBase
+                    // segmentRange = coilBase...coilTop
+                }
+                catch {
+                    
+                    PCH_ErrorAlert(message: error.localizedDescription)
+                    return
+                }
+                
+                await doShowCoilResults(totalAnimationTime: showCoilResultsDlog.animationTimeTextField.doubleValue, segments: segmentRange, showVoltage: showCoilResultsDlog.voltagesCheckBox.state == .on, showCurrent: showCoilResultsDlog.currentsCheckBox.state == .on)
+            }
         }
     }
     
-    func doShowCoilResults(totalAnimationTime:Double, segments:ClosedRange<Int>, showVoltage:Bool, showCurrent:Bool) {
+    func doShowCoilResults(totalAnimationTime:Double, segments:ClosedRange<Int>, showVoltage:Bool, showCurrent:Bool) async {
         
         guard let phModel = self.currentModel, let simResult = self.latestSimulationResult, !segments.isEmpty else {
             
@@ -1431,9 +1464,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             
             do {
                 
-                let coilSegments = phModel.CoilSegments()
+                let coilSegments = await phModel.CoilSegments()
                 let coilIndex = coilSegments[segments.lowerBound].radialPos
-                let highestSection = try phModel.GetHighestSection(coil: coilIndex)
+                let highestSection = try await phModel.GetHighestSection(coil: coilIndex)
                 
                 // var runningDim = 0.0 // try phModel.AxialSpacesAboutSegment(segment: coilSegments[segments.lowerBound]).below / 2.0
                 /*
@@ -1448,7 +1481,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                     
                     let theSegment = coilSegments[segIndex]
                     
-                    let realAxialSpaces = try phModel.AxialSpacesAboutSegment(segment: theSegment)
+                    let realAxialSpaces = try await phModel.AxialSpacesAboutSegment(segment: theSegment)
                     var axialSpaceBelow = realAxialSpaces.below / 2.0
                     var axialSpaceAbove = realAxialSpaces.above / 2.0
                     
@@ -1470,8 +1503,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                         
                         let prevSegment = coilSegments[segIndex - 1]
                         let nextSegment = coilSegments[segIndex + 1]
-                        let tappingGapBelow = phModel.IsTappingGap(segment1: prevSegment, segment2: theSegment)
-                        let tappingGapAbove = phModel.IsTappingGap(segment1: theSegment, segment2: nextSegment)
+                        let tappingGapBelow = await phModel.IsTappingGap(segment1: prevSegment, segment2: theSegment)
+                        let tappingGapAbove = await phModel.IsTappingGap(segment1: theSegment, segment2: nextSegment)
                         if tappingGapAbove {
                             
                             axialSpaceAbove = axialBreakDimension
@@ -1494,8 +1527,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                     xDims.append(newDim * 1000.0)
                 }
                 
-                let lowNode = phModel.AdjacentNodes(to: coilSegments[segments.lowerBound]).below
-                let hiNode = phModel.AdjacentNodes(to: coilSegments[segments.upperBound]).above
+                let lowNode = await phModel.AdjacentNodes(to: coilSegments[segments.lowerBound]).below
+                let hiNode = await phModel.AdjacentNodes(to: coilSegments[segments.upperBound]).above
                 
                 self.coilResultsWindow = CoilResultsDisplayWindow(windowTitle: "Voltage: Segments [\(segments.lowerBound)-\(segments.upperBound)]", showVoltages: true, xDimensions: xDims, resultData: simResult, indicesToDisplay: ClosedRange(uncheckedBounds: (lowNode, hiNode)), totalAnimationTime: totalAnimationTime)
                 
@@ -1513,14 +1546,22 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     @IBAction func handleShowBaseCmatrix(_ sender: Any) {
         
-        guard let model = self.currentModel, let Cmatrix = model.C else {
+        guard let model = self.currentModel else {
             
             return
         }
         
-        let capWindow = Cmatrix.GetViewer()
-        capWindow.window?.title = "Base (unfixed) Capacitance Matrix"
-        capWindow.showWindow(self)
+        Task {
+            
+            guard let Cmatrix = await model.C else {
+                
+                return
+            }
+            
+            let capWindow = Cmatrix.GetViewer()
+            capWindow.window?.title = "Base (unfixed) Capacitance Matrix"
+            capWindow.showWindow(self)
+        }
     }
     
     // MARK: File routines
@@ -1564,7 +1605,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// Save the unfactored inductance matrix as a CSV file
     @IBAction func handleSaveRawMmatrix(_ sender: Any) {
         
-        guard let model = self.currentModel, let Mmatrix = model.unfactoredM else {
+        guard let model = self.currentModel else {
             
             return
         }
@@ -1577,6 +1618,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         Task {
             
+            guard let Mmatrix = await model.unfactoredM else {
+                return
+            }
             let csvFileString = await Mmatrix.csv
             
             let savePanel = NSSavePanel()
@@ -1608,7 +1652,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// Save the factored inductance 
     @IBAction func handleSaveMmatrix(_ sender: Any) {
         
-        guard let model = self.currentModel, let Mmatrix = model.M else {
+        guard let model = self.currentModel else {
             
             return
         }
@@ -1621,6 +1665,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         Task {
             
+            guard let Mmatrix = await model.M else {
+                return
+            }
             let csvFileString = await Mmatrix.csv
             
             let savePanel = NSSavePanel()
@@ -1697,7 +1744,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     @IBAction func handleSaveBaseCmatrix(_ sender: Any) {
         
-        guard let model = self.currentModel, let Cmatrix = model.C else {
+        guard let model = self.currentModel else {
             
             return
         }
@@ -1710,6 +1757,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         Task {
             
+            guard let Cmatrix = await model.C  else {
+                return
+            }
             let csvFileString = await Cmatrix.csv
             
             let savePanel = NSSavePanel()
@@ -1740,7 +1790,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     @IBAction func handleSaveFixedCmatrix(_ sender: Any) {
         
-        guard let model = self.currentModel, let Cmatrix = model.fixedC else {
+        guard let model = self.currentModel else {
             
             return
         }
@@ -1753,6 +1803,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         Task {
             
+            guard let Cmatrix = await model.fixedC else {
+                return
+            }
             let csvFileString = await Cmatrix.csv
             
             let savePanel = NSSavePanel()
@@ -1800,7 +1853,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     @IBAction func handleZoomAll(_ sender: Any) {
         
-        guard let model = self.currentModel, model.segments.count > 0, let core = self.currentCore else
+        guard let model = self.currentModel, /* model.segments.count > 0,*/ let core = self.currentCore else
         {
             return
         }
@@ -1813,7 +1866,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     @IBAction func handleZoomRect(_ sender: Any) {
         
-        guard let model = self.currentModel, model.segments.count > 0 else
+        guard let model = self.currentModel /*, model.segments.count > 0 */ else
         {
             return
         }
@@ -1846,31 +1899,39 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     func updateViews()
     {
-        guard let model = self.currentModel, model.segments.count > 0 else
+        guard let model = self.currentModel /*, model.segments.count > 0 */ else
         {
             return
         }
         
         // self.txfoView.segments = []
-        self.txfoView.currentSegments = []
         
-        self.txfoView.removeAllToolTips()
-        
-        // See the comment for the TransformerView property 'segments' to see why I coded this in this way
-        var newSegmentPaths:[SegmentPath] = []
-        for nextSegment in model.segments
-        {
-            let pathColor = AppController.segmentColors[nextSegment.radialPos % AppController.segmentColors.count]
+        Task {
             
-            var newSegPath = SegmentPath(segment: nextSegment, segmentColor: pathColor)
+            guard await model.segments.count > 0 else {
+                return
+            }
             
-            newSegPath.toolTipTag = self.txfoView.addToolTip(newSegPath.rect, owner: self.txfoView as Any, userData: nil)
+            self.txfoView.currentSegments = []
             
-            newSegmentPaths.append(newSegPath)
+            self.txfoView.removeAllToolTips()
+            
+            // See the comment for the TransformerView property 'segments' to see why I coded this in this way
+            var newSegmentPaths:[SegmentPath] = []
+            for nextSegment in await model.segments
+            {
+                let pathColor = AppController.segmentColors[nextSegment.radialPos % AppController.segmentColors.count]
+                
+                var newSegPath = SegmentPath(segment: nextSegment, segmentColor: pathColor)
+                
+                newSegPath.toolTipTag = self.txfoView.addToolTip(newSegPath.rect, owner: self.txfoView as Any, userData: nil)
+                
+                newSegmentPaths.append(newSegPath)
+            }
+            
+            self.txfoView.segments = newSegmentPaths
+            self.txfoView.needsDisplay = true
         }
-        
-        self.txfoView.segments = newSegmentPaths
-        self.txfoView.needsDisplay = true
     }
     
     // MARK: Menu routines
@@ -1913,23 +1974,25 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return lhs.axialPos < rhs.axialPos
         })
         
-        if model.SegmentsAreContiguous(segments: segments) {
+        Task {
             
-            var newBasicSectionArray:[BasicSection] = []
-            
-            
-            
-            for nextSegment in segments {
+            if await model.SegmentsAreContiguous(segments: segments) {
                 
-                newBasicSectionArray.append(contentsOf: nextSegment.basicSections)
-            }
-                        
-            Task {
+                var newBasicSectionArray:[BasicSection] = []
+                
+                
+                
+                for nextSegment in segments {
+                    
+                    newBasicSectionArray.append(contentsOf: nextSegment.basicSections)
+                }
+                
+                
                 do {
                     
                     // we need to keep track of static rings that are at the ends of new (combined) Segments
-                    let bottomStaticRing = try model.StaticRingBelow(segment: segments.first!, recursiveCheck: false)
-                    let topStaticRing = try model.StaticRingAbove(segment: segments.last!, recursiveCheck: false)
+                    let bottomStaticRing = try await model.StaticRingBelow(segment: segments.first!, recursiveCheck: false)
+                    let topStaticRing = try await model.StaticRingAbove(segment: segments.last!, recursiveCheck: false)
                     
                     let combinedSegment = try Segment(basicSections: newBasicSectionArray, realWindowHeight: model.core.realWindowHeight, useWindowHeight: model.core.adjustedWindHt)
                     
@@ -1939,23 +2002,23 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                     
                     if bottomStaticRing != nil {
                         
-                        let bSR = try model.AddStaticRing(adjacentSegment: combinedSegment, above: false)
-                        try model.InsertSegment(newSegment: bSR)
-                        try model.RemoveStaticRing(staticRing: bottomStaticRing!)
+                        let bSR = try await model.AddStaticRing(adjacentSegment: combinedSegment, above: false)
+                        try await model.InsertSegment(newSegment: bSR)
+                        try await model.RemoveStaticRing(staticRing: bottomStaticRing!)
                         capMatrixNeedsUpdate = true
                     }
                     
                     if topStaticRing != nil {
                         
-                        let tSR = try model.AddStaticRing(adjacentSegment: combinedSegment, above: true)
-                        try model.InsertSegment(newSegment: tSR)
-                        try model.RemoveStaticRing(staticRing: topStaticRing!)
+                        let tSR = try await model.AddStaticRing(adjacentSegment: combinedSegment, above: true)
+                        try await model.InsertSegment(newSegment: tSR)
+                        try await model.RemoveStaticRing(staticRing: topStaticRing!)
                         capMatrixNeedsUpdate = true
                     }
                     
                     if capMatrixNeedsUpdate {
                         
-                        try model.CalculateCapacitanceMatrix()
+                        try await model.CalculateCapacitanceMatrix()
                         //print("Coil 0 Cs: \(try model.CoilSeriesCapacitance(coil: 0))")
                         //print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: 1))")
                     }
@@ -1966,11 +2029,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                     let _ = alert.runModal()
                     return
                 }
+                
             }
-        }
-        else {
-            
-            PCH_ErrorAlert(message: "Segments must be from the same coil and be contiguous to combine them!", info: nil)
+            else {
+                
+                PCH_ErrorAlert(message: "Segments must be from the same coil and be contiguous to combine them!", info: nil)
+            }
         }
     }
 
@@ -2009,21 +2073,23 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return lhs.axialPos < rhs.axialPos
         })
         
-        if model.SegmentsAreContiguous(segments: segments) {
+        Task {
             
-            var basicSections:[BasicSection] = []
-            for nextSegment in segments {
+            if await model.SegmentsAreContiguous(segments: segments) {
                 
-                basicSections.append(contentsOf: nextSegment.basicSections)
-            }
-            
-            guard basicSections.count % 2 == 0 else {
+                var basicSections:[BasicSection] = []
+                for nextSegment in segments {
+                    
+                    basicSections.append(contentsOf: nextSegment.basicSections)
+                }
                 
-                PCH_ErrorAlert(message: "There must be an even number of total discs to create interleaved segments!", info: nil)
-                return
-            }
-            
-            Task {
+                guard basicSections.count % 2 == 0 else {
+                    
+                    PCH_ErrorAlert(message: "There must be an even number of total discs to create interleaved segments!", info: nil)
+                    return
+                }
+                
+                
                 do {
                     
                     var interleavedSegments:[Segment] = []
@@ -2042,10 +2108,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                     return
                 }
             }
-        }
-        else {
             
-            PCH_ErrorAlert(message: "Segments must be from the same coil and be contiguous to interleave them!", info: nil)
+            else {
+                
+                PCH_ErrorAlert(message: "Segments must be from the same coil and be contiguous to interleave them!", info: nil)
+            }
         }
     }
     
@@ -2164,25 +2231,27 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         let currentSegment = segmentPath == nil ? self.txfoView.currentSegments[0] : segmentPath!
         
-        do {
-            
-            let newStaticRing = try model.AddStaticRing(adjacentSegment: currentSegment.segment, above: true)
-            
-            try model.InsertSegment(newSegment: newStaticRing)
-            
-            try model.CalculateCapacitanceMatrix()
-            // print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: currentSegment.segment.radialPos))")
-            
-            self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segmentColor: currentSegment.segmentColor))
-            self.txfoView.currentSegments = [self.txfoView.segments.last!]
-            
-            self.txfoView.needsDisplay = true
-        }
-        catch {
-            
-            let alert = NSAlert(error: error)
-            let _ = alert.runModal()
-            return
+        Task {
+            do {
+                
+                let newStaticRing = try await model.AddStaticRing(adjacentSegment: currentSegment.segment, above: true)
+                
+                try await model.InsertSegment(newSegment: newStaticRing)
+                
+                try await model.CalculateCapacitanceMatrix()
+                // print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: currentSegment.segment.radialPos))")
+                
+                self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segmentColor: currentSegment.segmentColor))
+                self.txfoView.currentSegments = [self.txfoView.segments.last!]
+                
+                self.txfoView.needsDisplay = true
+            }
+            catch {
+                
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
+                return
+            }
         }
     }
     
@@ -2201,25 +2270,28 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         let currentSegment = segmentPath == nil ? self.txfoView.currentSegments[0] : segmentPath!
         
-        do {
+        Task {
             
-            let newStaticRing = try model.AddStaticRing(adjacentSegment: currentSegment.segment, above: false)
-            
-            try model.InsertSegment(newSegment: newStaticRing)
-            
-            try model.CalculateCapacitanceMatrix()
-            print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: currentSegment.segment.radialPos))")
-            
-            self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segmentColor: currentSegment.segmentColor))
-            self.txfoView.currentSegments = [self.txfoView.segments.last!]
-            
-            self.txfoView.needsDisplay = true
-        }
-        catch {
-            
-            let alert = NSAlert(error: error)
-            let _ = alert.runModal()
-            return
+            do {
+                
+                let newStaticRing = try await model.AddStaticRing(adjacentSegment: currentSegment.segment, above: false)
+                
+                try await model.InsertSegment(newSegment: newStaticRing)
+                
+                try await model.CalculateCapacitanceMatrix()
+                print("Coil 1 Cs: \(try await model.CoilSeriesCapacitance(coil: currentSegment.segment.radialPos))")
+                
+                self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segmentColor: currentSegment.segmentColor))
+                self.txfoView.currentSegments = [self.txfoView.segments.last!]
+                
+                self.txfoView.needsDisplay = true
+            }
+            catch {
+                
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
+                return
+            }
         }
     }
     
@@ -2238,21 +2310,24 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         let currentSegment = segmentPath == nil ? self.txfoView.currentSegments[0] : segmentPath!
         
-        do {
+        Task {
             
-            try model.RemoveStaticRing(staticRing: currentSegment.segment)
-            
-            self.txfoView.segments.remove(at: self.txfoView.currentSegmentIndices[0])
-            
-            
-            self.txfoView.currentSegments = []
-            self.txfoView.needsDisplay = true
-        }
-        catch {
-            
-            let alert = NSAlert(error: error)
-            let _ = alert.runModal()
-            return
+            do {
+                
+                try await model.RemoveStaticRing(staticRing: currentSegment.segment)
+                
+                self.txfoView.segments.remove(at: self.txfoView.currentSegmentIndices[0])
+                
+                
+                self.txfoView.currentSegments = []
+                self.txfoView.needsDisplay = true
+            }
+            catch {
+                
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
+                return
+            }
         }
     }
     
@@ -2285,22 +2360,25 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return
         }
         
-        do {
+        Task {
             
-            // let hilo = 0.012
-            let newRadialShield = try model.AddRadialShieldInside(coil: currentSegment.segment.location.radial, hiloToShield: hilo)
-            
-            try model.InsertSegment(newSegment: newRadialShield)
-            self.txfoView.segments.append(SegmentPath(segment: newRadialShield, segmentColor: .green))
-            self.txfoView.currentSegments = [self.txfoView.segments.last!]
-            
-            self.txfoView.needsDisplay = true
-        }
-        catch {
-            
-            let alert = NSAlert(error: error)
-            let _ = alert.runModal()
-            return
+            do {
+                
+                // let hilo = 0.012
+                let newRadialShield = try await model.AddRadialShieldInside(coil: currentSegment.segment.location.radial, hiloToShield: hilo)
+                
+                try await model.InsertSegment(newSegment: newRadialShield)
+                self.txfoView.segments.append(SegmentPath(segment: newRadialShield, segmentColor: .green))
+                self.txfoView.currentSegments = [self.txfoView.segments.last!]
+                
+                self.txfoView.needsDisplay = true
+            }
+            catch {
+                
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
+                return
+            }
         }
     }
     
@@ -2319,20 +2397,23 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         let currentSegment = segmentPath == nil ? self.txfoView.currentSegments[0] : segmentPath!
         
-        do {
+        Task {
             
-            try model.RemoveRadialShield(radialShield: currentSegment.segment)
-            
-            self.txfoView.segments.remove(at: self.txfoView.currentSegmentIndices[0])
-            
-            self.txfoView.currentSegments = []
-            self.txfoView.needsDisplay = true
-        }
-        catch {
-            
-            let alert = NSAlert(error: error)
-            let _ = alert.runModal()
-            return
+            do {
+                
+                try await model.RemoveRadialShield(radialShield: currentSegment.segment)
+                
+                self.txfoView.segments.remove(at: self.txfoView.currentSegmentIndices[0])
+                
+                self.txfoView.currentSegments = []
+                self.txfoView.needsDisplay = true
+            }
+            catch {
+                
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
+                return
+            }
         }
     }
     
@@ -2395,19 +2476,30 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         saveAsPanel.allowedContentTypes = [cirType]
         saveAsPanel.allowsOtherFileTypes = false
         
-        if saveAsPanel.runModal() == .OK
-        {
-            if let fileURL = saveAsPanel.url
+        Task {
+            
+            if saveAsPanel.runModal() == .OK
             {
-                if let fileString = self.doCreateCirFile(filename: fileURL.path) {
-                    
-                    do {
+                if let fileURL = saveAsPanel.url
+                {
+                    if let fileString = await self.doCreateCirFile(filename: fileURL.path) {
                         
-                        try fileString.write(to: fileURL, atomically: false, encoding: .utf8)
+                        do {
+                            
+                            try fileString.write(to: fileURL, atomically: false, encoding: .utf8)
+                        }
+                        catch {
+                            
+                            let alert = NSAlert(error: error)
+                            let _ = alert.runModal()
+                            return
+                        }
                     }
-                    catch {
+                    else {
                         
-                        let alert = NSAlert(error: error)
+                        let alert = NSAlert()
+                        alert.messageText = "Could not create CIR file from the current model!"
+                        alert.alertStyle = .warning
                         let _ = alert.runModal()
                         return
                     }
@@ -2415,25 +2507,17 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 else {
                     
                     let alert = NSAlert()
-                    alert.messageText = "Could not create CIR file from the current model!"
+                    alert.messageText = "Illegal URL when creating CIR file."
                     alert.alertStyle = .warning
                     let _ = alert.runModal()
                     return
                 }
             }
-            else {
-                
-                let alert = NSAlert()
-                alert.messageText = "Illegal URL when creating CIR file."
-                alert.alertStyle = .warning
-                let _ = alert.runModal()
-                return
-            }
         }
         
     }
     
-    func doCreateCirFile(filename:String) -> String? {
+    func doCreateCirFile(filename:String) async -> String? {
         
         guard let model = self.currentModel else {
             
@@ -2448,7 +2532,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         // The initial shunt capacitance id index is 50000
         var shuntIndexID = 50000
         
-        for nextNode in model.nodes {
+        for nextNode in await model.nodes {
             
             // Start with shunt capacitances from this node
             for nextShuntCap in nextNode.shuntCapacitances {
@@ -2505,7 +2589,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// - Returns: A matrix where entry i,i is the self-inductance of the winding in the 'i' radial position (0 closest to the core), and entry i,j (and j,i) is the mutual inductance beyween coil i and coil j
     func doMainWindingInductances() async -> PchMatrix? {
         
-        guard let model = self.currentModel, let xlFile = currentXLfile, let iMatrix = model.unfactoredM , let fePhase = self.currentFePhase else {
+        guard let model = self.currentModel, let xlFile = currentXLfile, let iMatrix = await model.unfactoredM , let fePhase = self.currentFePhase else {
             
             DLog("A valid model, a valid XL file, and an unfactored inductance matrix must be defined!")
             return nil
@@ -2513,7 +2597,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         let indMatrix = await PchMatrix(srcMatrix: iMatrix)
         
-        let segments = model.CoilSegments()
+        let segments = await model.CoilSegments()
         let numCoils = segments.last!.radialPos + 1
         
         let coilIndMatrix = PchMatrix(matrixType: .general, numType: .Double, rows: UInt(numCoils), columns: UInt(numCoils))
@@ -2522,7 +2606,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         do {
             for i in 0..<numCoils {
             
-                let segRange = try model.SegmentRange(coil: i)
+                let segRange = try await model.SegmentRange(coil: i)
                 
                 for nextRow in segRange {
                     
@@ -2557,7 +2641,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         let section0 = await fePhase.window.sections[0]
         // Current calculations are a pain because this routine assumes all turns are in the circuit. For a coil with off-load taps, this is the low-current tap, which is NOT what is saved as the 'seriesRMSCurremt'. That is actually the nominal current.
         let I0 = await (section0.seriesRmsCurrent * Complex(sqrt(2))).length
-        guard let section1Index = try? model.SegmentRange(coil: 1).lowerBound else {
+        guard let section1Index = try? await model.SegmentRange(coil: 1).lowerBound else {
             
             DLog("Bad section index!")
             return nil
@@ -2628,7 +2712,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         if menuItem == self.mainWdgInductanceMenuItem || menuItem == self.mainWdgImpedanceMenuItem {
             
-            return self.currentModel != nil && self.currentXLfile != nil && self.currentModel?.unfactoredM != nil
+            return self.currentModel != nil && self.currentXLfile != nil && inductanceIsValid
         }
         
         // get local copies of variables that we access often
@@ -2678,22 +2762,22 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         if menuItem == self.saveMmatrixMenuItem {
             
-            return self.currentModel != nil && self.currentModel!.M != nil
+            return self.currentModel != nil && inductanceIsValid
         }
         
         if menuItem == self.saveUnfactoredMmatrixMenuItem {
             
-            return self.currentModel != nil && self.currentModel!.unfactoredM != nil
+            return self.currentModel != nil && inductanceIsValid
         }
         
         if menuItem == self.createSimModelMenuItem {
             
-            return self.currentModel != nil && self.currentModel!.C != nil && self.currentModel!.M != nil
+            return self.currentModel != nil && self.designIsValid
         }
         
         if menuItem == self.simulateMenuItem {
             
-            return self.currentModel != nil && self.currentModel!.C != nil && self.currentModel!.M != nil && self.currentSimModel != nil
+            return self.currentModel != nil && self.designIsValid && self.currentSimModel != nil
         }
         
         if menuItem == self.showWaveformsMenuItem || menuItem == self.showCoilResultsMenuItem {
@@ -2703,12 +2787,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         if menuItem == self.saveBaseCmatrixMenuItem {
             
-            return self.currentModel != nil && self.currentModel!.C != nil
+            return self.currentModel != nil && self.capacitanceIsValid
         }
         
         if menuItem == self.saveFixedCmatrixMenuItem {
             
-            return self.currentModel != nil && self.currentModel!.fixedC != nil
+            return self.currentModel != nil && self.capacitanceIsValid
         }
         
         // default to true

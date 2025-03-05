@@ -8,7 +8,7 @@
 import Foundation
 
 /// A simple core class, used for inductance calculations
-class Core:Codable
+struct Core:Codable, Sendable
 {
     /// The diameter of the core
     let diameter:Double
@@ -20,13 +20,14 @@ class Core:Codable
     let legCenters:Double
     
     /// The multiplier used to adjust the  windowheight (used for certain DelVecchio calculations)
-    var windHtMultiplier:Double
+    // var windHtMultiplier:Double
     
-    /// The adjusted window height  (used for certain DelVecchio calculations)
+
+    /// The adjusted window height  (used for certain DelVecchio calculations). This now just returns the real window height of the core
     var adjustedWindHt:Double {
         
         get {
-            return self.realWindowHeight * self.windHtMultiplier
+            return self.realWindowHeight
         }
     }
     
@@ -52,7 +53,7 @@ class Core:Codable
     init(diameter:Double, realWindowHeight:Double, windHtMultiplier:Double = 3.0, legCenters:Double) {
         self.diameter = diameter
         self.realWindowHeight = realWindowHeight
-        self.windHtMultiplier = windHtMultiplier
+        // self.windHtMultiplier = windHtMultiplier
         self.legCenters = legCenters
     }
     

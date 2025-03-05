@@ -14,7 +14,7 @@ import PchBasePackage
 import PchMatrixPackage
 import PchFiniteElementPackage
 
-class PhaseModel /*:Codable */ {
+actor PhaseModel /*:Codable */ {
     
     /// The segments that make up the model. This array is kept sorted by the LocStruct of the segments (radial first, then axial).
     private var segmentStore:[Segment]
@@ -57,6 +57,13 @@ class PhaseModel /*:Codable */ {
     
     /// The inductance matrix for the model. **NOTE: This matrix is in Cholesky-factorized form
     var M:PchMatrix? = nil
+    
+    /// Set the inductance matrices
+    func SetInductanceMatrices(unfactoreM:PchMatrix? = nil, M:PchMatrix? = nil) {
+        
+        self.unfactoredM = unfactoreM
+        self.M = M
+    }
     
     /// The basic (unmodified) capacitance matrix for the model
     var C:PchMatrix? = nil
@@ -243,6 +250,18 @@ class PhaseModel /*:Codable */ {
         result.removeAll(where: {$0.radialPos < 0 || $0.axialPos < 0})
         
         return result
+    }
+    
+    /// The number of coils in the model
+    func CoilCount() -> Int {
+        
+        guard let finalSegment = self.segmentStore.last(where: {$0.radialPos >= 0 || $0.axialPos >= 0}) else {
+            
+            DLog("No coils!")
+            return -1
+        }
+        
+        return finalSegment.radialPos + 1
     }
     
     /// Get the range of the segments that make up the given coil, as a closed range of the indices into the inductance matrix, with lowerbound equal to the lowest disc and upperbound equal to the highest
