@@ -217,7 +217,8 @@ actor PhaseModel /*:Codable */ {
                     return "The segment specified is a static ring or radial shield."
                 }
                 
-                return "An unknown error occurred."
+                let extraInfo = info != "" ? " Added info: \(info)" : ""
+                return "An unknown error occurred.\(extraInfo)"
             }
         }
     }
@@ -265,9 +266,9 @@ actor PhaseModel /*:Codable */ {
     }
     
     /// Get the range of the segments that make up the given coil, as a closed range of the indices into the inductance matrix, with lowerbound equal to the lowest disc and upperbound equal to the highest
-    func SegmentRange(coil:Int) throws -> ClosedRange<Int> {
+    func SegmentRange(coil:Int) async throws -> ClosedRange<Int> {
         
-        guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+        guard let _ = await self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
             throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
@@ -279,10 +280,10 @@ actor PhaseModel /*:Codable */ {
             var lowBound = 0
             for i in 0..<coil {
                 
-                lowBound += try GetHighestSection(coil: i) + 1
+                await lowBound += try GetHighestSection(coil: i) + 1
             }
             
-            let highestSegment = try GetHighestSection(coil: coil)
+            let highestSegment = try await GetHighestSection(coil: coil)
             let highBound = lowBound + highestSegment
             
             return ClosedRange(uncheckedBounds: (lowBound, highBound))
@@ -294,7 +295,7 @@ actor PhaseModel /*:Codable */ {
     }
     
     /// Return the index into the inductance matrix for the given Segment
-    func SegmentIndex(segment:Segment) throws -> Int {
+    func SegmentIndex(segment:Segment) async throws -> Int {
         
         guard self.segments.contains(segment) else {
             
@@ -311,7 +312,7 @@ actor PhaseModel /*:Codable */ {
         do {
             for i in 0..<segment.radialPos {
                 
-                result += try GetHighestSection(coil: i)
+                await result += try GetHighestSection(coil: i)
                 result += 1
             }
         }
@@ -355,7 +356,8 @@ actor PhaseModel /*:Codable */ {
                     return result
                 }
                 // If the segments aren't adjacent or they are a tapping gap, add the connection
-                if !SegmentsAreAdjacent(segment1: segment, segment2: connSeg) || self.IsTappingGap(segment1: segment, segment2: connSeg) {
+                // Note that the 'await'-able call has to go first in an 'or' statement (??)
+                if await self.IsTappingGap(segment1: segment, segment2: connSeg) || !SegmentsAreAdjacent(segment1: segment, segment2: connSeg) {
                     
                     result.append(nextConnection)
                 }
@@ -379,11 +381,11 @@ actor PhaseModel /*:Codable */ {
         var segments = [segment1, segment2]
         segments.sort(by: {$0.axialPos < $1.axialPos})
         
-        for nextConnection1 in segments[0].connections {
+        for nextConnection1 in await segments[0].connections {
             
             if !nextConnection1.connector.fromIsLower && nextConnection1.connector.toLocation == .floating {
                 
-                for nextConnection2 in segments[1].connections {
+                for nextConnection2 in await segments[1].connections {
                     
                     if !nextConnection2.connector.fromIsUpper && nextConnection2.connector.toLocation == .floating {
                         
@@ -567,11 +569,11 @@ actor PhaseModel /*:Codable */ {
     }
     
     /// Function to return the axially adjacent Segments below and above the given Segment
-    func AxiallyAdjacentSegments(to:Segment) throws -> (below:Segment?, above:Segment?) {
+    func AxiallyAdjacentSegments(to:Segment) async throws -> (below:Segment?, above:Segment?) {
         
         do {
             
-            let segmentIndex = try self.SegmentIndex(segment: to)
+            let segmentIndex = try await self.SegmentIndex(segment: to)
             let belowIndex = segmentIndex - 1
             let aboveIndex = segmentIndex == self.segments.count - 1 ? -1 : segmentIndex + 1
             
@@ -646,7 +648,7 @@ actor PhaseModel /*:Codable */ {
                 
                 do {
                     
-                    let row = try SegmentIndex(segment: aboveSeg)
+                    let row = try await SegmentIndex(segment: aboveSeg)
                     await newB.SetDoubleValue(value: 1.0, row: row, col: nextNode.number)
                     // newB[row, nextNode.number] = 1.0
                 }
@@ -660,7 +662,7 @@ actor PhaseModel /*:Codable */ {
                 
                 do {
                     
-                    let row = try SegmentIndex(segment: belowSegment)
+                    let row = try await SegmentIndex(segment: belowSegment)
                     await newB.SetDoubleValue(value: -1.0, row: row, col: nextNode.number)
                     // newB[row, nextNode.number] = -1.0
                 }
@@ -676,7 +678,7 @@ actor PhaseModel /*:Codable */ {
     }
     
     /// Function to return all nodes in the model that are _directly_ connected to one of impulse, ground, or floating via a Segment.connection to one of those locations.
-    func NodesOfType(connType:Connector.Location) -> [Node] {
+    func NodesOfType(connType:Connector.Location) async -> [Node] {
         
         var result:[Node] = []
         
@@ -688,7 +690,7 @@ actor PhaseModel /*:Codable */ {
                 // in this case, only ground and impulse are possible
                 if connType == .impulse || connType == .ground {
                     
-                    for nextConnection in aboveSegment.connections {
+                    for nextConnection in await aboveSegment.connections {
                         
                         if nextConnection.connector.fromIsLower && nextConnection.connector.toLocation == connType {
                             
@@ -700,7 +702,7 @@ actor PhaseModel /*:Codable */ {
                     
                     if !addedNode {
                         
-                        for nextConnection in belowSegment.connections {
+                        for nextConnection in await belowSegment.connections {
                             
                             if nextConnection.connector.fromIsUpper && nextConnection.connector.toLocation == connType {
                                 
@@ -715,7 +717,7 @@ actor PhaseModel /*:Codable */ {
             else if let aboveSegment = nextNode.aboveSegment {
                 
                 // belowSegment is nil
-                for nextConnection in aboveSegment.connections {
+                for nextConnection in await aboveSegment.connections {
                     
                     if !nextConnection.connector.fromIsUpper && nextConnection.connector.toLocation == connType {
                         
@@ -727,7 +729,7 @@ actor PhaseModel /*:Codable */ {
             else if let belowSegment = nextNode.belowSegment {
                 
                 // aboveSegment is nil
-                for nextConnection in belowSegment.connections {
+                for nextConnection in await belowSegment.connections {
                     
                     if !nextConnection.connector.fromIsLower && nextConnection.connector.toLocation == connType {
                         
@@ -743,7 +745,7 @@ actor PhaseModel /*:Codable */ {
     
     /// A routine to change the connectors in the model when newSegment(s) take(s) the place of oldSegment(s). It is assumed that the Segment arrays are contiguous and in order. The count of oldSegments must be a multiple of newSegments or the count of newSegmenst must be a multiple of oldSegments.  If both arguments only have a single Segment, it is assumed that the one in newSegment replaces the one in oldSegment. It is further assumed that the new Segments have _NOT_ been added to the model yet, but will be soon after calling this function. Any connector references to oldSegments that should be set to newSegments will be replaced in the model - however, the model itself (ie: the array of Segments in segmentStore) will not be changed.
     ///  - Note: If there is only a single oldSegment, only adjacent-segment connections are retained, and connections to non-Segments (like ground, etc) are trashed.
-    func UpdateConnectors(oldSegments:[Segment], newSegments:[Segment]) throws {
+    func UpdateConnectors(oldSegments:[Segment], newSegments:[Segment]) async throws {
         
         guard oldSegments.count > 0 && newSegments.count > 0 else {
             
@@ -772,16 +774,32 @@ actor PhaseModel /*:Codable */ {
                 segmentMap[firstOldSeg.serialNumber] = newSeg
                 segmentMap[lastOldSeg.serialNumber] = newSeg
                 
-                newSeg.connections = firstOldSeg.connections
-                newSeg.connections.append(contentsOf: lastOldSeg.connections)
+                await newSeg.SetConnections(connections: firstOldSeg.connections + lastOldSeg.connections)
+                //newSeg.connections.append(contentsOf: lastOldSeg.connections)
                 
                 // there may be old-segment references in the newSeg.connections array, get rid of them
                 for nextOldSegment in currentOldSegments {
                     
-                    newSeg.connections.removeAll(where: {$0.segment == nextOldSegment})
+                    await newSeg.RemoveConnectionsWithID(nextOldSegment.serialNumber)
+                    //newSeg.connections.removeAll(where: {$0.segment == nextOldSegment})
                 }
             }
             
+            for nextSegment in newSegments {
+                
+                for i in await 0..<nextSegment.connections.count {
+                    
+                    if let refSegID = await nextSegment.connections[i].segmentID {
+                        
+                        if segmentMap[refSegID] != nil {
+                            
+                            await nextSegment.SetSegmentIDforConnectionAt(i, newID: refSegID)
+                        }
+                    }
+                }
+            }
+            
+            /*
             for nextSegment in newSegments {
                 
                 for i in 0..<nextSegment.connections.count {
@@ -794,8 +812,22 @@ actor PhaseModel /*:Codable */ {
                         }
                     }
                 }
-            }
+            } */
             
+            for nextSegment in self.segments {
+                
+                for i in await 0..<nextSegment.connections.count {
+                    
+                    if let refSegID = await nextSegment.connections[i].segmentID {
+                        
+                        if segmentMap[refSegID] != nil {
+                            
+                            await nextSegment.SetSegmentIDforConnectionAt(i, newID: refSegID)
+                        }
+                    }
+                }
+            }
+            /*
             for nextSegment in self.segments {
                 
                 for i in 0..<nextSegment.connections.count {
@@ -808,7 +840,7 @@ actor PhaseModel /*:Codable */ {
                         }
                     }
                 }
-            }
+            } */
         }
         else if oldSegments.count == 1 {
             
@@ -821,47 +853,60 @@ actor PhaseModel /*:Codable */ {
             let lastNewSegment = newSegments.last!
             
             // now we worry about replacing the old segment connections
-            var connectionsWithSegments = oldSegments[0].connections
-            connectionsWithSegments.removeAll(where: {$0.segment == nil})
+            var connectionsWithSegments = await oldSegments[0].connections
+            connectionsWithSegments.removeAll(where: {$0.segmentID == nil})
             
             do {
                 
                 for nextConnection in connectionsWithSegments {
                     
-                    let compPos = try self.ComparativePosition(fromSegment: oldSegments[0], toSegment: nextConnection.segment!)
+                    guard let nextConnSegment = segmentStore.first(where: { $0.serialNumber == nextConnection.segmentID}) else {
+                        
+                        throw PhaseModelError(info: "", type: .SegmentNotInModel)
+                    }
+                    
+                    let compPos = try await self.ComparativePosition(fromSegment: oldSegments[0], toSegment: nextConnSegment)
                     if compPos == .adjacentBelow || compPos == Segment.ComparativePosition.top {
                         
-                        let prevSegment = nextConnection.segment!
-                        for i in 0..<prevSegment.connections.count {
+                        let prevSegment = nextConnSegment
+                        for i in await 0..<prevSegment.connections.count {
                             
-                            if let nextPrevConnSeg = prevSegment.connections[i].segment {
+                            if let nextPrevConnSegID = await prevSegment.connections[i].segmentID {
                                 
-                                if nextPrevConnSeg == oldSegments[0] {
+                                if nextPrevConnSegID == oldSegments[0].serialNumber {
                                     
-                                    prevSegment.connections[i].segment = firstNewSegment
-                                    firstNewSegment.connections.append(nextConnection)
+                                    await prevSegment.SetSegmentIDforConnectionAt(i, newID: firstNewSegment.serialNumber)
+                                    await firstNewSegment.AppendConnection(connection: nextConnection)
+                                    // prevSegment.connections[i].segment = firstNewSegment
+                                    // firstNewSegment.connections.append(nextConnection)
                                 }
                             }
                         }
                     }
                     else if compPos == .adjacentAbove || compPos == Segment.ComparativePosition.bottom {
                         
-                        let nextSegment = nextConnection.segment!
-                        for i in 0..<nextSegment.connections.count {
+                        guard let nextSegmentID = nextConnection.segmentID, let nextSegment = segments.first(where: { $0.serialNumber == nextSegmentID }) else {
                             
-                            if let nextNextConnSeg = nextSegment.connections[i].segment {
+                            throw PhaseModelError(info: "", type: .SegmentNotInModel)
+                        }
+                        for i in await 0..<nextSegment.connections.count {
+                            
+                            if let nextNextConnSegID = await nextSegment.connections[i].segmentID {
                                 
-                                if nextNextConnSeg == oldSegments[0] {
+                                if nextNextConnSegID == oldSegments[0].serialNumber {
                                     
-                                    nextSegment.connections[i].segment = lastNewSegment
-                                    lastNewSegment.connections.append(nextConnection)
+                                    await nextSegment.SetSegmentIDforConnectionAt(i, newID: lastNewSegment.serialNumber)
+                                    await lastNewSegment.AppendConnection(connection: nextConnection)
+                                    // nextSegment.connections[i].segment = lastNewSegment
+                                    // lastNewSegment.connections.append(nextConnection)
                                 }
                             }
                         }
                     }
                 }
                 
-                if firstNewSegment.connections.count > 1 || lastNewSegment.connections.count > 1 {
+                var connectionCountGreaterThanOne:Bool = await firstNewSegment.connections.count > 1
+                if await lastNewSegment.connections.count > 1 || connectionCountGreaterThanOne {
                     
                     ALog("Fuckin' shit!")
                 }
@@ -869,8 +914,8 @@ actor PhaseModel /*:Codable */ {
                 // At this point, there are a few possibilities:
                 // firstNewSegment either has no connections or exactly one. If it has one, we can go on. Otherwise, it means that it needs a floating 'toLocation' (it is the lowest of the axial sections for the coil). The fromLocation depends on whether lastNewSegment has a fromLocation in it. If so (it may ALSO have no connections), the fromLocation for firstNewSegment can be calculated depending on the coil type and (in the case of a disc coil), whether there are an even or odd number of new segments being added to the model. Similarly, if firstNewSegmnent has a connection, then its lower fromLocation can be used to determine lastNewSegments' fromLocation connection.
                 
-                var newIncomingConnector:Connector? = firstNewSegment.connections.count > 0 ? firstNewSegment.connections[0].connector : nil
-                var newOutgoingConnector:Connector? = lastNewSegment.connections.count > 0 ? lastNewSegment.connections[0].connector : nil
+                var newIncomingConnector:Connector? = await firstNewSegment.connections.count > 0 ? firstNewSegment.connections[0].connector : nil
+                var newOutgoingConnector:Connector? = await lastNewSegment.connections.count > 0 ? lastNewSegment.connections[0].connector : nil
                 
                 // get all the basic sections in the newSegments array
                 var newBasicSections:[BasicSection] = []
@@ -958,17 +1003,21 @@ actor PhaseModel /*:Codable */ {
                 // Here we now have the newIncomingConnector and newOutgoingConnector defined, we just need to add the connectors within the new Segments
                 var incomingConnector = newIncomingConnector!
                 var outgoingConnector = newIncomingConnector!
-                var lastSegment = firstNewSegment.connections.count == 0 ? nil : firstNewSegment.connections[0].segment
+                var lastSegmentID = await firstNewSegment.connections.count == 0 ? nil : firstNewSegment.connections[0].segmentID
+                var lastSegment = lastSegmentID == nil ? nil : segmentStore.first(where: { $0.serialNumber == lastSegmentID })
+                
                 for nextSegment in newSegments {
                     
-                    if (nextSegment == firstNewSegment && firstNewSegment.connections.count == 0) || nextSegment != firstNewSegment {
+                    if await (firstNewSegment.connections.count == 0 && nextSegment == firstNewSegment) || nextSegment != firstNewSegment {
                         
-                        nextSegment.connections.append(Segment.Connection(segment: lastSegment, connector: incomingConnector))
+                        await nextSegment.AppendConnection(connection: Segment.Connection(segmentID: lastSegmentID, connector: incomingConnector))
+                        // nextSegment.connections.append(Segment.Connection(segment: lastSegment, connector: incomingConnector))
                     }
                     
                     if nextSegment != firstNewSegment, let prevSegment = lastSegment {
                         
-                        prevSegment.connections.append(Segment.Connection(segment: nextSegment, connector: outgoingConnector))
+                        await prevSegment.AppendConnection(connection: Segment.Connection(segmentID: nextSegment.serialNumber, connector: outgoingConnector))
+                        // prevSegment.connections.append(Segment.Connection(segment: nextSegment, connector: outgoingConnector))
                     }
                     
                     // set up the connector for the outgoing connection next time through the loop
@@ -977,9 +1026,10 @@ actor PhaseModel /*:Codable */ {
                     outgoingConnector = Connector(fromLocation: fromConnection, toLocation: toConnection)
                     incomingConnector = Connector(fromLocation: toConnection, toLocation: fromConnection)
                     
-                    if nextSegment == lastNewSegment && lastNewSegment.connections.count == 1 {
+                    if await lastNewSegment.connections.count == 1 && nextSegment == lastNewSegment {
                         
-                        nextSegment.connections.append(Segment.Connection(segment: nil, connector: outgoingConnector))
+                        await nextSegment.AppendConnection(connection: Segment.Connection(segmentID: nil, connector: outgoingConnector))
+                        // nextSegment.connections.append(Segment.Connection(segment: nil, connector: outgoingConnector))
                     }
                     
                     lastSegment = nextSegment
@@ -988,9 +1038,9 @@ actor PhaseModel /*:Codable */ {
                 // do a quick check - this should never happen and should be treated as a programming error
                 for nextNewSegment in newSegments {
                     
-                    if nextNewSegment.connections.count > 2 {
+                    if await nextNewSegment.connections.count > 2 {
                         
-                        throw PhaseModelError(info: "\(nextNewSegment.location)", type: .TooManyConnectors)
+                        throw PhaseModelError(info: "\(await nextNewSegment.location)", type: .TooManyConnectors)
                     }
                 }
             }
@@ -1008,7 +1058,7 @@ actor PhaseModel /*:Codable */ {
     }
     
     /// Function to check the comparative position of 'toSegment' with respect to 'fromSegment'. For instance, if 'fromSegment;' is in coil position 2, and toSegment is in coil position 1, the function will return 'adjacentInner'. The 'toSegment' parameter must exit in the current model or an error is thrown. It is not necessary that the fromSegment exists in the model, but it must have the correct location (with repsect to the current model) set in it.
-    func ComparativePosition(fromSegment:Segment, toSegment:Segment) throws -> Segment.ComparativePosition {
+    func ComparativePosition(fromSegment:Segment, toSegment:Segment) async throws -> Segment.ComparativePosition {
         
         guard self.segments.contains(toSegment) else {
             
@@ -1016,17 +1066,17 @@ actor PhaseModel /*:Codable */ {
             
         }
         
-        guard fromSegment.location != toSegment.location else {
+        guard await fromSegment.location != toSegment.location else {
             
             throw PhaseModelError(info: "There is already a Segment at that axial location.", type: .IllegalLocation)
         }
         
-        let fromRadial = fromSegment.location.radial
-        let toRadial = toSegment.location.radial
+        let fromRadial = await fromSegment.location.radial
+        let toRadial = await toSegment.location.radial
         let radialDiff = fromRadial - toRadial
         
-        let fromAxial = fromSegment.location.axial
-        let toAxial = toSegment.location.axial
+        let fromAxial = await fromSegment.location.axial
+        let toAxial = await toSegment.location.axial
         
         if radialDiff > 0 {
             
@@ -1053,19 +1103,23 @@ actor PhaseModel /*:Codable */ {
         else {
             
             let toIndex = self.segments.firstIndex(of: toSegment)!
+            let isBottom = await self.segments[toIndex - 1].location.radial < toRadial
             
-            if toIndex == 0 || (toIndex > 0 && self.segments[toIndex - 1].location.radial < toRadial) {
+            if toIndex == 0 || (toIndex > 0 && isBottom) {
                 
                 return .bottom
             }
             
-            if toIndex == self.segments.endIndex - 1 || (self.segments[toIndex + 1].location.radial > toRadial) {
+            let isTop = await self.segments[toIndex + 1].location.radial > toRadial
+            if toIndex == self.segments.endIndex - 1 || isTop {
                 
                 return .top
             }
             
-            let prevIndex:Int? = toIndex > 0 && self.segments[toIndex - 1].location.radial == toRadial ? toIndex - 1 : nil
-            let nextIndex:Int? = toIndex < self.segments.endIndex - 1 && self.segments[toIndex + 1].location.radial == toRadial ? toIndex + 1 : nil
+            let prevIsTo:Bool = await self.segments[toIndex - 1].location.radial == toRadial
+            let nextIsTo = await self.segments[toIndex + 1].location.radial == toRadial
+            let prevIndex:Int? = toIndex > 0 && prevIsTo ? toIndex - 1 : nil
+            let nextIndex:Int? = toIndex < self.segments.endIndex - 1 && nextIsTo ? toIndex + 1 : nil
             
             let axialDiff = fromAxial - toAxial
             
@@ -1074,11 +1128,11 @@ actor PhaseModel /*:Codable */ {
                 // 'toSegment' is below
                 if let next = nextIndex {
                     
-                    if self.segments[next].location.axial > fromAxial {
+                    if await self.segments[next].location.axial > fromAxial {
                         
                         return .adjacentBelow
                     }
-                    else if self.segments[next].location.axial == fromAxial {
+                    else if await self.segments[next].location.axial == fromAxial {
                         
                         throw PhaseModelError(info: "There is already a Segment at that axial location.", type: .IllegalLocation)
                     }
@@ -1091,11 +1145,11 @@ actor PhaseModel /*:Codable */ {
                 // toSegment is above
                 if let prev = prevIndex {
                     
-                    if self.segments[prev].location.axial < fromAxial {
+                    if await self.segments[prev].location.axial < fromAxial {
                         
                         return .adjacentAbove
                     }
-                    else if self.segments[prev].location.axial == fromAxial {
+                    else if await self.segments[prev].location.axial == fromAxial {
                         
                         throw PhaseModelError(info: "There is already a Segment at that axial location.", type: .IllegalLocation)
                     }
@@ -1162,7 +1216,7 @@ actor PhaseModel /*:Codable */ {
     }
     
     /// Essentially, this function creates (overwrites) the Nodes that are attached to the top and bottom of each segment in the current model. A Node may be shared, as in when a Segment.Connection exists between two Segments, _particularly_ the top of one Segment that is connected to the bottom of the next axial Segment.Note that if there is no connection between two adjacent segments, a floating node is created on each segment. All other Connections (ie: between different coils or non-contiguous Segments) will only be handled when refining the capacitance matrix prior to impulse simulation. The function returns an array of Ints that are the index (in the Nodes array) to  the LAST (uppermost) Node for each *coil*.
-    func SetNodes() throws -> [Int] {
+    func SetNodes() async throws -> [Int] {
         
         guard self.segments.count > 0 else {
             
@@ -1215,7 +1269,7 @@ actor PhaseModel /*:Codable */ {
                     print("Stop!")
                 } */
                 
-                let nodeZ = prevSegment == nil ? thisSegment.z1 : (prevSegment!.z2 + thisSegment.z1) / 2.0
+                let nodeZ = await prevSegment == nil ? thisSegment.z1 : (prevSegment!.z2 + thisSegment.z1) / 2.0
                 let newNode = Node(number: nextNodeNum, aboveSegment: thisSegment, belowSegment: prevSegment, z: nodeZ)
                 nextNodeNum += 1
                 self.nodeStore.append(newNode)
@@ -1224,9 +1278,9 @@ actor PhaseModel /*:Codable */ {
                     
                     let nextAxialSegment = nextCoil[i + 1]
                     
-                    if thisSegment.connections.first(where: {$0.segment == nextAxialSegment}) == nil {
+                    if await thisSegment.connections.first(where: {$0.segmentID == nextAxialSegment.serialNumber}) == nil {
                         
-                        let newNode = Node(number: nextNodeNum, aboveSegment: nil, belowSegment: thisSegment, z: thisSegment.z2)
+                        let newNode = await Node(number: nextNodeNum, aboveSegment: nil, belowSegment: thisSegment, z: thisSegment.z2)
                         nextNodeNum += 1
                         self.nodeStore.append(newNode)
                         prevSegment = nil
@@ -1238,7 +1292,7 @@ actor PhaseModel /*:Codable */ {
                 }
                 else { // topmost segment of the coil
                     
-                    let topNode = Node(number: nextNodeNum, aboveSegment: nil, belowSegment: thisSegment, z: thisSegment.z2)
+                    let topNode = await Node(number: nextNodeNum, aboveSegment: nil, belowSegment: thisSegment, z: thisSegment.z2)
                     result.append(nextNodeNum)
                     nextNodeNum += 1
                     self.nodeStore.append(topNode)
@@ -1271,14 +1325,14 @@ actor PhaseModel /*:Codable */ {
                     continue
                 }
                 
-                let isBottomSegment:Bool = nextSegment.location.axial == 0
-                let topSegmentIndex = try GetHighestSection(coil: nextSegment.location.radial)
-                let isTopSegment:Bool = nextSegment.location.axial == topSegmentIndex
+                let isBottomSegment:Bool = await nextSegment.location.axial == 0
+                let topSegmentIndex = try await GetHighestSection(coil: nextSegment.location.radial)
+                let isTopSegment:Bool = await nextSegment.location.axial == topSegmentIndex
                 
                 let endDisc:(lowest:Bool, highest:Bool)? = (isBottomSegment || isTopSegment) ? (isBottomSegment, isTopSegment) : nil
                 
-                let staticRingUnder = try StaticRingBelow(segment: nextSegment, recursiveCheck: false)
-                let staticRingOver = try StaticRingAbove(segment: nextSegment, recursiveCheck: false)
+                let staticRingUnder = try await StaticRingBelow(segment: nextSegment, recursiveCheck: false)
+                let staticRingOver = try await StaticRingAbove(segment: nextSegment, recursiveCheck: false)
                 
                 /*
                 if staticRingOver != nil {
@@ -1309,24 +1363,27 @@ actor PhaseModel /*:Codable */ {
                 var axialGaps:(above:Double, below:Double)? = nil
                 var radialGaps:(inside:Double, outside:Double)? = nil
                 
-                if nextSegment.wdgType == .disc || nextSegment.wdgType == .helical {
+                var wdgIsDiscOrHelix = await nextSegment.wdgType == .disc
+                wdgIsDiscOrHelix = await nextSegment.wdgType == .helical || wdgIsDiscOrHelix
+                if wdgIsDiscOrHelix {
                     
-                    axialGaps = try self.AxialSpacesAboutSegment(segment: nextSegment)
+                    axialGaps = try await self.AxialSpacesAboutSegment(segment: nextSegment)
                 }
                 else {
                     
-                    radialGaps = try self.RadialSpacesAboutSegment(segment: nextSegment)
+                    radialGaps = try await self.RadialSpacesAboutSegment(segment: nextSegment)
                 }
                 
-                let serCap = try nextSegment.SeriesCapacitance(axialGaps: axialGaps, radialGaps: radialGaps, endDisc: endDisc, adjStaticRing: adjStaticRing)
+                let serCap = try await nextSegment.SeriesCapacitance(axialGaps: axialGaps, radialGaps: radialGaps, endDisc: endDisc, adjStaticRing: adjStaticRing)
                 
-                nextSegment.seriesCapacitance = serCap
+                await nextSegment.SetSeriesCapacitance(serCap: serCap)
+                // nextSegment.seriesCapacitance = serCap
             }
             
             // Now we take care of the shunt capacitances
             
             // First, we update the Nodes array. This sets up the nodes on each Segment, and returns an array of the topmost nodes (as an Int index into the self.nodeStore array) for the coils.
-            let coilTopNodes = try SetNodes()
+            let coilTopNodes = try await SetNodes()
             
             // let floatingNodes = self.NodesOfType(connType: .floating)
             
@@ -1334,7 +1391,7 @@ actor PhaseModel /*:Codable */ {
             var innerFirstNode = 0
             var outerFirstNode = 0
             var innerCoilHt = 0.0
-            var referenceZero = self.nodeStore[0].aboveSegment!.z1
+            var referenceZero = await self.nodeStore[0].aboveSegment!.z1
             
             // For each coil ('i' is the index of the "outer" coil)
             for i in 0..<coilTopNodes.count {
@@ -1344,14 +1401,14 @@ actor PhaseModel /*:Codable */ {
                 let outerLastNode = coilTopNodes[i]
                 
                 // get the overall height of the outer coil
-                let outerCoilHt = self.nodeStore[outerLastNode].belowSegment!.z2 - self.nodeStore[outerFirstNode].aboveSegment!.z1
+                let outerCoilHt = await self.nodeStore[outerLastNode].belowSegment!.z2 - self.nodeStore[outerFirstNode].aboveSegment!.z1
                 // fix the reference '0' for the coil pair (set it to the lesser of the two)
-                referenceZero = min(referenceZero, self.nodeStore[outerFirstNode].aboveSegment!.z1)
+                referenceZero = await min(referenceZero, self.nodeStore[outerFirstNode].aboveSegment!.z1)
                 
                 ZAssert(outerCoilHt > 0.0, message: "Got negative height!")
                 
                 // Get the shunt capacitance between the 'i-th' coil and the i-1 coil
-                let totalCapacitance = try CoilInnerShuntCapacitance(coil: i)
+                let totalCapacitance = try await CoilInnerShuntCapacitance(coil: i)
                 
                 ZAssert(totalCapacitance > 0.0, message: "Got negative total capacitance")
                 
@@ -1369,7 +1426,7 @@ actor PhaseModel /*:Codable */ {
                 }
                 
                 let currentCoil = self.nodeStore[outerFirstNode].aboveSegment!.radialPos
-                let hasShieldInside = try self.RadialShieldInside(coil: currentCoil) != nil
+                let hasShieldInside = try await self.RadialShieldInside(coil: currentCoil) != nil
                 var innerNodeCaps:[nodeCap] = []
                 
                 // What we do next depends if this is the innermost coil, or if there is a ground shield inside the coil
@@ -1522,10 +1579,10 @@ actor PhaseModel /*:Codable */ {
                 }
                 
                 // We now need to check if there is a radial shield OUTSIDE the coil
-                if let radialShieldOutside = try self.RadialShieldOutside(coil: currentCoil) {
+                if let radialShieldOutside = try await self.RadialShieldOutside(coil: currentCoil) {
                     
                     let rsCoil = radialShieldOutside.radialPos
-                    let rsCapacitance = try self.CoilInnerShuntCapacitance(coil: rsCoil)
+                    let rsCapacitance = try await self.CoilInnerShuntCapacitance(coil: rsCoil)
                     
                     let coilLastNode = outerLastNode
                     let coilFirstNode = outerFirstNode
@@ -1555,7 +1612,7 @@ actor PhaseModel /*:Codable */ {
             }
             
             // Add the shunt capacitances to ground for the outermost coil
-            let outerCapacitance = try OuterShuntCapacitance()
+            let outerCapacitance = try await OuterShuntCapacitance()
             let referenceHt = self.nodeStore[coilTopNodes.last!].z - self.nodeStore[innerFirstNode].z
             referenceZero = self.nodeStore[innerFirstNode].z
             let faradsPerMeter = outerCapacitance / referenceHt
@@ -1574,8 +1631,8 @@ actor PhaseModel /*:Codable */ {
             
             for nextNode in self.nodes {
                 
-                let Cj = nextNode.belowSegment != nil ? nextNode.belowSegment!.seriesCapacitance : 0.0
-                let Cj1 = nextNode.aboveSegment != nil ? nextNode.aboveSegment!.seriesCapacitance : 0.0
+                let Cj = await nextNode.belowSegment != nil ? nextNode.belowSegment!.seriesCapacitance : 0.0
+                let Cj1 = await nextNode.aboveSegment != nil ? nextNode.aboveSegment!.seriesCapacitance : 0.0
                 
                 guard Cj > 0.0 || Cj1 > 0.0 else {
                     
@@ -1627,7 +1684,7 @@ actor PhaseModel /*:Codable */ {
     }
     
     // Calculate the capacitance to the tank and to the other coils of the outermost coil (per Kulkarne 7.15)
-    func OuterShuntCapacitance() throws -> Double {
+    func OuterShuntCapacitance() async throws -> Double {
         
         guard let lastCoilSeg = self.CoilSegments().last else {
             
@@ -1638,9 +1695,9 @@ actor PhaseModel /*:Codable */ {
             
             let sTank = self.tankDepth / 2
             let tSolidTank = 0.25 * 0.0254
-            let tOilTank = sTank - lastCoilSeg.r2 - tSolidTank
-            let H = try EffectiveHeight(coil: lastCoilSeg.radialPos)
-            let R = (lastCoilSeg.r1 + lastCoilSeg.r2) / 2
+            let tOilTank = await sTank - lastCoilSeg.r2 - tSolidTank
+            let H = try await EffectiveHeight(coil: lastCoilSeg.radialPos)
+            let R = await (lastCoilSeg.r1 + lastCoilSeg.r2) / 2
             
             let firstTermTank = 2 * π * ε0 * H / acosh(sTank / R)
             let secondTermTank = (tOilTank + tSolidTank) / ((tOilTank / εOil) + (tSolidTank / εBoard))
@@ -1649,7 +1706,7 @@ actor PhaseModel /*:Codable */ {
             
             let sCoils:Double = self.core.legCenters / 2
             let tSolidCoils = 2 * tSolidTank
-            let tOilCoils:Double = self.core.legCenters - (lastCoilSeg.r2 * 2) - tSolidCoils
+            let tOilCoils:Double = await self.core.legCenters - (lastCoilSeg.r2 * 2) - tSolidCoils
             
             let firstTermCoils = 2 * π * ε0 * H / acosh(sCoils / R)
             let secondTermCoil = (tOilCoils + tSolidCoils) / ((tOilCoils / εOil) + (tSolidCoils / εBoard))
@@ -1665,9 +1722,9 @@ actor PhaseModel /*:Codable */ {
         
     }
     
-    func CoilInnerShuntCapacitance(coil:Int) throws -> Double {
+    func CoilInnerShuntCapacitance(coil:Int) async throws -> Double {
         
-        guard let bottomCoilSeg = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+        guard let bottomCoilSeg = await self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
             throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
@@ -1681,30 +1738,30 @@ actor PhaseModel /*:Codable */ {
             if coil == 0 {
                 
                 // check if there's a shield OVER the core (can't imagine why this would be needed, but...)
-                if let coreShield = self.SegmentAt(location: LocStruct(radial: Segment.negativeZeroPosition, axial: 0)) {
+                if let coreShield = await self.SegmentAt(location: LocStruct(radial: Segment.negativeZeroPosition, axial: 0)) {
                     
-                    prevIR = coreShield.r2
+                    prevIR = await coreShield.r2
                 }
                 else {
                     
                     prevIR = self.core.radius
                 }
             }
-            else if let innerShield = self.SegmentAt(location: LocStruct(radial: -coil, axial: 0)) {
+            else if let innerShield = await self.SegmentAt(location: LocStruct(radial: -coil, axial: 0)) {
                 
-                prevIR = innerShield.r2
+                prevIR = await innerShield.r2
             }
             else {
                 
-                guard let prevCoilSeg = self.SegmentAt(location: LocStruct(radial: coil - 1, axial: 0)) else {
+                guard let prevCoilSeg = await self.SegmentAt(location: LocStruct(radial: coil - 1, axial: 0)) else {
                     
                     throw PhaseModelError(info: "\(coil-1)", type: .CoilDoesNotExist)
                 }
                 
-                prevIR = prevCoilSeg.r2
+                prevIR = await prevCoilSeg.r2
             }
             
-            let hilo = try HiloUnder(coil: coil)
+            let hilo = try await HiloUnder(coil: coil)
             let rGap = prevIR + hilo / 2.0
             
             // TODO: This should probably be dependent on whether 'coil' is actually a radial shield
@@ -1712,7 +1769,7 @@ actor PhaseModel /*:Codable */ {
             // assume 3/4" sticks
             let ws = 0.75 * 0.0254
             let fs = Ns * ws / (2 * π * rGap)
-            let H = try CapacitiveHeightInner(coil: coil)
+            let H = try await CapacitiveHeightInner(coil: coil)
             // assume standard radial spacers & tube thicknesses
             let Npress = round(hilo / 0.0084 - 0.5)
             let tPress = 0.08 * 0.0254 * Npress
@@ -1732,24 +1789,24 @@ actor PhaseModel /*:Codable */ {
     }
     
     // Calculate the height that will be used for the shunt capacitance calculation to the coil/shield/core that is radially "inside" to the given coil.
-    func CapacitiveHeightInner(coil:Int) throws -> Double {
+    func CapacitiveHeightInner(coil:Int) async throws -> Double {
         
-        guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+        guard let _ = await self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
             throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
         
         do {
             
-            let effCapHeight = try EffectiveHeight(coil: coil)
-            let hasRadialShieldInside = try RadialShieldInside(coil: coil) != nil
+            let effCapHeight = try await EffectiveHeight(coil: coil)
+            let hasRadialShieldInside = try await RadialShieldInside(coil: coil) != nil
             
             if (coil == 0 || hasRadialShieldInside) {
                 
                 return effCapHeight
             }
             
-            let innerCoilEffCapHeight = try EffectiveHeight(coil: coil - 1)
+            let innerCoilEffCapHeight = try await EffectiveHeight(coil: coil - 1)
             
             return (effCapHeight + innerCoilEffCapHeight) / 2
         }
@@ -1760,24 +1817,24 @@ actor PhaseModel /*:Codable */ {
     }
     
     // The "effective height" of a coil is simply its electrical height minus any axial gaps that are larger than 75mm (yes, that is aribtrary).
-    func EffectiveHeight(coil:Int) throws -> Double {
+    func EffectiveHeight(coil:Int) async throws -> Double {
         
         let MAX_GAP = 0.075
         
-        guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+        guard let _ = await self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
             throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
         
         let coilSections = self.CoilSegments().filter({$0.radialPos == coil})
-        let coilBottom = coilSections[0].z1
-        let coilTop = coilSections.last!.z2
+        let coilBottom = await coilSections[0].z1
+        let coilTop = await coilSections.last!.z2
         let coilHeight = coilTop - coilBottom
         
         var sumAxialGaps = 0.0
         for i in 0..<coilSections.count - 1 {
             
-            let nextGap = coilSections[i+1].z1 - coilSections[i].z2
+            let nextGap = await coilSections[i+1].z1 - coilSections[i].z2
             if nextGap > MAX_GAP {
                 
                 sumAxialGaps += nextGap
@@ -1788,9 +1845,9 @@ actor PhaseModel /*:Codable */ {
     }
     
     /// This is (currently) a simple (ie: useless) calculation of series capacitance (simple because it does not consider things like interconnections, line in the middle, etc.). It gives the same result as the Excel-design sheet.
-    func CoilSeriesCapacitance(coil:Int) throws -> Double {
+    func CoilSeriesCapacitance(coil:Int) async throws -> Double {
         
-        guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+        guard let _ = await self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
             throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
@@ -1810,7 +1867,7 @@ actor PhaseModel /*:Codable */ {
             if nextSegment.radialPos == coil && nextSegment.axialPos >= 0 {
                 
                 // print("\(nextSegment.seriesCapacitance)")
-                result += 1.0 / nextSegment.seriesCapacitance
+                await result += 1.0 / nextSegment.seriesCapacitance
             }
         }
         
@@ -1820,7 +1877,7 @@ actor PhaseModel /*:Codable */ {
     
     
     /// Insert a new Segment into the correct spot in the model to keep the segmentStore array sorted. If there is an existing Segment with the same LocStruct as the new one, this function throws an error.
-    func InsertSegment(newSegment:Segment) throws {
+    func InsertSegment(newSegment:Segment) async throws {
         
         // use binary search method to insert (probably unnecessary, but what the hell)
         var lo = 0
@@ -1828,18 +1885,18 @@ actor PhaseModel /*:Codable */ {
         while lo <= hi {
             
             let mid = (lo + hi) / 2
-            if self.segmentStore[mid].location < newSegment.location {
+            if await self.segmentStore[mid].location < newSegment.location {
                 
                 lo = mid + 1
             }
-            else if newSegment.location < self.segmentStore[mid].location {
+            else if await newSegment.location < self.segmentStore[mid].location {
                 
                 hi = mid - 1
             }
             else {
                 
                 // The location already exists, throw an error
-                throw PhaseModelError(info: "\(newSegment.location)", type: .SegmentExists)
+                throw PhaseModelError(info: "\(await newSegment.location)", type: .SegmentExists)
             }
         }
         
@@ -1847,75 +1904,75 @@ actor PhaseModel /*:Codable */ {
     }
     
     /// Check if there is a radial shield inside the given coil and if so, return it as a Segment
-    func RadialShieldInside(coil:Int) throws -> Segment? {
+    func RadialShieldInside(coil:Int) async throws -> Segment? {
         
-        guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+        guard let _ = await self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
             throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
         
         let radialPos = coil == 0 ? Segment.negativeZeroPosition : -coil
         
-        return self.SegmentAt(location: LocStruct(radial: radialPos, axial: 0))
+        return await self.SegmentAt(location: LocStruct(radial: radialPos, axial: 0))
     }
     
     /// Check if there a radial shield  outside the given coil and if so, return it as a Segment
-    func RadialShieldOutside(coil:Int) throws -> Segment? {
+    func RadialShieldOutside(coil:Int) async throws -> Segment? {
         
-        guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+        guard let _ = await self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
             throw PhaseModelError(info: "\(coil + 1)", type: .CoilDoesNotExist)
         }
         
-        return self.SegmentAt(location: LocStruct(radial: -(coil + 1), axial: 0))
+        return await self.SegmentAt(location: LocStruct(radial: -(coil + 1), axial: 0))
     }
     
     /// Get the Hilo under the given coil (or shield)
-    func HiloUnder(coil:Int) throws -> Double {
+    func HiloUnder(coil:Int) async throws -> Double {
         
-        guard let segment = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+        guard let segment = await self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
             throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
         
-        let coilInnerRadius = segment.r1
+        let coilInnerRadius = await segment.r1
         
         if coil < 0 {
             
-            guard let innerSegment = self.SegmentAt(location: LocStruct(radial: (-coil) - 1, axial: 0)) else {
+            guard let innerSegment = await self.SegmentAt(location: LocStruct(radial: (-coil) - 1, axial: 0)) else {
                 
                 throw PhaseModelError(info: "\(coil - 1)", type: .CoilDoesNotExist)
             }
             
-            return coilInnerRadius - innerSegment.r2
+            return await coilInnerRadius - innerSegment.r2
         }
         else if segment.radialPos == 0 {
             
-            if let coreShield = SegmentAt(location: LocStruct(radial: Segment.negativeZeroPosition, axial: 0)) {
+            if let coreShield = await SegmentAt(location: LocStruct(radial: Segment.negativeZeroPosition, axial: 0)) {
                 
-                return coilInnerRadius - coreShield.r2
+                return await coilInnerRadius - coreShield.r2
             }
             
             return coilInnerRadius - self.core.radius
         }
         // check for a radial shield inside the coil
-        else if let innerShield = self.SegmentAt(location: LocStruct(radial: -coil, axial: 0)) {
+        else if let innerShield = await self.SegmentAt(location: LocStruct(radial: -coil, axial: 0)) {
             
-            return coilInnerRadius - innerShield.r2
+            return await coilInnerRadius - innerShield.r2
         }
         else {
             
-            guard let innerSegment = self.SegmentAt(location: LocStruct(radial: coil - 1, axial: 0)) else {
+            guard let innerSegment = await self.SegmentAt(location: LocStruct(radial: coil - 1, axial: 0)) else {
                 
                 throw PhaseModelError(info: "\(coil - 1)", type: .CoilDoesNotExist)
             }
             
-            return coilInnerRadius - innerSegment.r2
+            return await coilInnerRadius - innerSegment.r2
         }
     }
     
     /// Return the radial spaces inside and outside the given segment. If the segment is not in the model, throw an error.
-    func RadialSpacesAboutSegment(segment:Segment) throws -> (inside:Double, outside:Double) {
+    func RadialSpacesAboutSegment(segment:Segment) async throws -> (inside:Double, outside:Double) {
         
         guard let _ = self.segmentStore.firstIndex(of: segment) else {
             
@@ -1924,12 +1981,12 @@ actor PhaseModel /*:Codable */ {
         
         do {
             
-            let insideResult:Double = try self.HiloUnder(coil: segment.location.radial)
+            let insideResult:Double = try await self.HiloUnder(coil: segment.location.radial)
             var outsideResult:Double = -1.0
             
-            if let nextCoilSegment = self.SegmentAt(location: LocStruct(radial: segment.radialPos + 1, axial: 0)) {
+            if let nextCoilSegment = await self.SegmentAt(location: LocStruct(radial: segment.radialPos + 1, axial: 0)) {
                 
-                outsideResult = try self.HiloUnder(coil: nextCoilSegment.radialPos)
+                outsideResult = try await self.HiloUnder(coil: nextCoilSegment.radialPos)
             }
             
             return (insideResult, outsideResult)
@@ -1941,7 +1998,7 @@ actor PhaseModel /*:Codable */ {
     }
     
     /// Return the spaces above and below the given segment. If the segment is not in the model, throw an error.
-    func AxialSpacesAboutSegment(segment:Segment) throws -> (above: Double, below: Double) {
+    func AxialSpacesAboutSegment(segment:Segment) async throws -> (above: Double, below: Double) {
         
         guard let segIndex = self.segmentStore.firstIndex(of: segment) else {
             
@@ -1953,26 +2010,26 @@ actor PhaseModel /*:Codable */ {
         
         do {
             
-            if let staticRingAbove = try self.StaticRingAbove(segment: segment, recursiveCheck: true) {
+            if let staticRingAbove = try await self.StaticRingAbove(segment: segment, recursiveCheck: true) {
                 
-                aboveResult = staticRingAbove.z1 - segment.z2
+                aboveResult = await staticRingAbove.z1 - segment.z2
             }
             
-            if let staticRingBelow = try self.StaticRingBelow(segment: segment, recursiveCheck: true) {
+            if let staticRingBelow = try await self.StaticRingBelow(segment: segment, recursiveCheck: true) {
                 
-                belowResult = segment.z1 - staticRingBelow.z2
+                belowResult = await segment.z1 - staticRingBelow.z2
             }
             
             if aboveResult < 0.0 {
                 
-                let highest = try self.GetHighestSection(coil: segment.radialPos)
+                let highest = try await self.GetHighestSection(coil: segment.radialPos)
                 if segment.axialPos == highest {
                     
-                    aboveResult = segment.realWindowHeight - segment.z2
+                    aboveResult = await segment.realWindowHeight - segment.z2
                 }
                 else {
                     
-                    aboveResult = self.segmentStore[segIndex + 1].z1 - segment.z2
+                    aboveResult = await self.segmentStore[segIndex + 1].z1 - segment.z2
                 }
             }
             
@@ -1980,11 +2037,11 @@ actor PhaseModel /*:Codable */ {
                 
                 if segment.axialPos == 0 {
                     
-                    belowResult = segment.z1
+                    belowResult = await segment.z1
                 }
                 else {
                     
-                    belowResult = segment.z1 - self.segmentStore[segIndex - 1].z2
+                    belowResult = await segment.z1 - self.segmentStore[segIndex - 1].z2
                 }
             }
             
@@ -1997,16 +2054,16 @@ actor PhaseModel /*:Codable */ {
     }
     
     /// Try to add a radial shield inside the given coil and return it as a Segment. If unsuccessful, the function throws an error.
-    func AddRadialShieldInside(coil:Int, hiloToShield:Double) throws -> Segment {
+    func AddRadialShieldInside(coil:Int, hiloToShield:Double) async throws -> Segment {
         
-        guard let segment = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+        guard let segment = await self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
             throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
         
         // check if there is already a radial shield under the coil
         let radPos = coil == 0 ? Segment.negativeZeroPosition : -coil
-        guard self.SegmentAt(location: LocStruct(radial: radPos, axial: 0)) == nil else {
+        guard await self.SegmentAt(location: LocStruct(radial: radPos, axial: 0)) == nil else {
             
             throw PhaseModelError(info: "Radial Shield", type: .ShieldingElementExists)
         }
@@ -2014,22 +2071,22 @@ actor PhaseModel /*:Codable */ {
         do {
             
             let requiredSpace = hiloToShield + 0.002
-            let availableSpace = try self.HiloUnder(coil: coil)
+            let availableSpace = try await self.HiloUnder(coil: coil)
             
             if requiredSpace >= availableSpace {
                 
                 throw PhaseModelError(info: "Radial Shield", type: .NoRoomForShieldingElement)
             }
             
-            let highestSegmentIndex = try self.GetHighestSection(coil: coil)
-            guard let highestSegment = self.SegmentAt(location: LocStruct(radial: coil, axial: highestSegmentIndex)) else {
+            let highestSegmentIndex = try await self.GetHighestSection(coil: coil)
+            guard let highestSegment = await self.SegmentAt(location: LocStruct(radial: coil, axial: highestSegmentIndex)) else {
                 
                 throw PhaseModelError(info: "", type: .SegmentNotInModel)
             }
             
-            let height = highestSegment.z2 - segment.z1
+            let height = await highestSegment.z2 - segment.z1
             
-            let radialShield = try Segment.RadialShield(adjacentSegment: segment, hiloToSegment: hiloToShield, elecHt: height)
+            let radialShield = try await Segment.RadialShield(adjacentSegment: segment, hiloToSegment: hiloToShield, elecHt: height)
             
             return radialShield
             
@@ -2041,7 +2098,7 @@ actor PhaseModel /*:Codable */ {
     }
     
     /// Try to add a static ring either above or below the adjacent Segment. If unsuccessful, this function throws an error. Note that this rountien does not actually add the static ring to the model's segmentStore
-    func AddStaticRing(adjacentSegment:Segment, above:Bool, staticRingThickness:Double? = nil, gapToStaticRing:Double? = nil) throws -> Segment {
+    func AddStaticRing(adjacentSegment:Segment, above:Bool, staticRingThickness:Double? = nil, gapToStaticRing:Double? = nil) async throws -> Segment {
         
         guard let _ = self.segmentStore.firstIndex(of: adjacentSegment) else {
             
@@ -2053,7 +2110,7 @@ actor PhaseModel /*:Codable */ {
             // check if there is already a static ring above/below the adjacent segment
             if above {
                 
-                if let _ = try StaticRingAbove(segment: adjacentSegment, recursiveCheck: true) {
+                if let _ = try await StaticRingAbove(segment: adjacentSegment, recursiveCheck: true) {
                     
                     throw PhaseModelError(info: "Static Ring", type: .ShieldingElementExists)
                 }
@@ -2061,14 +2118,14 @@ actor PhaseModel /*:Codable */ {
             }
             else {
                 
-                if let _ = try StaticRingBelow(segment: adjacentSegment, recursiveCheck: true) {
+                if let _ = try await StaticRingBelow(segment: adjacentSegment, recursiveCheck: true) {
                     
                     throw PhaseModelError(info: "Static Ring", type: .ShieldingElementExists)
                 }
             }
         
-            let axialSpaces = try self.AxialSpacesAboutSegment(segment: adjacentSegment)
-            let gapToRing = gapToStaticRing != nil ? gapToStaticRing! : try self.StandardAxialGap(coil: adjacentSegment.location.radial) / 2
+            let axialSpaces = try await self.AxialSpacesAboutSegment(segment: adjacentSegment)
+            let gapToRing = await gapToStaticRing != nil ? gapToStaticRing! : try self.StandardAxialGap(coil: adjacentSegment.location.radial) / 2
             let srThickness = staticRingThickness != nil ? staticRingThickness! : Segment.stdStaticRingThickness
             let requiredSpace = gapToRing + srThickness
             
@@ -2078,7 +2135,7 @@ actor PhaseModel /*:Codable */ {
             }
             
             // There is room for the static ring, so try creating it
-            let newRing = try Segment.StaticRing(adjacentSegment: adjacentSegment, gapToSegment: gapToRing, staticRingIsAbove: above, staticRingThickness: srThickness)
+            let newRing = try await Segment.StaticRing(adjacentSegment: adjacentSegment, gapToSegment: gapToRing, staticRingIsAbove: above, staticRingThickness: srThickness)
             
             // if we get here, we know that the call was succesful
             return newRing
@@ -2092,7 +2149,7 @@ actor PhaseModel /*:Codable */ {
     /// Check if there is a static ring  above the given segment, and if so, return the segment - otherwise return nil. If the segment is not in the model, this function throws an error.
     /// - Parameter segment: The segment that we want to check
     /// - Parameter recursiveCheck: A Boolean to indicate whether we should check below the next segment as well (needed to avoid infinite loops)
-    func StaticRingAbove(segment:Segment, recursiveCheck:Bool) throws -> Segment? {
+    func StaticRingAbove(segment:Segment, recursiveCheck:Bool) async throws -> Segment? {
         
         guard let segIndex = self.segmentStore.firstIndex(of: segment) else {
             
@@ -2104,9 +2161,9 @@ actor PhaseModel /*:Codable */ {
         // check the easy thing first, looking for a direct reference to a static ring
         let srAxial = segment.axialPos == 0 ? Segment.negativeZeroPosition : -segment.axialPos
         let srLocation = LocStruct(radial: segment.radialPos, axial: srAxial)
-        if let srSegment = self.SegmentAt(location: srLocation) {
+        if let srSegment = await self.SegmentAt(location: srLocation) {
             
-            if srSegment.z1 > segment.z1 {
+            if await srSegment.z1 > segment.z1 {
                 
                 staticRingAbove = srSegment
             }
@@ -2119,9 +2176,11 @@ actor PhaseModel /*:Codable */ {
         }
         
         // there might still be a static ring above, but it's been defined as being below the next segment in the array (and there is not a gap there, which is defined as anything greater or equal to 25mm)
-        if staticRingAbove == nil && recursiveCheck && self.segmentStore[segIndex + 1].radialPos == segment.radialPos && self.segmentStore[segIndex + 1].z1 - segment.z2 < 0.025 {
+        var srIsBelowNext = self.segmentStore[segIndex + 1].radialPos == segment.radialPos
+        srIsBelowNext = await self.segmentStore[segIndex + 1].z1 - segment.z2 < 0.025 && srIsBelowNext
+        if staticRingAbove == nil && recursiveCheck && srIsBelowNext {
             
-            staticRingAbove = try? StaticRingBelow(segment: self.segmentStore[segIndex + 1], recursiveCheck: false)
+            staticRingAbove = try? await StaticRingBelow(segment: self.segmentStore[segIndex + 1], recursiveCheck: false)
         }
         
         return staticRingAbove
@@ -2130,7 +2189,7 @@ actor PhaseModel /*:Codable */ {
     /// Check if there is a static ring  below the given segment, and if so, return the segment - otherwise return nil. If the segment is not in the model, this function throws an error.
     /// - Parameter segment: The segment that we want to check
     /// - Parameter recursiveCheck: A Boolean to indicate whether we should check above the next segment as well (needed to avoid infinite loops)
-    func StaticRingBelow(segment:Segment, recursiveCheck:Bool) throws -> Segment? {
+    func StaticRingBelow(segment:Segment, recursiveCheck:Bool) async throws -> Segment? {
         
         guard let segIndex = self.segmentStore.firstIndex(of: segment) else {
             
@@ -2142,9 +2201,9 @@ actor PhaseModel /*:Codable */ {
         // check the easy thing first, looking for a direct reference to a static ring
         let srAxial = segment.axialPos == 0 ? Segment.negativeZeroPosition : -segment.axialPos
         let srLocation = LocStruct(radial: segment.radialPos, axial: srAxial)
-        if let srSegment = self.SegmentAt(location: srLocation) {
+        if let srSegment = await self.SegmentAt(location: srLocation) {
             
-            if srSegment.z1 < segment.z1 {
+            if await srSegment.z1 < segment.z1 {
                 
                 staticRingBelow = srSegment
             }
@@ -2157,9 +2216,11 @@ actor PhaseModel /*:Codable */ {
         }
         
         // there might still be a static ring below, but it's been defined as being above the previous segment in the array (and there is not a gap there, which is defined as anything greater or equal to 25mm)
-        if staticRingBelow == nil && recursiveCheck && self.segmentStore[segIndex - 1].radialPos == segment.radialPos && segment.z1 - self.segmentStore[segIndex - 1].z2 < 0.025 {
+        var srIsAbovePrev = self.segmentStore[segIndex - 1].radialPos == segment.radialPos
+        srIsAbovePrev = await segment.z1 - self.segmentStore[segIndex - 1].z2 < 0.025 && srIsAbovePrev
+        if staticRingBelow == nil && recursiveCheck && srIsAbovePrev {
             
-            staticRingBelow = try? StaticRingAbove(segment: self.segmentStore[segIndex - 1], recursiveCheck: false)
+            staticRingBelow = try? await StaticRingAbove(segment: self.segmentStore[segIndex - 1], recursiveCheck: false)
         }
         
         return staticRingBelow
@@ -2198,13 +2259,13 @@ actor PhaseModel /*:Codable */ {
     }
     
     /// Function to add a collection of Segments to the store. The array can be in any order - the routine will ensure that the Segments are inserted at the correct place in the store. If a Segment cannot be inserted, an error is thrown. The routine will reset the model to whatever it was before the call was attempted (which may or may not be a stable model).
-    func AddSegments(newSegments:[Segment]) throws {
+    func AddSegments(newSegments:[Segment]) async throws {
         
         do {
             
             for nextSegment in newSegments {
             
-                try self.InsertSegment(newSegment: nextSegment)
+                try await self.InsertSegment(newSegment: nextSegment)
             }
         }
         catch {
@@ -2231,16 +2292,26 @@ actor PhaseModel /*:Codable */ {
     
     
     /// Check if there is a Segment at the specified location and if so, return it (otherwise, return nil)
-    func SegmentAt(location:LocStruct) -> Segment? {
+    func SegmentAt(location:LocStruct) async -> Segment? {
         
-        return self.CoilSegments().first(where: {$0.location == location})
+        let coilSegs = self.CoilSegments()
+        for nextSegment in coilSegs {
+            
+            let nextLoc = await nextSegment.location
+            if nextLoc == location {
+                
+                return nextSegment
+            }
+        }
+        
+        return nil
     }
     
     /// Get the axial index of the highest (max Z) section for the given coil
     /// - note: This returns the axial position equal to: highestDiscNumber - lowestDiscNumber for the coil in question
-    func GetHighestSection(coil:Int) throws -> Int {
+    func GetHighestSection(coil:Int) async throws -> Int {
         
-        guard let _ = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+        guard let _ = await self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
             throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
@@ -2253,24 +2324,26 @@ actor PhaseModel /*:Codable */ {
     
     
     /// Get the gap between the bottom-most section of a coil and the next adjacent section.  If the coil at the given radial position is not a disc coil, an error is thrown.
-    func StandardAxialGap(coil:Int) throws -> Double {
+    func StandardAxialGap(coil:Int) async throws -> Double {
         
-        guard let bottomMostDisc = self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+        guard let bottomMostDisc = await self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
             
             throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
         
-        if bottomMostDisc.wdgType != .disc && bottomMostDisc.wdgType != .helical {
+        var wdgTypeIsDiscOrHelix = await bottomMostDisc.wdgType == .disc
+        wdgTypeIsDiscOrHelix = await bottomMostDisc.wdgType == .helical || wdgTypeIsDiscOrHelix
+        if !wdgTypeIsDiscOrHelix {
             
             throw PhaseModelError(info: "", type: .NotADiscCoil)
         }
         
-        guard let nextDisc = self.SegmentAt(location: LocStruct(radial: coil, axial: 1)) else {
+        guard let nextDisc = await self.SegmentAt(location: LocStruct(radial: coil, axial: 1)) else {
             
             throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
         
-        let result = nextDisc.z1 - bottomMostDisc.z2
+        let result = await nextDisc.z1 - bottomMostDisc.z2
         
         if result < 0.0 {
             

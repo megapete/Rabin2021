@@ -207,6 +207,26 @@ actor Segment: Codable, Equatable /*, Hashable */ {
     /// The connections to the Segment
     var connections:[Connection] = []
     
+    func SetConnections(connections:[Connection]) {
+        
+        self.connections = connections
+    }
+    
+    func RemoveConnectionsWithID(_ segID:Int) {
+        
+        self.connections.removeAll(where: { $0.segmentID == segID })
+    }
+    
+    func AppendConnection(connection:Connection) {
+        
+        self.connections.append(connection)
+    }
+    
+    func SetSegmentIDforConnectionAt(_ index:Int, newID:Int) {
+        
+        self.connections[index].segmentID = newID
+    }
+    
     /// The inner radius of the segment (from the core center)
     var r1:Double {
         get {
@@ -325,6 +345,11 @@ actor Segment: Codable, Equatable /*, Hashable */ {
     
     /// The series capacitance of the segment when it is considered within a coil (this property is set elsewhere)
     var seriesCapacitance:Double = 0.0
+    
+    func SetSeriesCapacitance(serCap:Double) {
+        
+        self.seriesCapacitance = serCap
+    }
     
     /// A struct to define mutual inductance to other Segments (note: the self-inductance can be defined using this struc with the 'toSegment' poroperty set to 'nil')
     struct MutualInductance:Codable {
