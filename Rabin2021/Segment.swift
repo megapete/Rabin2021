@@ -572,7 +572,7 @@ actor Segment: Codable, Equatable /*, Hashable */ {
     /// If toLocation is .ground or .impulse and self.connection has a connection with a fromLocation the same as the parameter, and a toLocation equal to .floating, that connector is changed to the new connector definition.
     /// If toLocation is .ground, or .impulse, or .floating, and self.connection does not have a corresponding .floating connector, then the new connector is added to self.connections.
     /// - Returns: If toSegment is non-nil, the function returns tuple of the one or two equivalent connections that were created; otherwise it returns both nil
-    func AddConnector(segments:[Segment], fromLocation:Connector.Location, toLocation:Connector.Location, toSegmentID:Int?) async -> (from:Segment.Connection?, to:Segment.Connection?) {
+    @discardableResult func AddConnector(segments:[Segment], fromLocation:Connector.Location, toLocation:Connector.Location, toSegmentID:Int?) async -> (from:Segment.Connection?, to:Segment.Connection?) {
         
         if let otherSegmentID = toSegmentID {
             

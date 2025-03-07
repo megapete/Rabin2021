@@ -94,12 +94,13 @@ struct SegmentPath:Equatable  {
     static var txfoView:TransformerView? = nil
     
     // The Segment that is displayed by this instance
-    nonisolated let segment:Segment
+    let segment:Segment
     
     // A holder for future ToolTips for the Segment (not sure what to show yet)
     var toolTipTag:NSView.ToolTipTag = 0
     
     // The actual path that is drawn for the Segment. Note that for a Static Ring, the path is converted from a rectangle to a RoundedRectangle
+    /*
     var path:NSBezierPath? {
         get {
         
@@ -111,13 +112,31 @@ struct SegmentPath:Equatable  {
             
             return NSBezierPath(rect: self.rect)
         }
+    } */
+    // Replacement for 'path' property
+    func GetPath() async -> NSBezierPath {
+        
+        if segment.isStaticRing {
+            
+            let radius = await self.segment.rect.height / 2.0
+            return await NSBezierPath(roundedRect: self.GetRect(), xRadius: radius * dimensionMultiplier, yRadius: radius * dimensionMultiplier)
+        }
+        
+        return await NSBezierPath(rect: self.GetRect())
     }
     
     // The rectangle that the Segment occupies (multiplied by the dimensionMultiplier global
+    /*
     var rect:NSRect {
         get {
             return self.segment.rect * dimensionMultiplier
         }
+    } */
+    
+    // Replacement for 'rect' property
+    func GetRect() async -> NSRect {
+        
+        return await self.segment.rect * dimensionMultiplier
     }
         
     // The color of the Segment
@@ -134,12 +153,9 @@ struct SegmentPath:Equatable  {
     }
     
     /// Test whether this segment contains 'point'
-    func contains(point:NSPoint) -> Bool
+    func contains(point:NSPoint) async -> Bool
     {
-        guard let segPath = self.path else
-        {
-            return false
-        }
+        let segPath = await self.GetPath()
         
         return segPath.contains(point)
     }
@@ -148,25 +164,22 @@ struct SegmentPath:Equatable  {
     let nonActiveAlpha:CGFloat = 0.25
     
     /// Call this function to actually show the Segment. If the Segment is active, then call clear()
-    func show()
+    func show() async
     {
         if isActive
         {
-            self.clear()
+            await self.clear()
         }
         else
         {
-            self.fill(alpha: nonActiveAlpha)
+            await self.fill(alpha: nonActiveAlpha)
         }
     }
     
     /// The stroke() function so that  we can use SegmentPaths in a similar way as NSBezierPaths
-    func stroke()
+    func stroke() async
     {
-        guard let path = self.path else
-        {
-            return
-        }
+        let path = await self.GetPath()
         
         if self.isActive
         {
@@ -176,12 +189,9 @@ struct SegmentPath:Equatable  {
     }
     
     /// The fill() function so that  we can use SegmentPaths in a similar way as NSBezierPaths
-    func fill(alpha:CGFloat)
+    func fill(alpha:CGFloat) async
     {
-        guard let path = self.path else
-        {
-            return
-        }
+        let path = await self.GetPath()
         
         self.segmentColor.withAlphaComponent(alpha).set()
         path.fill()
@@ -190,12 +200,9 @@ struct SegmentPath:Equatable  {
     }
     
     /// fill the path with the background color and stroke the path with the segmentColor
-    func clear()
+    func clear() async
     {
-        guard let path = self.path else
-        {
-            return
-        }
+        let path = await self.GetPath()
         
         SegmentPath.bkGroundColor.set()
         path.fill()
@@ -204,16 +211,16 @@ struct SegmentPath:Equatable  {
     }
     
     /// Set up the paths for all connectors for this SegmentPath EXCEPT any that end at a Segment in 'maskSegments'. This allows us to avoid redrawing paths. This function is automatically called when the "segments" property of TransformerView is changed. However, it must be called manually when adding (or removing) a connection. The 'viewConnectors' property of the TransformerView is changed by this routine. See the Connector struct and the Segment.Connection struct for more details on how those structures work.
-    func SetUpConnectors(maskSegments:[Segment]) {
+    func SetUpConnectors(allSegments:[Segment], maskSegments:[Int]) async {
                 
         let model = SegmentPath.txfoView!.appController!.currentModel!
         let txfoView = SegmentPath.txfoView!
         
-        for nextConnection in self.segment.connections {
+        for nextConnection in await self.segment.connections {
             
-            if let otherSegment = nextConnection.segment {
+            if let otherSegmentID = nextConnection.segmentID {
                                 
-                if maskSegments.contains(otherSegment) || otherSegment == self.segment {
+                if maskSegments.contains(otherSegmentID) || otherSegmentID == self.segment.serialNumber {
                     
                     continue
                 }
@@ -222,7 +229,7 @@ struct SegmentPath:Equatable  {
             let connectorPath = NSBezierPath()
             
             var fromPoint = NSPoint()
-            let segRect = self.segment.rect
+            let segRect = await self.segment.rect
             
             switch nextConnection.connector.fromLocation {
             
@@ -257,9 +264,9 @@ struct SegmentPath:Equatable  {
             // now for the end point of the path
             var toPoint = NSPoint()
             
-            if let otherSeg = nextConnection.segment {
+            if let otherSegID = nextConnection.segmentID, let otherSeg = allSegments.first(where: { $0.serialNumber == otherSegID }) {
                 
-                let segRect = otherSeg.rect
+                let segRect = await otherSeg.rect
                 switch nextConnection.connector.toLocation {
                     
                 case .outside_upper:
@@ -292,10 +299,10 @@ struct SegmentPath:Equatable  {
                 }
                 
                 // check if same coil
-                if otherSeg.location.radial == self.segment.location.radial {
+                if await otherSeg.location.radial == self.segment.location.radial {
                     
                     // check if adjacent section
-                    if model.SegmentsAreAdjacent(segment1: self.segment, segment2: otherSeg) {
+                    if await model.SegmentsAreAdjacent(segment1: self.segment, segment2: otherSeg) {
                         
                         connectorPath.move(to: fromPoint * dimensionMultiplier)
                         connectorPath.line(to: toPoint * dimensionMultiplier)
@@ -317,31 +324,31 @@ struct SegmentPath:Equatable  {
                             }
                             else {
                                 
-                                guard let highestSegmentIndex = try? model.GetHighestSection(coil: self.segment.radialPos) else {
+                                guard let highestSegmentIndex = try? await model.GetHighestSection(coil: self.segment.radialPos) else {
                                     
                                     return
                                 }
                                 
-                                let highestSegment = model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: highestSegmentIndex))!
-                                let lowestSegment = model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
+                                let highestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: highestSegmentIndex))!
+                                let lowestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
                                 
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
                                 connectorPath.line(to: (fromPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
                                 
-                                let startHtFraction = (self.segment.zMean - lowestSegment.z1) / (highestSegment.z2 - lowestSegment.z1)
+                                let startHtFraction = await (self.segment.zMean - lowestSegment.z1) / (highestSegment.z2 - lowestSegment.z1)
                                 if startHtFraction < 0.5 {
                                     
                                     // go down
-                                    connectorPath.line(to: NSPoint(x: fromPoint.x + 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
-                                    connectorPath.line(to: NSPoint(x: toPoint.x - 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
+                                    await connectorPath.line(to: NSPoint(x: fromPoint.x + 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
+                                    await connectorPath.line(to: NSPoint(x: toPoint.x - 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
                                     connectorPath.line(to: (toPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
                                     connectorPath.line(to: toPoint * dimensionMultiplier)
                                 }
                                 else {
                                     
                                     // go up
-                                    connectorPath.line(to: NSPoint(x: fromPoint.x + 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
-                                    connectorPath.line(to: NSPoint(x: toPoint.x - 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
+                                    await connectorPath.line(to: NSPoint(x: fromPoint.x + 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
+                                    await connectorPath.line(to: NSPoint(x: toPoint.x - 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
                                     connectorPath.line(to: (toPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
                                     connectorPath.line(to: toPoint * dimensionMultiplier)
                                 }
@@ -351,31 +358,31 @@ struct SegmentPath:Equatable  {
                             
                             if nextConnection.connector.toIsOutside {
                                 
-                                guard let highestSegmentIndex = try? model.GetHighestSection(coil: self.segment.radialPos) else {
+                                guard let highestSegmentIndex = try? await model.GetHighestSection(coil: self.segment.radialPos) else {
                                     
                                     return
                                 }
                                 
-                                let highestSegment = model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: highestSegmentIndex))!
-                                let lowestSegment = model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
+                                let highestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: highestSegmentIndex))!
+                                let lowestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
                                 
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
                                 connectorPath.line(to: (fromPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
                                 
-                                let startHtFraction = (self.segment.zMean - lowestSegment.z1) / (highestSegment.z2 - lowestSegment.z1)
+                                let startHtFraction = await (self.segment.zMean - lowestSegment.z1) / (highestSegment.z2 - lowestSegment.z1)
                                 if startHtFraction < 0.5 {
                                     
                                     // go down
-                                    connectorPath.line(to: NSPoint(x: fromPoint.x - 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
-                                    connectorPath.line(to: NSPoint(x: toPoint.x + 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
+                                    await connectorPath.line(to: NSPoint(x: fromPoint.x - 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
+                                    await connectorPath.line(to: NSPoint(x: toPoint.x + 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
                                     connectorPath.line(to: (toPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
                                     connectorPath.line(to: toPoint * dimensionMultiplier)
                                 }
                                 else {
                                     
                                     // go up
-                                    connectorPath.line(to: NSPoint(x: fromPoint.x - 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
-                                    connectorPath.line(to: NSPoint(x: toPoint.x + 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
+                                    await connectorPath.line(to: NSPoint(x: fromPoint.x - 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
+                                    await connectorPath.line(to: NSPoint(x: toPoint.x + 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
                                     connectorPath.line(to: (toPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
                                     connectorPath.line(to: toPoint * dimensionMultiplier)
                                 }
@@ -397,14 +404,14 @@ struct SegmentPath:Equatable  {
                     // it's to another coil
                     let fromAndToInSameHilo = (otherSeg.radialPos - self.segment.radialPos == 1 && nextConnection.connector.fromIsOutside && !nextConnection.connector.toIsOutside) || (otherSeg.radialPos - self.segment.radialPos == -1 && !nextConnection.connector.fromIsOutside && nextConnection.connector.toIsOutside)
                     
-                    guard let highestSegmentIndex = try? model.GetHighestSection(coil: self.segment.radialPos) else {
+                    guard let highestSegmentIndex = try? await model.GetHighestSection(coil: self.segment.radialPos) else {
                         
                         return
                     }
                     
-                    let highestSegment = model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: highestSegmentIndex))!
-                    let lowestSegment = model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
-                    let startHtFraction = (self.segment.zMean - lowestSegment.z1) / (highestSegment.z2 - lowestSegment.z1)
+                    let highestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: highestSegmentIndex))!
+                    let lowestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
+                    let startHtFraction = await (self.segment.zMean - lowestSegment.z1) / (highestSegment.z2 - lowestSegment.z1)
                     
                     connectorPath.move(to: fromPoint * dimensionMultiplier)
                     
@@ -425,13 +432,13 @@ struct SegmentPath:Equatable  {
                         if startHtFraction < 0.5 {
                             
                             // go down
-                            currentY = lowestSegment.z1 - 0.025 - 0.03
+                            currentY = await lowestSegment.z1 - 0.025 - 0.03
                             connectorPath.line(to: NSPoint(x: currentX, y: currentY) * dimensionMultiplier)
                         }
                         else {
                             
                             // go up
-                            currentY = highestSegment.z2 + 0.025 + 0.03
+                            currentY = await highestSegment.z2 + 0.025 + 0.03
                             connectorPath.line(to: NSPoint(x: currentX, y: currentY) * dimensionMultiplier)
                             
                         }
@@ -911,13 +918,25 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         didSet {
             
-            var maskSegments:[Segment] = []
-            self.viewConnectors = []
-            for nextSegment in segments {
-                
-                nextSegment.SetUpConnectors(maskSegments: maskSegments)
-                maskSegments.append(nextSegment.segment)
+            Task {
+                var allSegments = segments.map { $0.segment }
+                var maskSegments:[Int] = []
+                self.viewConnectors = []
+                for nextSegment in segments {
+                    
+                    await nextSegment.SetUpConnectors(allSegments: allSegments, maskSegments: maskSegments)
+                    maskSegments.append(nextSegment.segment.serialNumber)
+                }
             }
+        }
+    }
+    
+    var allSegments:[Segment] {
+        
+        get {
+            
+            let result = segments.map({ $0.segment })
+            return result
         }
     }
     
@@ -1113,81 +1132,85 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             boundaryPath.stroke()
         }
         
-        for nextSegment in self.segments
-        {
-            if self.needsToDraw(nextSegment.rect) {
-                
-                nextSegment.show()
-            }
-        }
-        
-        for nextViewConnector in self.viewConnectors {
+        Task {
             
-            if self.needsToDraw(nextViewConnector.hitZone.bounds) {
-            
-                nextViewConnector.pathColor.set()
-                nextViewConnector.path.stroke()
-            
-            }
-            
-            if let image = nextViewConnector.image, self.needsToDraw(nextViewConnector.imageRect) {
-                
-                // draw the image
-                image.draw(in: nextViewConnector.imageRect, from: NSRect(origin: NSPoint(), size: image.size), operation: .sourceOver, fraction: 1)
-            }
-        }
-        
-        for nextSegment in self.currentSegments
-        {
-            self.ShowHandles(segment: nextSegment)
-        }
-        
-        if self.mode == .zoomRect
-        {
-            if let rect = self.zoomRect
+            for nextSegment in self.segments
             {
-                // print(rect)
-                NSColor.gray.set()
-                let zoomPath = NSBezierPath(rect: rect)
-                let lineDashSize = self.convert(self.zoomRectLineDash, from: self.scrollView)
-                zoomPath.setLineDash([lineDashSize.width, lineDashSize.height], count: 2, phase: 0.0)
-                zoomPath.stroke()
-            }
-        }
-        else if self.mode == .selectRect {
-            
-            if let rect = self.selectRect {
-                
-                NSColor.gray.set()
-                let selectPath = NSBezierPath(rect: rect)
-                let lineDashSize = self.convert(self.selectRectLineDash, from: self.scrollView)
-                selectPath.setLineDash([lineDashSize.width, lineDashSize.height], count: 2, phase: 0.0)
-                selectPath.stroke()
-            }
-        }
-        else if self.mode == .addConnection {
-            
-            if let highlightPath = self.highlightedConnectorPath {
-                
-                self.highlightColor.set()
-                highlightPath.stroke()
-                highlightPath.fill()
+                if await self.needsToDraw(nextSegment.GetRect()) {
+                    
+                    await nextSegment.show()
+                }
             }
             
-            if let startConnector = self.addConnectionStartConnector {
+            for nextViewConnector in self.viewConnectors {
                 
-                startConnector.pathColor.set()
-                self.addConnectionPath.stroke()
+                if self.needsToDraw(nextViewConnector.hitZone.bounds) {
+                    
+                    nextViewConnector.pathColor.set()
+                    nextViewConnector.path.stroke()
+                    
+                }
+                
+                if let image = nextViewConnector.image, self.needsToDraw(nextViewConnector.imageRect) {
+                    
+                    // draw the image
+                    image.draw(in: nextViewConnector.imageRect, from: NSRect(origin: NSPoint(), size: image.size), operation: .sourceOver, fraction: 1)
+                }
             }
-        }
-        else if self.mode == .addGround || self.mode == .addImpulse || self.mode == .removeConnector {
             
-            if let highlightPath = self.highlightedConnectorPath {
-                
-                self.highlightColor.set()
-                highlightPath.stroke()
-                highlightPath.fill()
+            for nextSegment in self.currentSegments
+            {
+                await self.ShowHandles(segment: nextSegment)
             }
+            
+            if self.mode == .zoomRect
+            {
+                if let rect = self.zoomRect
+                {
+                    // print(rect)
+                    NSColor.gray.set()
+                    let zoomPath = NSBezierPath(rect: rect)
+                    let lineDashSize = self.convert(self.zoomRectLineDash, from: self.scrollView)
+                    zoomPath.setLineDash([lineDashSize.width, lineDashSize.height], count: 2, phase: 0.0)
+                    zoomPath.stroke()
+                }
+            }
+            else if self.mode == .selectRect {
+                
+                if let rect = self.selectRect {
+                    
+                    NSColor.gray.set()
+                    let selectPath = NSBezierPath(rect: rect)
+                    let lineDashSize = self.convert(self.selectRectLineDash, from: self.scrollView)
+                    selectPath.setLineDash([lineDashSize.width, lineDashSize.height], count: 2, phase: 0.0)
+                    selectPath.stroke()
+                }
+            }
+            else if self.mode == .addConnection {
+                
+                if let highlightPath = self.highlightedConnectorPath {
+                    
+                    self.highlightColor.set()
+                    highlightPath.stroke()
+                    highlightPath.fill()
+                }
+                
+                if let startConnector = self.addConnectionStartConnector {
+                    
+                    startConnector.pathColor.set()
+                    self.addConnectionPath.stroke()
+                }
+            }
+            else if self.mode == .addGround || self.mode == .addImpulse || self.mode == .removeConnector {
+                
+                if let highlightPath = self.highlightedConnectorPath {
+                    
+                    self.highlightColor.set()
+                    highlightPath.stroke()
+                    highlightPath.fill()
+                }
+            }
+            
         }
         
         NSBezierPath.defaultLineWidth = oldLineWidth
@@ -1197,17 +1220,18 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     // MARK: Current segment functions
     
     /// Show the little square 'handles' on the corners of the given SegmentPath
-    func ShowHandles(segment:SegmentPath)
+    func ShowHandles(segment:SegmentPath) async
     {
         let handleSide = NSBezierPath.defaultLineWidth * 5.0
         let handleBaseRect = NSRect(x: 0.0, y: 0.0, width: handleSide, height: handleSide)
         let handleFillColor = NSColor.white
         let handleStrokeColor = NSColor.darkGray
         
-        var corners:[NSPoint] = [segment.rect.origin]
-        corners.append(NSPoint(x: segment.rect.origin.x + segment.rect.size.width, y: segment.rect.origin.y))
-        corners.append(NSPoint(x: segment.rect.origin.x + segment.rect.size.width, y: segment.rect.origin.y + segment.rect.size.height))
-        corners.append(NSPoint(x: segment.rect.origin.x, y: segment.rect.origin.y + segment.rect.size.height))
+        let segRect = await segment.GetRect()
+        var corners:[NSPoint] = [segRect.origin]
+        corners.append(NSPoint(x: segRect.origin.x + segRect.size.width, y: segRect.origin.y))
+        corners.append(NSPoint(x: segRect.origin.x + segRect.size.width, y: segRect.origin.y + segRect.size.height))
+        corners.append(NSPoint(x: segRect.origin.x, y: segRect.origin.y + segRect.size.height))
         
         for nextPoint in corners
         {
@@ -1485,6 +1509,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             let newSize = NSSize(width: endPoint.x - self.zoomRect!.origin.x, height: endPoint.y - self.zoomRect!.origin.y)
             self.zoomRect!.size = newSize
             self.handleZoomRect(zRect: self.zoomRect!)
+            self.mode = .selectSegment
+            self.needsDisplay = true
         }
         // The user has finished dragging his selection rectangle, so get the end point and add all segments in the rectangle to the currentSegments array
         else if self.mode == .selectRect {
@@ -1497,93 +1523,117 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             
             self.currentSegments = []
             
-            for nextSegment in self.segments {
+            Task {
                 
-                if NSContainsRect(self.selectRect!, nextSegment.rect) {
+                for nextSegment in self.segments {
                     
-                    if self.currentSegments.firstIndex(of: nextSegment) == nil {
-                    
-                        self.currentSegments.append(nextSegment)
+                    if await NSContainsRect(self.selectRect!, nextSegment.GetRect()) {
+                        
+                        if self.currentSegments.firstIndex(of: nextSegment) == nil {
+                            
+                            self.currentSegments.append(nextSegment)
+                        }
                     }
                 }
+                
+                self.mode = .selectSegment
+                self.needsDisplay = true
             }
         }
         // The user has finished adding a connection. If the end-point is a valid connection point, add the new conenctor to the model.
         else if self.mode == .addConnection, let startConnector = self.addConnectionStartConnector {
             
             let endPoint = self.convert(event.locationInWindow, from: nil)
+            let segmentArray = self.allSegments
             
-            for nextViewConnector in self.viewConnectors {
+            Task {
                 
-                if nextViewConnector.hitZone.contains(endPoint) {
+                for nextViewConnector in self.viewConnectors {
                     
-                    if nextViewConnector == startConnector {
+                    if nextViewConnector.hitZone.contains(endPoint) {
                         
-                        return
-                    }
-                    
-                    var startConnections = startConnector.segments.from.ConnectionDestinations(fromLocation: startConnector.connector.fromLocation)
-                    startConnections.removeAll(where: { $0.segment == nil })
-                    startConnections.insert((startConnector.segments.from, startConnector.connector.fromLocation), at: 0)
-                    
-                    var endConnections = nextViewConnector.segments.from.ConnectionDestinations(fromLocation: nextViewConnector.connector.fromLocation)
-                    endConnections.removeAll(where: { $0.segment == nil })
-                    endConnections.insert((nextViewConnector.segments.from, nextViewConnector.connector.fromLocation), at: 0)
-                    
-                    var equivalentConnections:Set<Segment.Connection.EquivalentConnection> = []
-                    
-                    for nextStartConnection in startConnections {
+                        if nextViewConnector == startConnector {
+                            
+                            return
+                        }
                         
-                        for nextEndConnection in endConnections {
+                        var startConnections = await startConnector.segments.from.ConnectionDestinations(fromLocation: startConnector.connector.fromLocation)
+                        startConnections.removeAll(where: { $0.segmentID == nil })
+                        startConnections.insert((startConnector.segments.from.serialNumber, startConnector.connector.fromLocation), at: 0)
+                        
+                        var endConnections = await nextViewConnector.segments.from.ConnectionDestinations(fromLocation: nextViewConnector.connector.fromLocation)
+                        endConnections.removeAll(where: { $0.segmentID == nil })
+                        endConnections.insert((nextViewConnector.segments.from.serialNumber, nextViewConnector.connector.fromLocation), at: 0)
+                        
+                        var equivalentConnections:Set<Segment.Connection.EquivalentConnection> = []
+                        
+                        for nextStartConnection in startConnections {
                             
-                            let newConnections = nextStartConnection.segment!.AddConnector(fromLocation: nextStartConnection.location, toLocation: nextEndConnection.location, toSegment: nextEndConnection.segment)
-                            
-                            guard let newSrcConnection = newConnections.from, let newDestConnection = newConnections.to else {
+                            for nextEndConnection in endConnections {
                                 
-                                ALog("FUCK!")
+                                guard let nextStartSegment = segmentArray.first(where: {$0.serialNumber == nextStartConnection.segmentID}) else {
+                                    
+                                    ALog("This should not happen!")
+                                    return
+                                }
+                                let newConnections = await nextStartSegment.AddConnector(segments: segmentArray, fromLocation: nextStartConnection.location, toLocation: nextEndConnection.location, toSegmentID: nextEndConnection.segmentID)
+                                // let newConnections = nextStartConnection.segment!.AddConnector(fromLocation: nextStartConnection.location, toLocation: nextEndConnection.location, toSegment: nextEndConnection.segmentID)
+                                
+                                guard let newSrcConnection = newConnections.from, let newDestConnection = newConnections.to else {
+                                    
+                                    ALog("FUCK!")
+                                    return
+                                }
+                                
+                                equivalentConnections.insert(Segment.Connection.EquivalentConnection(parent: nextStartConnection.segmentID!, connection: newSrcConnection))
+                                equivalentConnections.insert(Segment.Connection.EquivalentConnection(parent: nextEndConnection.segmentID!, connection: newDestConnection))
+                            }
+                        }
+                        
+                        for nextConnection in equivalentConnections {
+                            
+                            guard let nextConnParent = segmentArray.first(where: {$0.serialNumber == nextConnection.parent}) else {
+                                
+                                ALog("No, no!")
                                 return
                             }
-                            
-                            equivalentConnections.insert(Segment.Connection.EquivalentConnection(parent: nextStartConnection.segment!, connection: newSrcConnection))
-                            equivalentConnections.insert(Segment.Connection.EquivalentConnection(parent: nextEndConnection.segment!, connection: newDestConnection))
+                            await nextConnParent.AddEquivalentConnections(to: nextConnection.connection, equ: equivalentConnections)
                         }
-                    }
-                    
-                    for nextConnection in equivalentConnections {
                         
-                        nextConnection.parent.AddEquivalentConnections(to: nextConnection.connection, equ: equivalentConnections)
-                    }
-                    
-                    guard let startSegmentPath = self.segments.first(where: {$0.segment == startConnector.segments.from}) else {
+                        guard let startSegmentPath = self.segments.first(where: {$0.segment == startConnector.segments.from}) else {
+                            
+                            // this should never happen
+                            DLog("Problem!")
+                            break
+                        }
                         
-                        // this should never happen
-                        DLog("Problem!")
+                        // add all the non-touched segments to the maskSegment array so that the SetUpConnectors call goes quickly
+                        var maskSegments:[Int] = []
+                        for nextSegmentPath in self.segments {
+                            
+                            if nextSegmentPath.segment != nextViewConnector.segments.from {
+                                
+                                maskSegments.append(nextSegmentPath.segment.serialNumber)
+                            }
+                        }
+                        
+                        await startSegmentPath.SetUpConnectors(allSegments: segmentArray, maskSegments: maskSegments)
+                        
                         break
                     }
-                    
-                    // add all the non-touched segments to the maskSegment array so that the SetUpConnectors call goes quickly
-                    var maskSegments:[Segment] = []
-                    for nextSegmentPath in self.segments {
-                        
-                        if nextSegmentPath.segment != nextViewConnector.segments.from {
-                            
-                            maskSegments.append(nextSegmentPath.segment)
-                        }
-                    }
-                    
-                    startSegmentPath.SetUpConnectors(maskSegments: maskSegments)
-                    
-                    break
                 }
+                
+                self.highlightedConnectorPath = nil
+                self.addConnectionStartConnector = nil
+                self.addConnectionPath.removeAllPoints()
+                
+                self.mode = .selectSegment
+                self.needsDisplay = true
             }
-            
-            self.highlightedConnectorPath = nil
-            self.addConnectionStartConnector = nil
-            self.addConnectionPath.removeAllPoints()
         }
         
-        self.mode = .selectSegment
-        self.needsDisplay = true
+        // self.mode = .selectSegment
+        // self.needsDisplay = true
     }
     
     // The mouse is being dragged while in addConnection mode. Update the connection path and check if the mouse location is currently in the hitZone of a connector - if it is, set the highlight
@@ -1622,79 +1672,87 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     func mouseDownWithRemoveConnector(event:NSEvent) {
         
         let clickPoint = self.convert(event.locationInWindow, from: nil)
+        let segmentArray = self.allSegments
                 
-        for nextViewConnector in self.viewConnectors {
+        Task {
             
-            if nextViewConnector.hitZone.contains(clickPoint) {
+            for nextViewConnector in self.viewConnectors {
                 
-                guard let appCtrl = self.appController, let model = appCtrl.currentModel else {
+                if nextViewConnector.hitZone.contains(clickPoint) {
                     
-                    return
-                }
-                
-                // var removeMask:[Segment] = []
-                let affectedSegments = nextViewConnector.segments.from.RemoveConnection(connection: Segment.Connection(segment: nextViewConnector.segments.to, connector: nextViewConnector.connector))
-                
-                // we will be removing ALL the ViewConnectors that are associated with the affected Segments. Since we show the ViewConnectors in a way that keeps "moving forward" (up), we need to also keep the previous segments (as long as they are on the same coil) out of thh maskSegments array
-                var adjacentSegments:[Segment] = []
-                for nextAffectedSegment in affectedSegments {
-                    
-                    if let adjSegs = try? model.AxiallyAdjacentSegments(to: nextAffectedSegment) {
+                    guard let appCtrl = self.appController, let model = appCtrl.currentModel else {
                         
-                        if let belowAdj = adjSegs.below {
+                        return
+                    }
+                    
+                    // var removeMask:[Segment] = []
+                    let affectedSegments = await nextViewConnector.segments.from.RemoveConnection(segments: self.allSegments, connection: Segment.Connection(segmentID: nextViewConnector.segments.to?.serialNumber, connector: nextViewConnector.connector))
+                    
+                    // we will be removing ALL the ViewConnectors that are associated with the affected Segments. Since we show the ViewConnectors in a way that keeps "moving forward" (up), we need to also keep the previous segments (as long as they are on the same coil) out of thh maskSegments array
+                    var adjacentSegments:[Segment] = []
+                    for nextAffectedSegment in affectedSegments {
+                        
+                        guard let affSegment = segmentArray.first(where: {$0.serialNumber == nextAffectedSegment}) else {
                             
-                            adjacentSegments.append(belowAdj)
+                            ALog("Can't happen!")
+                            return
                         }
-                        
-                        if let aboveAdj = adjSegs.above {
+                        if let adjSegs = try? await model.AxiallyAdjacentSegments(to: affSegment) {
                             
-                            adjacentSegments.append(aboveAdj)
+                            if let belowAdj = adjSegs.below {
+                                
+                                adjacentSegments.append(belowAdj)
+                            }
+                            
+                            if let aboveAdj = adjSegs.above {
+                                
+                                adjacentSegments.append(aboveAdj)
+                            }
                         }
                     }
-                }
-                
-                // add all the non-touched segments to the maskSegment array so that the SetUpConnectors call goes quickly
-                var maskSegments:[Segment] = []
-                for nextSegmentPath in self.segments {
                     
-                    if !affectedSegments.contains(nextSegmentPath.segment) && !adjacentSegments.contains(nextSegmentPath.segment) {
+                    // add all the non-touched segments to the maskSegment array so that the SetUpConnectors call goes quickly
+                    var maskSegments:[Int] = []
+                    for nextSegmentPath in self.segments {
                         
-                        maskSegments.append(nextSegmentPath.segment)
+                        if !affectedSegments.contains(nextSegmentPath.segment.serialNumber) && !adjacentSegments.contains(nextSegmentPath.segment) {
+                            
+                            maskSegments.append(nextSegmentPath.segment.serialNumber)
+                        }
                     }
-                }
-                
-                
-                
-                self.viewConnectors.removeAll(where: { affectedSegments.contains($0.segments.from) || ($0.segments.to != nil && affectedSegments.contains($0.segments.to!)) })
-                
-                for nextChangedSegment in affectedSegments {
                     
-                    if let changedIndex = self.segments.firstIndex(where: { $0.segment == nextChangedSegment }) {
+                    
+                    
+                    self.viewConnectors.removeAll(where: { affectedSegments.contains($0.segments.from.serialNumber) || ($0.segments.to != nil && affectedSegments.contains($0.segments.to!.serialNumber)) })
+                    
+                    for nextChangedSegment in affectedSegments {
                         
-                        self.segments[changedIndex].SetUpConnectors(maskSegments: maskSegments)
-                        // maskSegments.append(nextChangedSegment)
+                        if let changedIndex = self.segments.firstIndex(where: { $0.segment.serialNumber == nextChangedSegment }) {
+                            
+                            await self.segments[changedIndex].SetUpConnectors(allSegments: segmentArray, maskSegments: maskSegments)
+                            // maskSegments.append(nextChangedSegment)
+                        }
                     }
-                }
-                
-                // segmentPath.SetUpConnectors(maskSegments: maskSegments)
-                
-                self.needsDisplay = true
-                
-                do {
                     
-                    let _ = try model.SetNodes()
-                }
-                catch {
+                    // segmentPath.SetUpConnectors(maskSegments: maskSegments)
                     
-                    let alert = NSAlert(error: error)
-                    let _ = alert.runModal()
-                    return
+                    self.needsDisplay = true
+                    
+                    do {
+                        
+                        let _ = try await model.SetNodes()
+                    }
+                    catch {
+                        
+                        let alert = NSAlert(error: error)
+                        let _ = alert.runModal()
+                        return
+                    }
+                    
+                    break
                 }
-                
-                break
             }
         }
-        
         
     }
     
@@ -1703,74 +1761,34 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         let clickPoint = self.convert(event.locationInWindow, from: nil)
         
-        // print("Mouse down with impulse at point: \(clickPoint)")
+        let segmentArray = self.allSegments
         
-        for nextViewConnector in self.viewConnectors {
+        Task {
             
-            if nextViewConnector.hitZone.contains(clickPoint) {
-                
-                nextViewConnector.segments.from.AddConnector(fromLocation: nextViewConnector.connector.fromLocation, toLocation: .impulse, toSegment: nil)
-                
-                for nextConnection in nextViewConnector.segments.from.ConnectionDestinations(fromLocation: nextViewConnector.connector.fromLocation) {
-                    
-                    if let nextSegment = nextConnection.segment {
-                        
-                        nextSegment.AddConnector(fromLocation: nextConnection.location, toLocation: .impulse, toSegment: nil)
-                    }
-                }
-                
-                var maskSegments:[Segment] = []
-                for nextSegmentPath in self.segments {
-                    
-                    if nextSegmentPath.segment != nextViewConnector.segments.from {
-                        
-                        maskSegments.append(nextSegmentPath.segment)
-                    }
-                }
-                
-                guard let segmentPath = self.segments.first(where: {$0.segment == nextViewConnector.segments.from}) else {
-                    
-                    DLog("Problem!")
-                    break
-                }
-                
-                segmentPath.SetUpConnectors(maskSegments: maskSegments)
-                
-                break
-            }
-        }
-        
-        self.highlightedConnectorPath = nil
-        self.needsDisplay = true
-    }
-    
-    // The mouse was clicked while in addGround mode. Check if the clicked point is a valid location and if so, add the ground connection and show it
-    func mouseDownWithAddGround(event:NSEvent) {
-        
-        let clickPoint = self.convert(event.locationInWindow, from: nil)
-        
-        for nextViewConnector in self.viewConnectors {
-            
-            if nextViewConnector.hitZone.contains(clickPoint) {
+            for nextViewConnector in self.viewConnectors {
                 
                 if nextViewConnector.hitZone.contains(clickPoint) {
                     
-                    nextViewConnector.segments.from.AddConnector(fromLocation: nextViewConnector.connector.fromLocation, toLocation: .ground, toSegment: nil)
+                    await nextViewConnector.segments.from.AddConnector(segments: segmentArray, fromLocation: nextViewConnector.connector.fromLocation, toLocation: .impulse, toSegmentID: nil)
                     
-                    for nextConnection in nextViewConnector.segments.from.ConnectionDestinations(fromLocation: nextViewConnector.connector.fromLocation) {
+                    for nextConnection in await nextViewConnector.segments.from.ConnectionDestinations(fromLocation: nextViewConnector.connector.fromLocation) {
                         
-                        if let nextSegment = nextConnection.segment {
+                        if let nextSegmentID = nextConnection.segmentID {
                             
-                            nextSegment.AddConnector(fromLocation: nextConnection.location, toLocation: .ground, toSegment: nil)
+                            guard let nextSegment = segmentArray.first(where: {$0.serialNumber == nextSegmentID}) else {
+                                ALog("No!")
+                                return
+                            }
+                            await nextSegment.AddConnector(segments: segmentArray, fromLocation: nextConnection.location, toLocation: .impulse, toSegmentID: nil)
                         }
                     }
                     
-                    var maskSegments:[Segment] = []
+                    var maskSegments:[Int] = []
                     for nextSegmentPath in self.segments {
                         
                         if nextSegmentPath.segment != nextViewConnector.segments.from {
                             
-                            maskSegments.append(nextSegmentPath.segment)
+                            maskSegments.append(nextSegmentPath.segment.serialNumber)
                         }
                     }
                     
@@ -1780,15 +1798,73 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                         break
                     }
                     
-                    segmentPath.SetUpConnectors(maskSegments: maskSegments)
+                    await segmentPath.SetUpConnectors(allSegments: segmentArray, maskSegments: maskSegments)
                     
                     break
                 }
             }
+            
+            self.highlightedConnectorPath = nil
+            self.needsDisplay = true
         }
+    }
+    
+    // The mouse was clicked while in addGround mode. Check if the clicked point is a valid location and if so, add the ground connection and show it
+    func mouseDownWithAddGround(event:NSEvent) {
         
-        self.highlightedConnectorPath = nil
-        self.needsDisplay = true
+        let clickPoint = self.convert(event.locationInWindow, from: nil)
+        
+        let segmentArray = self.allSegments
+        
+        Task {
+            
+            for nextViewConnector in self.viewConnectors {
+                
+                if nextViewConnector.hitZone.contains(clickPoint) {
+                    
+                    if nextViewConnector.hitZone.contains(clickPoint) {
+                        
+                        await nextViewConnector.segments.from.AddConnector(segments: segmentArray, fromLocation: nextViewConnector.connector.fromLocation, toLocation: .ground, toSegmentID: nil)
+                        
+                        for nextConnection in await nextViewConnector.segments.from.ConnectionDestinations(fromLocation: nextViewConnector.connector.fromLocation) {
+                            
+                            if let nextSegmentID = nextConnection.segmentID {
+                                
+                                guard let nextSegment = segmentArray.first(where: {$0.serialNumber == nextSegmentID}) else {
+                                    
+                                    ALog("More impossiblilities!")
+                                    return
+                                }
+                                
+                                await nextSegment.AddConnector(segments: segmentArray, fromLocation: nextConnection.location, toLocation: .ground, toSegmentID: nil)
+                            }
+                        }
+                        
+                        var maskSegments:[Int] = []
+                        for nextSegmentPath in self.segments {
+                            
+                            if nextSegmentPath.segment != nextViewConnector.segments.from {
+                                
+                                maskSegments.append(nextSegmentPath.segment.serialNumber)
+                            }
+                        }
+                        
+                        guard let segmentPath = self.segments.first(where: {$0.segment == nextViewConnector.segments.from}) else {
+                            
+                            DLog("Problem!")
+                            break
+                        }
+                        
+                        await segmentPath.SetUpConnectors(allSegments: segmentArray, maskSegments: maskSegments)
+                        
+                        break
+                    }
+                }
+            }
+            
+            self.highlightedConnectorPath = nil
+            self.needsDisplay = true
+        }
     }
     
     // The user clicked down on the mouse while in addConnector mode. If the click is at a valid location, set the addConnectionStartConnector and addConnectionStartPoint so that we can track the new connector
@@ -1820,39 +1896,42 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             self.currentSegments = []
         }
         
-        for nextSegment in self.segments
-        {
-            if nextSegment.contains(point: clickPoint)
-            {
-                if let selectedSegmentIndex = self.currentSegments.firstIndex(of: nextSegment) {
-                    
-                    self.currentSegments.remove(at: selectedSegmentIndex)
-                }
-                else {
-                
-                    self.currentSegments.append(nextSegment)
-                }
-                
-                break
-            }
-        }
-        
-        if self.currentSegments == [] {
+        Task {
             
-            let eventLocation = event.locationInWindow
-            let localLocation = self.convert(eventLocation, from: nil)
-            self.mode = .selectRect
-            self.selectRect = NSRect(origin: localLocation, size: NSSize())
-            // self.needsDisplay = true
+            for nextSegment in self.segments
+            {
+                if await nextSegment.contains(point: clickPoint)
+                {
+                    if let selectedSegmentIndex = self.currentSegments.firstIndex(of: nextSegment) {
+                        
+                        self.currentSegments.remove(at: selectedSegmentIndex)
+                    }
+                    else {
+                        
+                        self.currentSegments.append(nextSegment)
+                    }
+                    
+                    break
+                }
+            }
+            
+            if self.currentSegments == [] {
+                
+                let eventLocation = event.locationInWindow
+                let localLocation = self.convert(eventLocation, from: nil)
+                self.mode = .selectRect
+                self.selectRect = NSRect(origin: localLocation, size: NSSize())
+                // self.needsDisplay = true
+            }
+            
+            // check if it was actually a double-click
+            if event.clickCount == 2
+            {
+                DLog("Do nothing")
+            }
+            
+            self.needsDisplay = true
         }
-        
-        // check if it was actually a double-click
-        if event.clickCount == 2
-        {
-            DLog("Do nothing")
-        }
-        
-        self.needsDisplay = true
     }
     
     // The user clicked the mouse while in zoomRect mode. Start tracking the zoom rectangle
@@ -1874,23 +1953,25 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         let eventLocation = event.locationInWindow
         let clickPoint = self.convert(eventLocation, from: nil)
         
-        for nextPath in self.segments
-        {
-            if nextPath.contains(point: clickPoint)
+        Task {
+            for nextPath in self.segments
             {
-                self.rightClickSelection = nextPath
-                if self.currentSegments.firstIndex(of: nextPath) == nil {
-                
-                    self.currentSegments = [nextPath]
+                if await nextPath.contains(point: clickPoint)
+                {
+                    self.rightClickSelection = nextPath
+                    if self.currentSegments.firstIndex(of: nextPath) == nil {
+                        
+                        self.currentSegments = [nextPath]
+                    }
+                    self.needsDisplay = true
+                    NSMenu.popUpContextMenu(self.contextualMenu, with: event, for: self)
+                    
+                    break
                 }
-                self.needsDisplay = true
-                NSMenu.popUpContextMenu(self.contextualMenu, with: event, for: self)
-                
-                break
             }
+            
+            self.rightClickSelection = nil
         }
-        
-        self.rightClickSelection = nil
     }
     
     // MARK: Zoom Functions
