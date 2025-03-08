@@ -12,7 +12,7 @@ import PchBasePackage
 import os.lock
 
 /// A Segment is, at its most basic, a collection of BasicSections. The collection MUST be from the same Winding and it must represent an axially contiguous (adjacent) collection of coils.The collection may only hold a single BasicSection, or anywhere up to all of the BasicSections that make up a coil (for disc coils, only if there are no central or DV gaps in the coil). It is the unit that is actually modeled (and displayed). Static rings and radial shields are special Segments - creation routines (class functions) are provided for each.
-actor Segment: Codable, Equatable /*, Hashable */ {
+actor Segment: Equatable /*, Hashable */ {
     
     /// flag used during debugging to identify a Segment for a breakpoint
     var debugFlag = false
@@ -93,6 +93,11 @@ actor Segment: Codable, Equatable /*, Hashable */ {
         
     /// A Boolean to indicate whether the segment is interleaved
     var interleaved:Bool
+    
+    func IsInterleaved() -> Bool {
+        
+        return interleaved
+    }
     
     /// A  constant used to identify the location of radial shields and static rings whose associated Segment is in position 0
     static let negativeZeroPosition = -2048
@@ -352,7 +357,7 @@ actor Segment: Codable, Equatable /*, Hashable */ {
     }
     
     /// A struct to define mutual inductance to other Segments (note: the self-inductance can be defined using this struc with the 'toSegment' poroperty set to 'nil')
-    struct MutualInductance:Codable {
+    struct MutualInductance {
         
         let toSegment:Segment?
         let inductance:Double
@@ -974,7 +979,7 @@ actor Segment: Codable, Equatable /*, Hashable */ {
     static func RadialShield(adjacentSegment:Segment, hiloToSegment:Double, elecHt:Double) async throws -> Segment {
         
         // Create the special BasicSection for a radial shield
-        let radialPos = await adjacentSegment.radialPos == 0 ? Segment.negativeZeroPosition : -adjacentSegment.radialPos
+        let radialPos = adjacentSegment.radialPos == 0 ? Segment.negativeZeroPosition : -adjacentSegment.radialPos
         let rsLocation = LocStruct(radial: radialPos, axial: 0)
         let rsThickness = 0.002 // 2mm standard thickness
         let originX = await adjacentSegment.rect.origin.x - hiloToSegment - rsThickness
@@ -1005,8 +1010,8 @@ actor Segment: Codable, Equatable /*, Hashable */ {
         
         // Create a special BasicSection as follows
         // The location is the same as the adjacent segment EXCEPT the axial position is the NEGATIVE of the adjacent segment
-        let axialPos = await adjacentSegment.axialPos == 0 ? Segment.negativeZeroPosition : -adjacentSegment.axialPos
-        let srLocation = await LocStruct(radial: adjacentSegment.radialPos, axial: axialPos)
+        let axialPos = adjacentSegment.axialPos == 0 ? Segment.negativeZeroPosition : -adjacentSegment.axialPos
+        let srLocation = LocStruct(radial: adjacentSegment.radialPos, axial: axialPos)
         // The rect has the same x-origin and width as the adjacent segment but is offset by the gaptoSegment and the standard static-ring axial dimension
         let srThickness = staticRingThickness == nil ? stdStaticRingThickness : staticRingThickness!
         let offsetY = await staticRingIsAbove ? adjacentSegment.rect.height + gapToSegment : -(gapToSegment + srThickness)

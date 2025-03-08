@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Cocoa
 import Accelerate
 import ComplexModule
 import RealModule
@@ -26,11 +27,13 @@ extension PchMatrix {
             
             if self.numType == .Double {
                 
-                self[row, col] = 0.0
+                // self[row, col] = 0.0
+                self.SetDoubleValue(value: 0.0, row: row, col: col)
             }
             else if self.numType == .Complex {
                 
-                self[row, col] = Complex<Double>.zero
+                // self[row, col] = Complex<Double>.zero
+                self.SetComplexValue(value: Complex<Double>.zero, row: row, col: col)
             }
             else {
                 
@@ -59,7 +62,8 @@ extension PchMatrix {
                 }
                 
                 let newValue = toValue + fromValue
-                self[toIndex, col] = newValue
+                // self[toIndex, col] = newValue
+                self.SetDoubleValue(value: newValue, row: toIndex, col: col)
             }
             else if self.numType == .Complex {
                 
@@ -70,7 +74,8 @@ extension PchMatrix {
                 }
                 
                 let newValue = toValue + fromValue
-                self[toIndex, col] = newValue
+                // self[toIndex, col] = newValue
+                self.SetComplexValue(value: newValue, row: toIndex, col: col)
             }
             else {
                 
@@ -106,7 +111,7 @@ private extension Array<Double> {
     }
 }
 
-class SimulationModel {
+actor SimulationModel {
     
     struct WaveForm {
         
@@ -259,22 +264,22 @@ class SimulationModel {
     
     /// Initialize the simulation model using the PhaseModel
     /// - parameter model: A properly set-up phase model, complete with grounding and impulsed nodes
-    init?(model:PhaseModel) {
+    init?(model:PhaseModel) async {
         
-        guard !model.nodes.isEmpty, !model.segments.isEmpty, model.M != nil, model.C != nil else {
+        guard await !model.nodes.isEmpty, await !model.segments.isEmpty, await model.M != nil, await model.C != nil else {
             
             DLog("Model is not complete!")
             return nil
         }
         
-        self.M = model.M!
-        self.baseC = model.C!
-        self.modelC = model.C!
+        self.M = await model.M!
+        self.baseC = await model.C!
+        self.modelC = await model.C!
         
         // We will need to find impulsed nodes (at least one required) and ground nodes (at least one required) and alter the 'modelC' matrix accordingly. We'll check for floating nodes but just raise a warning (DEBUG builds only)
-        impulsedNodes = Set(model.NodesOfType(connType: .impulse))
-        groundedNodes = Set(model.NodesOfType(connType: .ground))
-        floatingNodes = Set(model.NodesOfType(connType: .floating))
+        impulsedNodes = await Set(model.NodesOfType(connType: .impulse))
+        groundedNodes = await Set(model.NodesOfType(connType: .ground))
+        floatingNodes = await Set(model.NodesOfType(connType: .floating))
         
         finalConnectedNodes = [:]
         
@@ -292,18 +297,18 @@ class SimulationModel {
         // Nodes that have connections to non-adjacent other nodes. We'll use a set to avoid copies
         var connectedNodes:[Node:Set<Node>] = [:]
         
-        for nextSegment in model.CoilSegments() {
+        for nextSegment in await model.CoilSegments() {
             
-            let nextRes = Resistance(dc: nextSegment.resistance(), effRadius: nextSegment.turnEffectiveRadius(), eddyPURadial: nextSegment.eddyLossRadialPU, eddyPUAxial: nextSegment.eddyLossAxialPU, strandRadial: nextSegment.strandRadial, strandAxial: nextSegment.strandAxial)
+            let nextRes = await Resistance(dc: nextSegment.resistance(), effRadius: nextSegment.turnEffectiveRadius(), eddyPURadial: nextSegment.eddyLossRadialPU, eddyPUAxial: nextSegment.eddyLossAxialPU, strandRadial: nextSegment.strandRadial, strandAxial: nextSegment.strandAxial)
             R.append(nextRes)
             
-            let nonAdjConns = model.NonAdjacentConnections(segment: nextSegment)
+            let nonAdjConns = await model.NonAdjacentConnections(segment: nextSegment)
             if !nonAdjConns.isEmpty {
                 
                 for nextConnection in nonAdjConns {
                     
                     // get the source and dest nodes of the connection
-                    guard let srcNode = model.NodeAt(segment: nextSegment, useFrom: true, connector: nextConnection.connector), let destSegment = nextConnection.segment, let destNode = model.NodeAt(segment: destSegment, useFrom: false, connector: nextConnection.connector) else {
+                    guard let srcNode = await model.NodeAt(segment: nextSegment, useFrom: true, connector: nextConnection.connector), let destSegmentID = nextConnection.segmentID, let destNode = await model.NodeAt(segmentID: destSegmentID, useFrom: false, connector: nextConnection.connector) else {
                         
                         ALog("WTF?")
                         break
@@ -403,17 +408,17 @@ class SimulationModel {
             }
         }
         
-        vDropInd = Array(repeating: (-1,-1), count: model.CoilSegments().count)
-        iDropInd = Array(repeating: (-1,-1), count: model.nodes.count)
+        vDropInd = await Array(repeating: (-1,-1), count: model.CoilSegments().count)
+        iDropInd = await Array(repeating: (-1,-1), count: model.nodes.count)
         
         // Populate the xDrop arrays. Note that after this loop, any tuple entry with a '-1' in it should be ignored (there shouldn't be any in vDropInd, but there will be some in iDropInd)
-        for nextNode in model.nodes {
+        for nextNode in await model.nodes {
             
             if let belowSegment = nextNode.belowSegment, !belowSegment.isStaticRing, !belowSegment.isRadialShield {
                 
                 do {
                     
-                    let belowSegIndex = try model.SegmentIndex(segment: belowSegment)
+                    let belowSegIndex = try await model.SegmentIndex(segment: belowSegment)
                     vDropInd[belowSegIndex].aboveNode = nextNode.number
                     iDropInd[nextNode.number].belowSeg = belowSegIndex
                 }
@@ -431,7 +436,7 @@ class SimulationModel {
                 
                 do {
                     
-                    let aboveSegIndex = try model.SegmentIndex(segment: aboveSegment)
+                    let aboveSegIndex = try await model.SegmentIndex(segment: aboveSegment)
                     vDropInd[aboveSegIndex].belowNode = nextNode.number
                     iDropInd[nextNode.number].aboveSeg = aboveSegIndex
                 }
@@ -452,8 +457,9 @@ class SimulationModel {
         for nextNode in fixedNodes {
             
             let nextNodeIndex = nextNode.number
-            modelC.ZeroRow(row: nextNodeIndex)
-            modelC[nextNodeIndex, nextNodeIndex] = 1.0
+            await modelC.ZeroRow(row: nextNodeIndex)
+            // modelC[nextNodeIndex, nextNodeIndex] = 1.0
+            await modelC.SetDoubleValue(value: 1.0, row: nextNodeIndex, col: nextNodeIndex)
         }
         
         for (nextNode, connNodes) in finalConnectedNodes {
@@ -463,23 +469,30 @@ class SimulationModel {
                 let toIndex = nextNode.number
                 let fromIndex = nextConnNode.number
                 
-                modelC.AddRow(fromIndex: fromIndex, toIndex: toIndex)
-                modelC.ZeroRow(row: fromIndex)
-                modelC[fromIndex, fromIndex] = 1.0
-                modelC[fromIndex, toIndex] = -1.0
+                await modelC.AddRow(fromIndex: fromIndex, toIndex: toIndex)
+                await modelC.ZeroRow(row: fromIndex)
+                // modelC[fromIndex, fromIndex] = 1.0
+                await modelC.SetDoubleValue(value: 1.0, row: fromIndex, col: fromIndex)
+                // modelC[fromIndex, toIndex] = -1.0
+                await modelC.SetDoubleValue(value: -1.0, row: fromIndex, col: toIndex)
             }
         }
         
-        model.fixedC = modelC
+        // model.fixedC = modelC
+        await model.SetFixedC(newFixedC: modelC)
         
-        DLog("Sparsity of C': \(modelC.Sparsity())")
-        guard let sparseC = modelC.asSparseMatrix() else {
+        DLog("Sparsity of C': \(await modelC.Sparsity())")
+        do {
             
-            DLog("Could not create sparse version of C'!")
+            let sparseC = try await modelC.asSparseMatrix()
+            modelC = sparseC
+        }
+        catch {
+            
+            let alert = await NSAlert(error: error)
+            let _ = await alert.runModal()
             return nil
         }
-        
-        modelC = sparseC
     }
     
     struct SimulationStepResult {
@@ -489,11 +502,11 @@ class SimulationModel {
         let time:Double
     }
     
-    func DoSimulate(waveForm:WaveForm, startTime:Double, endTime:Double, epsilon:Double, deltaT:Double = 0.05E-6, Vstart:[Double]? = nil, Istart:[Double]? = nil) -> [SimulationStepResult] {
+    func DoSimulate(waveForm:WaveForm, startTime:Double, endTime:Double, epsilon:Double, deltaT:Double = 0.05E-6, Vstart:[Double]? = nil, Istart:[Double]? = nil) async -> [SimulationStepResult] {
         
         // We run the simulation twice: the first time with the default fundamental frequency at each disc, then calculate the real fundamental frequencies (storing them), then run the sim a second time with the calculated fundamental frequencies
         
-        let interimResult = SimulateRK45(waveForm: waveForm, startTime: startTime, endTime: endTime, epsilon: epsilon, deltaT: deltaT, Vstart: Vstart, Istart: Istart)
+        let interimResult = await SimulateRK45(waveForm: waveForm, startTime: startTime, endTime: endTime, epsilon: epsilon, deltaT: deltaT, Vstart: Vstart, Istart: Istart)
         
         guard !interimResult.isEmpty else {
             
@@ -517,7 +530,7 @@ class SimulationModel {
         
         eddyFreqs = newEddyFreqs
         
-        let result = SimulateRK45(waveForm: waveForm, startTime: startTime, endTime: endTime, epsilon: epsilon, deltaT: deltaT, Vstart: Vstart, Istart: Istart)
+        let result = await SimulateRK45(waveForm: waveForm, startTime: startTime, endTime: endTime, epsilon: epsilon, deltaT: deltaT, Vstart: Vstart, Istart: Istart)
         
         return result
     }
@@ -601,6 +614,7 @@ class SimulationModel {
         return fundFreq
     }
     
+    /*
     /// Call to simulate the impulse shot using the given parameters and 'self'
     /// - Note: !!!!!!!! Do not use this call, preference should be given to SimulateRK45() !!!!!!!!!!!!!!!!!!!!!
     func Simulate(waveForm:WaveForm, startTime:Double, endTime:Double, deltaT:Double) -> [SimulationStepResult] {
@@ -716,6 +730,7 @@ class SimulationModel {
         
         return result
     }
+    */
     
     /// Use the RK45 method (with adaptive timesteps) to simulate the impulse shot. Note that the 'deltaT' argument is only used as a startng point. It has a default value of 0.05E-6
     /// - parameter waveForm: A valid WaveForm to use for the simulation
@@ -727,7 +742,7 @@ class SimulationModel {
     /// - parameter Istart: An optional set of initial currents at time 'startTime'. If 'nil', then it is assumed that initial currents are 0
     /// - returns: An array of SimulationStepResults
     /// - Note: Only the voltage is used to determine whether the calculation is within tolerance (ie: current is not used)
-    func SimulateRK45(waveForm:WaveForm, startTime:Double, endTime:Double, epsilon:Double, deltaT:Double = 0.05E-6, Vstart:[Double]? = nil, Istart:[Double]? = nil) -> [SimulationStepResult] {
+    func SimulateRK45(waveForm:WaveForm, startTime:Double, endTime:Double, epsilon:Double, deltaT:Double = 0.05E-6, Vstart:[Double]? = nil, Istart:[Double]? = nil) async -> [SimulationStepResult] {
         
         guard startTime < endTime else {
             
@@ -735,8 +750,8 @@ class SimulationModel {
             return []
         }
         
-        var V:[Double] = Vstart == nil ? Array(repeating: 0.0, count: baseC.rows) : Vstart!
-        var I:[Double] = Istart == nil ? Array(repeating: 0.0, count: M.rows) : Istart!
+        var V:[Double] = await Vstart == nil ? Array(repeating: 0.0, count: baseC.rows) : Vstart!
+        var I:[Double] = await Istart == nil ? Array(repeating: 0.0, count: M.rows) : Istart!
         
         var result:[SimulationStepResult] = [SimulationStepResult(volts: V, amps: I, time: startTime)]
         
@@ -749,11 +764,11 @@ class SimulationModel {
             h = min(h, endTime - currentTime)
             
             // This all comes from the pdf document "rungekutta_adaptive_timestep"
-            let f1 = DifferentialFormula(waveForm: waveForm, t: currentTime, V: V, I: I)
+            let f1 = await DifferentialFormula(waveForm: waveForm, t: currentTime, V: V, I: I)
             let dVk1 = h * f1.dVdt
             let dIk1 = h * f1.dIdt
             
-            let f2 = DifferentialFormula(waveForm: waveForm, t: currentTime + h / 4, V: V + (0.25 * dVk1), I: I + (0.25 * dIk1))
+            let f2 = await DifferentialFormula(waveForm: waveForm, t: currentTime + h / 4, V: V + (0.25 * dVk1), I: I + (0.25 * dIk1))
             let dVk2 = h * f2.dVdt
             let dIk2 = h * f2.dIdt
             var dV = 3.0/32.0 * dVk1
@@ -761,7 +776,7 @@ class SimulationModel {
             var dI = 3.0/32.0 * dIk1
             dI = dI + 9.0/32.0 * dIk2
             
-            let f3 = DifferentialFormula(waveForm: waveForm, t: currentTime + 3 * h / 8, V: V + dV, I: I + dI)
+            let f3 = await DifferentialFormula(waveForm: waveForm, t: currentTime + 3 * h / 8, V: V + dV, I: I + dI)
             let dVk3 = h * f3.dVdt
             let dIk3 = h * f3.dIdt
             dV = 1932.0/2197.0 * dVk1 
@@ -771,7 +786,7 @@ class SimulationModel {
             dI = dI - 7200.0/2197.0 * dIk2
             dI = dI + 7296.0/2197.0 * dIk3
             
-            let f4 = DifferentialFormula(waveForm: waveForm, t: currentTime + 12 * h / 13, V: V + dV, I: I + dI)
+            let f4 = await DifferentialFormula(waveForm: waveForm, t: currentTime + 12 * h / 13, V: V + dV, I: I + dI)
             let dVk4 = h * f4.dVdt
             let dIk4 = h * f4.dIdt
             dV = 439.0/216.0 * dVk1 
@@ -783,7 +798,7 @@ class SimulationModel {
             dI = dI + 3680.0/513.0 * dIk3
             dI = dI - 845.0/4104.0 * dIk4
             
-            let f5 = DifferentialFormula(waveForm: waveForm, t: currentTime + h, V: V + dV, I: I + dI)
+            let f5 = await DifferentialFormula(waveForm: waveForm, t: currentTime + h, V: V + dV, I: I + dI)
             let dVk5 = h * f5.dVdt
             let dIk5 = h * f5.dIdt
             dV = -8.0/27.0 * dVk1
@@ -796,7 +811,7 @@ class SimulationModel {
             dI = dI - 3544.0/2565.0 * dIk3
             dI = dI + 1859.0/4104.0 * dIk4
             dI = dI - 11.0/40.0 * dIk5
-            let f6 = DifferentialFormula(waveForm: waveForm, t: currentTime + h / 2, V: V + dV, I: I + dI)
+            let f6 = await DifferentialFormula(waveForm: waveForm, t: currentTime + h / 2, V: V + dV, I: I + dI)
             let dVk6 = h * f6.dVdt
             // let dIk6 = h * f6.dIdt
             
@@ -858,10 +873,10 @@ class SimulationModel {
     }
     
     
-    private func DifferentialFormula(waveForm:WaveForm, t:Double, V:[Double], I:[Double]) -> (dVdt:[Double], dIdt:[Double]) {
+    private func DifferentialFormula(waveForm:WaveForm, t:Double, V:[Double], I:[Double]) async -> (dVdt:[Double], dIdt:[Double]) {
         
-        var voltageDrop:[Double] = Array(repeating: 0.0, count: M.rows)
-        var currentDrop:[Double] = Array(repeating: 0.0, count: baseC.rows)
+        var voltageDrop:[Double] = await Array(repeating: 0.0, count: M.rows)
+        var currentDrop:[Double] = await Array(repeating: 0.0, count: baseC.rows)
         
         // Solve for dV/dt
         for i in 0..<currentDrop.count {
@@ -906,29 +921,27 @@ class SimulationModel {
             }
         }
         
-        let Crhs = PchMatrix(vectorData: currentDrop)
-        guard let dVdt = modelC.SolveSparse(B: Crhs) else {
+        do {
+            let Crhs = PchMatrix(vectorData: currentDrop)
+            let dVdt = try await modelC.Solve(B: Crhs)
             
-            DLog("Sparse solve failed!")
+            // Solve for dI/dt
+            // Start by getting the voltage drops ('BV')
+            for i in 0..<voltageDrop.count {
+                
+                let indexBase = vDropInd[i]
+                voltageDrop[i] = V[indexBase.belowNode] - V[indexBase.aboveNode]
+            }
+            
+            let Mrhs = QuickVectorSubtract(lhs: voltageDrop, rhs: QuickRI(I: I, freqs: eddyFreqs))
+            let dIdt = try await M.Solve(B: PchMatrix(vectorData: Mrhs)) 
+            
+            return await (dVdt.GetDoubleBuffer(), dIdt.GetDoubleBuffer())
+        }
+        catch {
+            
             return ([], [])
         }
-        
-        // Solve for dI/dt
-        // Start by getting the voltage drops ('BV')
-        for i in 0..<voltageDrop.count {
-            
-            let indexBase = vDropInd[i]
-            voltageDrop[i] = V[indexBase.belowNode] - V[indexBase.aboveNode]
-        }
-        
-        let Mrhs = QuickVectorSubtract(lhs: voltageDrop, rhs: QuickRI(I: I, freqs: eddyFreqs))
-        guard let dIdt = M.SolvePositiveDefinite(B: PchMatrix(vectorData: Mrhs)) else {
-            
-            DLog("Pos/Def Solve failed!")
-            return ([], [])
-        }
-        
-        return (dVdt.buffer, dIdt.buffer)
     }
     
     /// Multiply all values in a buffer (vector) by a scalar

@@ -927,6 +927,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                     await nextSegment.SetUpConnectors(allSegments: allSegments, maskSegments: maskSegments)
                     maskSegments.append(nextSegment.segment.serialNumber)
                 }
+                
+                self.needsDisplay = true
             }
         }
     }

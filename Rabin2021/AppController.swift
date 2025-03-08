@@ -275,8 +275,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// The theoretical depth of the tank (used for display and ground capacitance calculations)
     var tankDepth:Double = 0.0
     
-    /// The current multiplier for window height (used for inductance calculations)
-    var currentWindowMultiplier = 3.0
+    /// The current multiplier for window height (used for old-style inductance calculations)
+    var currentWindowMultiplier = 1.0
     
     /// The colors of the different layers (for display purposes only)
     static let segmentColors:[NSColor] = [.red, .blue, .orange, .purple, .yellow]
@@ -410,7 +410,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             }
             
             // initialize the model so that all the BasicSections are modeled
-            self.currentModel = self.initializeModel(basicSections: self.currentSections)
+            self.currentModel = await self.initializeModel(basicSections: self.currentSections)
             
             self.initializeViews()
         }
@@ -601,6 +601,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return
         }
         
+        DLog("Energy: \(await fePhase.MagneticEnergy())")
+        
         for i in await 0..<model.segments.count {
             
             let axialPU = await fePhase.window.sections[i].eddyLossDueToAxialFlux / fePhase.window.sections[i].resistiveLoss
@@ -647,7 +649,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     }
     
     /// Initialize the model using the BasicSections already created. If currentXLFile is non-nil, some extra initialziation is done _USING THAT FILE_. **If this behaviour is not desired, set currentXLFile to nil before calling this function.** If there is already a model in memory, it is lost.
-    func initializeModel(basicSections:[BasicSection]) -> PhaseModel?
+    func initializeModel(basicSections:[BasicSection]) async -> PhaseModel?
     {
         // a transformer needs at least two basic sections, so...
         guard basicSections.count > 1 else {
@@ -743,17 +745,19 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                     let newSegment = try Segment(basicSections: [nextSection],  realWindowHeight: self.currentCore!.realWindowHeight, useWindowHeight: self.currentWindowMultiplier * self.currentCore!.realWindowHeight)
                     
                     // The "incoming" connection
-                    let incomingConnection = Segment.Connection(segment: lastSegment, connector: incomingConnector, equivalentConnections: [])
-                    newSegment.connections.append(incomingConnection)
+                    let incomingConnection = Segment.Connection(segmentID: lastSegment?.serialNumber, connector: incomingConnector, equivalentConnections: [])
+                    await newSegment.AppendConnection(connection: incomingConnection)
+                    // newSegment.connections.append(incomingConnection)
                     
                     // The "outgoing" connection for the previous Segment
                     if let prevSegment = lastSegment {
                         
-                        let outgoingConnection = Segment.Connection(segment: newSegment, connector: outgoingConnector)
-                        prevSegment.connections.append(outgoingConnection)
-                        prevSegment.AddEquivalentConnections(to: outgoingConnection, equ: [Segment.Connection.EquivalentConnection(parent: newSegment, connection: incomingConnection)])
+                        let outgoingConnection = Segment.Connection(segmentID: newSegment.serialNumber, connector: outgoingConnector)
+                        await prevSegment.AppendConnection(connection: outgoingConnection)
+                        // prevSegment.connections.append(outgoingConnection)
+                        await prevSegment.AddEquivalentConnections(to: outgoingConnection, equ: [Segment.Connection.EquivalentConnection(parent: newSegment.serialNumber, connection: incomingConnection)])
                         // The outgoingConnection of the previous section is equivalent to the incomingConnection of this section, so mark it as such
-                        newSegment.AddEquivalentConnections(to: incomingConnection, equ: [Segment.Connection.EquivalentConnection(parent: prevSegment, connection: outgoingConnection)])
+                        await newSegment.AddEquivalentConnections(to: incomingConnection, equ: [Segment.Connection.EquivalentConnection(parent: prevSegment.serialNumber, connection: outgoingConnection)])
                     }
                     
                     // set up the connector for the outgoing connection next time through the loop
@@ -800,7 +804,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                             forceUpperConnector = true
                         }
                         
-                        newSegment.connections.append(Segment.Connection(segment: nil, connector: outgoingConnector))
+                        await newSegment.AppendConnection(connection: Segment.Connection(segmentID: nil, connector: outgoingConnector))
+                        // newSegment.connections.append(Segment.Connection(segmentID: nil, connector: outgoingConnector))
                         lastSegment = nil
                     }
                     else {
@@ -1023,7 +1028,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 numTurnsRadially = 1.0
             }
             
-            let newFeSection = PchFePhase.Section(innerRadius: nextSegment.r1, radialBuild: nextSegment.r2 - nextSegment.r1, zMin: nextSegment.z1, zMax: nextSegment.z2, totalTurns: nextSegment.N, activeTurns: nextSegment.N, seriesRmsCurrent: Complex(nextSegment.I), frequency: xlFile.frequency, strandsPerTurn: Double(strandsPerTurn), strandsPerLayer: numTurnsRadially * Double(wdgTurn.numCablesRadial) * Double(wdgTurn.cable.numStrandsRadial), strandRadial: wdgTurn.cable.strandRadialDimension, strandAxial: wdgTurn.cable.strandAxialDimension, strandConductor: .CU, numAxialColumns: Double(wdg.numAxialColumns), axialColumnWidth: wdg.spacerWidth)
+            let newFeSection = await PchFePhase.Section(innerRadius: nextSegment.r1, radialBuild: nextSegment.r2 - nextSegment.r1, zMin: nextSegment.z1, zMax: nextSegment.z2, totalTurns: nextSegment.N, activeTurns: nextSegment.N, seriesRmsCurrent: Complex(nextSegment.I), frequency: xlFile.frequency, strandsPerTurn: Double(strandsPerTurn), strandsPerLayer: numTurnsRadially * Double(wdgTurn.numCablesRadial) * Double(wdgTurn.cable.numStrandsRadial), strandRadial: wdgTurn.cable.strandRadialDimension, strandAxial: wdgTurn.cable.strandAxialDimension, strandConductor: .CU, numAxialColumns: Double(wdg.numAxialColumns), axialColumnWidth: wdg.spacerWidth)
             
             feSections.append(newFeSection)
         }
@@ -1043,13 +1048,16 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     // MARK: Simulation routines
     @IBAction func handleCreateSimStruct(_ sender: Any) {
         
-        guard let newModel = SimulationModel(model: self.currentModel!) else {
+        Task {
             
-            PCH_ErrorAlert(message: "Could not create simulation model!")
-            return
+            guard let newModel = await SimulationModel(model: self.currentModel!) else {
+                
+                PCH_ErrorAlert(message: "Could not create simulation model!")
+                return
+            }
+            
+            currentSimModel = newModel
         }
-        
-        currentSimModel = newModel
     }
     
     @IBAction func handleDoSimulate(_ sender: Any) {
@@ -1078,18 +1086,21 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 return
             }
             
-            let wfIndex = simDetailsDlog.waveFormPopUp.indexOfSelectedItem
-            let waveForm = SimulationModel.WaveForm(type: SimulationModel.WaveForm.Types.allCases[wfIndex], pkVoltage: peakVoltage)
-            
-            let simResult = simModel.DoSimulate(waveForm: waveForm, startTime: 0.0, endTime: waveForm.timeToZero, epsilon: 100.0 / 0.05E-6)
-            
-            if simResult.isEmpty {
+            Task {
                 
-                PCH_ErrorAlert(message: "Simulation failed!")
-                return
+                let wfIndex = simDetailsDlog.waveFormPopUp.indexOfSelectedItem
+                let waveForm = SimulationModel.WaveForm(type: SimulationModel.WaveForm.Types.allCases[wfIndex], pkVoltage: peakVoltage)
+                
+                let simResult = await simModel.DoSimulate(waveForm: waveForm, startTime: 0.0, endTime: waveForm.timeToZero, epsilon: 100.0 / 0.05E-6)
+                
+                if simResult.isEmpty {
+                    
+                    PCH_ErrorAlert(message: "Simulation failed!")
+                    return
+                }
+                
+                self.latestSimulationResult = SimulationResults(waveForm: waveForm, peakVoltage: peakVoltage, stepResults: simResult)
             }
-            
-            self.latestSimulationResult = SimulationResults(waveForm: waveForm, peakVoltage: peakVoltage, stepResults: simResult)
         }
     }
     
@@ -1101,19 +1112,32 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return
         }
         
-        guard let showWaveFormDlog = ShowWaveFormsDialog(phaseModel: phModel, simModel: simModel) else {
+        Task {
             
-            DLog("Couldn't open dialog box!")
-            return
-        }
-        
-        if showWaveFormDlog.runModal() == .OK {
+            let numCoils = await phModel.CoilCount()
+            var highestSects:[Int] = []
+            for i in 0..<numCoils {
+                
+                do {
+                    try await highestSects.append(phModel.GetHighestSection(coil: i))
+                }
+                catch {
+                    
+                    let alert = NSAlert(error: error)
+                    let _ = alert.runModal()
+                    return
+                }
+            }
             
-            let segmentRange = showWaveFormDlog.segmentRange
-            DLog("Segment range: \(segmentRange)")
+            let showWaveFormDlog = ShowWaveFormsDialog(numCoils: numCoils, highestSections: highestSects)
             
-            Task {
+            if showWaveFormDlog.runModal() == .OK {
+                
+                let segmentRange = showWaveFormDlog.segmentRange
+                DLog("Segment range: \(segmentRange)")
+                
                 await self.doShowWaveforms(segments: segmentRange, showVoltage: showWaveFormDlog.showVoltagesCheckBox.state == .on, showCurrent: showWaveFormDlog.showCurrentsCheckBox.state == .on, showFourier: showWaveFormDlog.showFourierCheckBox.state == .on)
+                
             }
         }
     }
@@ -1488,12 +1512,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                     // we'll fix some variables for taking care of coil starts, ends, and tapping breaks
                     if theSegment.axialPos == 0 {
                         
-                        xDims = [(theSegment.z1 - greatestExtremeDimension) * 1000.0]
+                        xDims = await [(theSegment.z1 - greatestExtremeDimension) * 1000.0]
                         axialSpaceBelow = greatestExtremeDimension
                     }
                     else if segIndex == segments.lowerBound {
                         
-                        xDims = [(theSegment.z1 - axialSpaceBelow) * 1000.0]
+                        xDims = await [(theSegment.z1 - axialSpaceBelow) * 1000.0]
                     }
                     else if theSegment.axialPos == highestSection {
                         
@@ -1511,7 +1535,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                         }
                         else if tappingGapBelow {
                             
-                            let startDim = theSegment.z1 - axialBreakDimension
+                            let startDim = await theSegment.z1 - axialBreakDimension
                             xDims.append(startDim * 1000.0)
                             axialSpaceBelow = axialBreakDimension
                         }
@@ -1522,7 +1546,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                     let axialSpaceBelow = theSegment.axialPos == 0 ? min(greatestExtremeDimension, realAxialSpaces.below / 2.0) : realAxialSpaces.below / 2.0
                     let axialSpaceAbove = theSegment.axialPos == highestSection ? min(greatestExtremeDimension, realAxialSpaces.above / 2.0) : realAxialSpaces.above / 2.0
                     */
-                    let newDim = xDims.last! / 1000.0 + axialSpaceBelow + theSegment.rect.height + axialSpaceAbove
+                    let newDim = await xDims.last! / 1000.0 + axialSpaceBelow + theSegment.rect.height + axialSpaceAbove
                     // segment dimensions are in meters, convert to mm
                     xDims.append(newDim * 1000.0)
                 }
@@ -1899,16 +1923,18 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     func updateViews()
     {
-        guard let model = self.currentModel /*, model.segments.count > 0 */ else
-        {
-            return
-        }
-        
         // self.txfoView.segments = []
         
         Task {
             
-            guard await model.segments.count > 0 else {
+            guard let model = self.currentModel else
+            {
+                return
+            }
+            
+            let segs = await model.segments
+            
+            guard segs.count > 0 else {
                 return
             }
             
@@ -1918,13 +1944,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             
             // See the comment for the TransformerView property 'segments' to see why I coded this in this way
             var newSegmentPaths:[SegmentPath] = []
-            for nextSegment in await model.segments
+            for nextSegment in segs
             {
                 let pathColor = AppController.segmentColors[nextSegment.radialPos % AppController.segmentColors.count]
                 
                 var newSegPath = SegmentPath(segment: nextSegment, segmentColor: pathColor)
                 
-                newSegPath.toolTipTag = self.txfoView.addToolTip(newSegPath.rect, owner: self.txfoView as Any, userData: nil)
+                newSegPath.toolTipTag = await self.txfoView.addToolTip(newSegPath.GetRect(), owner: self.txfoView as Any, userData: nil)
                 
                 newSegmentPaths.append(newSegPath)
             }
@@ -2051,29 +2077,36 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return
         }
         
-        guard !segmentPaths.contains(where: {$0.segment.interleaved}) else {
+        Task {
             
-            PCH_ErrorAlert(message: "The selection contains at least one interleaved segment!", info: "Cannot 'double-interleave'")
-            return
-        }
-        
-        var segments:[Segment] = []
-        for nextPath in segmentPaths {
-            
-            segments.append(nextPath.segment)
-        }
-        
-        segments.sort(by: { lhs, rhs in
-            
-            if lhs.radialPos != rhs.radialPos {
+            /* This is taken care of in the for-loop immediately following...
+            guard !segmentPaths.contains(where: { $0.segment.IsInterleaved()}) else {
                 
-                return lhs.radialPos < rhs.radialPos
+                PCH_ErrorAlert(message: "The selection contains at least one interleaved segment!", info: "Cannot 'double-interleave'")
+                return
+            } */
+            
+            var segments:[Segment] = []
+            for nextPath in segmentPaths {
+                
+                if await nextPath.segment.IsInterleaved() {
+                    PCH_ErrorAlert(message: "The selection contains at least one interleaved segment!", info: "Cannot 'double-interleave'")
+                    return
+                }
+                segments.append(nextPath.segment)
             }
             
-            return lhs.axialPos < rhs.axialPos
-        })
-        
-        Task {
+            segments.sort(by: { lhs, rhs in
+                
+                if lhs.radialPos != rhs.radialPos {
+                    
+                    return lhs.radialPos < rhs.radialPos
+                }
+                
+                return lhs.axialPos < rhs.axialPos
+            })
+            
+            
             
             if await model.SegmentsAreContiguous(segments: segments) {
                 
@@ -2546,8 +2579,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 }
             }
             
-            let Cj = nextNode.belowSegment != nil ? nextNode.belowSegment!.seriesCapacitance : 0.0
-            let Cj1 = nextNode.aboveSegment != nil ? nextNode.aboveSegment!.seriesCapacitance : 0.0
+            let Cj = await nextNode.belowSegment != nil ? nextNode.belowSegment!.seriesCapacitance : 0.0
+            let Cj1 = await nextNode.aboveSegment != nil ? nextNode.aboveSegment!.seriesCapacitance : 0.0
             
             guard Cj > 0.0 || Cj1 > 0.0 else {
                 
@@ -2566,7 +2599,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 let seriesCap = String(format: "C%d %d %d %.4E\n", belowSeg.serialNumber, prevNodeNumber, nextNode.number, Cj)
                 
                 // The series resistance
-                let seriesRes = String(format: "R%d %d %d %.4E\n", belowSeg.serialNumber, prevNodeNumber, nextNode.number, belowSeg.resistance())
+                let seriesRes = await String(format: "R%d %d %d %.4E\n", belowSeg.serialNumber, prevNodeNumber, nextNode.number, belowSeg.resistance())
                 
             }
         }
@@ -2747,7 +2780,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 totalBasicSections += nextSegment.segment.basicSections.count
             }
             
-            return self.currentModel != nil && totalBasicSections > 1 && totalBasicSections % 2 == 0 && !self.txfoView.currentSegmentsContainMoreThanOneWinding && currentSegs[0].segment.basicSections[0].wdgData.type == .disc && !currentSegs.contains(where: {$0.segment.interleaved}) && !currentSegs.contains(where: {$0.segment.isStaticRing}) && !currentSegs.contains(where: {$0.segment.isRadialShield})
+            return self.currentModel != nil && totalBasicSections > 1 && totalBasicSections % 2 == 0 && !self.txfoView.currentSegmentsContainMoreThanOneWinding && currentSegs[0].segment.basicSections[0].wdgData.type == .disc && !currentSegs.contains(where: {$0.segment.isStaticRing}) && !currentSegs.contains(where: {$0.segment.isRadialShield})
         }
         
         if menuItem == self.showWdgAsSingleSegmentMenuItem {

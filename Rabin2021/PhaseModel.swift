@@ -71,6 +71,10 @@ actor PhaseModel /*:Codable */ {
     /// The 'fixed' capacitance matrix (used by the actual simulation)
     var fixedC:PchMatrix? = nil
     
+    func SetFixedC(newFixedC:PchMatrix) {
+        
+        self.fixedC = newFixedC
+    }
     /// The window height to actually use
     var useWindowHeight:Double {
         
@@ -396,6 +400,17 @@ actor PhaseModel /*:Codable */ {
         }
         
         return false
+    }
+    
+    /// The serial-number-using version of NodeAt() [see next function]
+    func NodeAt(segmentID:Int, useFrom:Bool, connector:Connector) -> Node? {
+        
+        guard let segment = self.segments.first(where: {$0.serialNumber == segmentID}) else {
+            
+            return nil
+        }
+        
+        return self.NodeAt(segment: segment, useFrom: useFrom, connector: connector)
     }
     
     /// A function to return the node that is connected to the given segment at the given location.

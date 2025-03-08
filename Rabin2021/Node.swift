@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct Node:Codable, Hashable, Sendable {
+struct Node: Hashable, Sendable {
     
     static func == (lhs: Node, rhs: Node) -> Bool {
         
