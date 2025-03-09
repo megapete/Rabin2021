@@ -1948,9 +1948,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             {
                 let pathColor = AppController.segmentColors[nextSegment.radialPos % AppController.segmentColors.count]
                 
-                var newSegPath = SegmentPath(segment: nextSegment, segmentColor: pathColor)
+                var newSegPath = await SegmentPath(segment: nextSegment, segRect: nextSegment.rect, segIsStaticRing: nextSegment.isStaticRing, segmentColor: pathColor)
+                // var newSegPath = SegmentPath(segment: nextSegment, segmentColor: pathColor)
                 
-                newSegPath.toolTipTag = await self.txfoView.addToolTip(newSegPath.GetRect(), owner: self.txfoView as Any, userData: nil)
+                newSegPath.toolTipTag = self.txfoView.addToolTip(newSegPath.GetRect(), owner: self.txfoView as Any, userData: nil)
                 
                 newSegmentPaths.append(newSegPath)
             }
@@ -2274,7 +2275,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 try await model.CalculateCapacitanceMatrix()
                 // print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: currentSegment.segment.radialPos))")
                 
-                self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segmentColor: currentSegment.segmentColor))
+                // var newSegPath = await SegmentPath(segment: newStaticRing, segRect: newStaticRing.rect, segIsStaticRing: true, segmentColor: currentSegment.segmentColor)
+                await self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segRect: newStaticRing.rect, segIsStaticRing: true, segmentColor: currentSegment.segmentColor))
                 self.txfoView.currentSegments = [self.txfoView.segments.last!]
                 
                 self.txfoView.needsDisplay = true
@@ -2314,7 +2316,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 try await model.CalculateCapacitanceMatrix()
                 print("Coil 1 Cs: \(try await model.CoilSeriesCapacitance(coil: currentSegment.segment.radialPos))")
                 
-                self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segmentColor: currentSegment.segmentColor))
+                await self.txfoView.segments.append(SegmentPath(segment: newStaticRing, segRect: newStaticRing.rect, segIsStaticRing: true, segmentColor: currentSegment.segmentColor))
                 self.txfoView.currentSegments = [self.txfoView.segments.last!]
                 
                 self.txfoView.needsDisplay = true
@@ -2401,7 +2403,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 let newRadialShield = try await model.AddRadialShieldInside(coil: currentSegment.segment.location.radial, hiloToShield: hilo)
                 
                 try await model.InsertSegment(newSegment: newRadialShield)
-                self.txfoView.segments.append(SegmentPath(segment: newRadialShield, segmentColor: .green))
+                await self.txfoView.segments.append(SegmentPath(segment: newRadialShield, segRect: newRadialShield.rect, segIsStaticRing: false, segmentColor: .green))
+                // self.txfoView.segments.append(SegmentPath(segment: newRadialShield, segmentColor: .green))
                 self.txfoView.currentSegments = [self.txfoView.segments.last!]
                 
                 self.txfoView.needsDisplay = true

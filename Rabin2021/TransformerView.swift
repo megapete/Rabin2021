@@ -88,7 +88,7 @@ fileprivate extension NSImage {
 
 /// A struct for representing the segment paths that are displayed by the TransformeView class. Some of this comes from my AndersenFE-2020 program so there are a few things that aren't actually used. Eventually, I will remove unused code.
 @MainActor
-struct SegmentPath:Equatable  {
+struct SegmentPath:Equatable, Sendable  {
     
     // This is kind of an ugly way to get "global" access to the TransformerView. Since my program only has one TransformerView available at a time, this works, but it would probably be better to declare it as an instance variable (in case I ever allow more than one TransformerView).
     static var txfoView:TransformerView? = nil
@@ -96,47 +96,30 @@ struct SegmentPath:Equatable  {
     // The Segment that is displayed by this instance
     let segment:Segment
     
+    // Local copy of the Segment's rectangle (to avoid 'await' calls when drawing)
+    let segRect:NSRect
+    // Local copy of the Segment's isStaticRing ivar (to avoid 'await' calls when drawing)
+    let segIsStaticRing:Bool
+    
     // A holder for future ToolTips for the Segment (not sure what to show yet)
     var toolTipTag:NSView.ToolTipTag = 0
     
     // The actual path that is drawn for the Segment. Note that for a Static Ring, the path is converted from a rectangle to a RoundedRectangle
-    /*
-    var path:NSBezierPath? {
-        get {
+    func GetPath() -> NSBezierPath {
         
-            if segment.isStaticRing {
-                
-                let radius = self.segment.rect.height / 2.0
-                return NSBezierPath(roundedRect: self.rect, xRadius: radius * dimensionMultiplier, yRadius: radius * dimensionMultiplier)
-            }
+        if segIsStaticRing {
             
-            return NSBezierPath(rect: self.rect)
-        }
-    } */
-    // Replacement for 'path' property
-    func GetPath() async -> NSBezierPath {
-        
-        if segment.isStaticRing {
-            
-            let radius = await self.segment.rect.height / 2.0
-            return await NSBezierPath(roundedRect: self.GetRect(), xRadius: radius * dimensionMultiplier, yRadius: radius * dimensionMultiplier)
+            let radius = self.segRect.height / 2.0
+            return NSBezierPath(roundedRect: self.GetRect(), xRadius: radius * dimensionMultiplier, yRadius: radius * dimensionMultiplier)
         }
         
-        return await NSBezierPath(rect: self.GetRect())
+        return NSBezierPath(rect: self.GetRect())
     }
     
     // The rectangle that the Segment occupies (multiplied by the dimensionMultiplier global
-    /*
-    var rect:NSRect {
-        get {
-            return self.segment.rect * dimensionMultiplier
-        }
-    } */
-    
-    // Replacement for 'rect' property
-    func GetRect() async -> NSRect {
+    func GetRect() -> NSRect {
         
-        return await self.segment.rect * dimensionMultiplier
+        return self.segRect * dimensionMultiplier
     }
         
     // The color of the Segment
@@ -153,9 +136,9 @@ struct SegmentPath:Equatable  {
     }
     
     /// Test whether this segment contains 'point'
-    func contains(point:NSPoint) async -> Bool
+    func contains(point:NSPoint) -> Bool
     {
-        let segPath = await self.GetPath()
+        let segPath = self.GetPath()
         
         return segPath.contains(point)
     }
@@ -164,22 +147,22 @@ struct SegmentPath:Equatable  {
     let nonActiveAlpha:CGFloat = 0.25
     
     /// Call this function to actually show the Segment. If the Segment is active, then call clear()
-    func show() async
-    {
+    func show() {
+        
         if isActive
         {
-            await self.clear()
+            self.clear()
         }
         else
         {
-            await self.fill(alpha: nonActiveAlpha)
+            self.fill(alpha: nonActiveAlpha)
         }
     }
     
     /// The stroke() function so that  we can use SegmentPaths in a similar way as NSBezierPaths
-    func stroke() async
+    func stroke()
     {
-        let path = await self.GetPath()
+        let path = self.GetPath()
         
         if self.isActive
         {
@@ -189,9 +172,9 @@ struct SegmentPath:Equatable  {
     }
     
     /// The fill() function so that  we can use SegmentPaths in a similar way as NSBezierPaths
-    func fill(alpha:CGFloat) async
+    func fill(alpha:CGFloat)
     {
-        let path = await self.GetPath()
+        let path = self.GetPath()
         
         self.segmentColor.withAlphaComponent(alpha).set()
         path.fill()
@@ -200,9 +183,9 @@ struct SegmentPath:Equatable  {
     }
     
     /// fill the path with the background color and stroke the path with the segmentColor
-    func clear() async
+    func clear()
     {
-        let path = await self.GetPath()
+        let path = self.GetPath()
         
         SegmentPath.bkGroundColor.set()
         path.fill()
@@ -501,8 +484,6 @@ struct SegmentPath:Equatable  {
                 txfoView.viewConnectors.append(ViewConnector(segments: (self.segment, nil), pathColor: self.segmentColor, connectorType: .general, connectorDirection: specialDirection, connector: nextConnection.connector, path: connectorPath))
             }
         }
-        
-        
     }
 }
 
@@ -919,7 +900,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         didSet {
             
             Task {
-                var allSegments = segments.map { $0.segment }
+                let allSegments = segments.map { $0.segment }
                 var maskSegments:[Int] = []
                 self.viewConnectors = []
                 for nextSegment in segments {
@@ -1134,102 +1115,97 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             boundaryPath.stroke()
         }
         
-        Task {
+        for nextSegment in self.segments
+        {
+            if self.needsToDraw(nextSegment.GetRect()) {
+                
+                nextSegment.show()
+            }
+        }
+        
+        for nextViewConnector in self.viewConnectors {
             
-            for nextSegment in self.segments
+            if self.needsToDraw(nextViewConnector.hitZone.bounds) {
+                
+                nextViewConnector.pathColor.set()
+                nextViewConnector.path.stroke()
+                
+            }
+            
+            if let image = nextViewConnector.image, self.needsToDraw(nextViewConnector.imageRect) {
+                
+                // draw the image
+                image.draw(in: nextViewConnector.imageRect, from: NSRect(origin: NSPoint(), size: image.size), operation: .sourceOver, fraction: 1)
+            }
+        }
+        
+        for nextSegment in self.currentSegments
+        {
+            self.ShowHandles(segment: nextSegment)
+        }
+        
+        if self.mode == .zoomRect
+        {
+            if let rect = self.zoomRect
             {
-                if await self.needsToDraw(nextSegment.GetRect()) {
-                    
-                    await nextSegment.show()
-                }
+                // print(rect)
+                NSColor.gray.set()
+                let zoomPath = NSBezierPath(rect: rect)
+                let lineDashSize = self.convert(self.zoomRectLineDash, from: self.scrollView)
+                zoomPath.setLineDash([lineDashSize.width, lineDashSize.height], count: 2, phase: 0.0)
+                zoomPath.stroke()
+            }
+        }
+        else if self.mode == .selectRect {
+            
+            if let rect = self.selectRect {
+                
+                NSColor.gray.set()
+                let selectPath = NSBezierPath(rect: rect)
+                let lineDashSize = self.convert(self.selectRectLineDash, from: self.scrollView)
+                selectPath.setLineDash([lineDashSize.width, lineDashSize.height], count: 2, phase: 0.0)
+                selectPath.stroke()
+            }
+        }
+        else if self.mode == .addConnection {
+            
+            if let highlightPath = self.highlightedConnectorPath {
+                
+                self.highlightColor.set()
+                highlightPath.stroke()
+                highlightPath.fill()
             }
             
-            for nextViewConnector in self.viewConnectors {
+            if let startConnector = self.addConnectionStartConnector {
                 
-                if self.needsToDraw(nextViewConnector.hitZone.bounds) {
-                    
-                    nextViewConnector.pathColor.set()
-                    nextViewConnector.path.stroke()
-                    
-                }
-                
-                if let image = nextViewConnector.image, self.needsToDraw(nextViewConnector.imageRect) {
-                    
-                    // draw the image
-                    image.draw(in: nextViewConnector.imageRect, from: NSRect(origin: NSPoint(), size: image.size), operation: .sourceOver, fraction: 1)
-                }
+                startConnector.pathColor.set()
+                self.addConnectionPath.stroke()
             }
+        }
+        else if self.mode == .addGround || self.mode == .addImpulse || self.mode == .removeConnector {
             
-            for nextSegment in self.currentSegments
-            {
-                await self.ShowHandles(segment: nextSegment)
-            }
-            
-            if self.mode == .zoomRect
-            {
-                if let rect = self.zoomRect
-                {
-                    // print(rect)
-                    NSColor.gray.set()
-                    let zoomPath = NSBezierPath(rect: rect)
-                    let lineDashSize = self.convert(self.zoomRectLineDash, from: self.scrollView)
-                    zoomPath.setLineDash([lineDashSize.width, lineDashSize.height], count: 2, phase: 0.0)
-                    zoomPath.stroke()
-                }
-            }
-            else if self.mode == .selectRect {
+            if let highlightPath = self.highlightedConnectorPath {
                 
-                if let rect = self.selectRect {
-                    
-                    NSColor.gray.set()
-                    let selectPath = NSBezierPath(rect: rect)
-                    let lineDashSize = self.convert(self.selectRectLineDash, from: self.scrollView)
-                    selectPath.setLineDash([lineDashSize.width, lineDashSize.height], count: 2, phase: 0.0)
-                    selectPath.stroke()
-                }
+                self.highlightColor.set()
+                highlightPath.stroke()
+                highlightPath.fill()
             }
-            else if self.mode == .addConnection {
-                
-                if let highlightPath = self.highlightedConnectorPath {
-                    
-                    self.highlightColor.set()
-                    highlightPath.stroke()
-                    highlightPath.fill()
-                }
-                
-                if let startConnector = self.addConnectionStartConnector {
-                    
-                    startConnector.pathColor.set()
-                    self.addConnectionPath.stroke()
-                }
-            }
-            else if self.mode == .addGround || self.mode == .addImpulse || self.mode == .removeConnector {
-                
-                if let highlightPath = self.highlightedConnectorPath {
-                    
-                    self.highlightColor.set()
-                    highlightPath.stroke()
-                    highlightPath.fill()
-                }
-            }
-            
         }
         
         NSBezierPath.defaultLineWidth = oldLineWidth
     }
     
-    
     // MARK: Current segment functions
     
     /// Show the little square 'handles' on the corners of the given SegmentPath
-    func ShowHandles(segment:SegmentPath) async
+    func ShowHandles(segment:SegmentPath)
     {
         let handleSide = NSBezierPath.defaultLineWidth * 5.0
         let handleBaseRect = NSRect(x: 0.0, y: 0.0, width: handleSide, height: handleSide)
         let handleFillColor = NSColor.white
         let handleStrokeColor = NSColor.darkGray
         
-        let segRect = await segment.GetRect()
+        let segRect = segment.GetRect()
         var corners:[NSPoint] = [segRect.origin]
         corners.append(NSPoint(x: segRect.origin.x + segRect.size.width, y: segRect.origin.y))
         corners.append(NSPoint(x: segRect.origin.x + segRect.size.width, y: segRect.origin.y + segRect.size.height))
@@ -1525,22 +1501,21 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             
             self.currentSegments = []
             
-            Task {
+            
+            
+            for nextSegment in self.segments {
                 
-                for nextSegment in self.segments {
+                if NSContainsRect(self.selectRect!, nextSegment.GetRect()) {
                     
-                    if await NSContainsRect(self.selectRect!, nextSegment.GetRect()) {
+                    if self.currentSegments.firstIndex(of: nextSegment) == nil {
                         
-                        if self.currentSegments.firstIndex(of: nextSegment) == nil {
-                            
-                            self.currentSegments.append(nextSegment)
-                        }
+                        self.currentSegments.append(nextSegment)
                     }
                 }
-                
-                self.mode = .selectSegment
-                self.needsDisplay = true
             }
+            
+            self.mode = .selectSegment
+            self.needsDisplay = true
         }
         // The user has finished adding a connection. If the end-point is a valid connection point, add the new conenctor to the model.
         else if self.mode == .addConnection, let startConnector = self.addConnectionStartConnector {
@@ -1898,42 +1873,39 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             self.currentSegments = []
         }
         
-        Task {
-            
-            for nextSegment in self.segments
+        for nextSegment in self.segments
+        {
+            if nextSegment.contains(point: clickPoint)
             {
-                if await nextSegment.contains(point: clickPoint)
-                {
-                    if let selectedSegmentIndex = self.currentSegments.firstIndex(of: nextSegment) {
-                        
-                        self.currentSegments.remove(at: selectedSegmentIndex)
-                    }
-                    else {
-                        
-                        self.currentSegments.append(nextSegment)
-                    }
+                if let selectedSegmentIndex = self.currentSegments.firstIndex(of: nextSegment) {
                     
-                    break
+                    self.currentSegments.remove(at: selectedSegmentIndex)
                 }
-            }
-            
-            if self.currentSegments == [] {
+                else {
+                    
+                    self.currentSegments.append(nextSegment)
+                }
                 
-                let eventLocation = event.locationInWindow
-                let localLocation = self.convert(eventLocation, from: nil)
-                self.mode = .selectRect
-                self.selectRect = NSRect(origin: localLocation, size: NSSize())
-                // self.needsDisplay = true
+                break
             }
-            
-            // check if it was actually a double-click
-            if event.clickCount == 2
-            {
-                DLog("Do nothing")
-            }
-            
-            self.needsDisplay = true
         }
+        
+        if self.currentSegments == [] {
+            
+            let eventLocation = event.locationInWindow
+            let localLocation = self.convert(eventLocation, from: nil)
+            self.mode = .selectRect
+            self.selectRect = NSRect(origin: localLocation, size: NSSize())
+            // self.needsDisplay = true
+        }
+        
+        // check if it was actually a double-click
+        if event.clickCount == 2
+        {
+            DLog("Do nothing")
+        }
+        
+        self.needsDisplay = true
     }
     
     // The user clicked the mouse while in zoomRect mode. Start tracking the zoom rectangle
@@ -1955,25 +1927,23 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         let eventLocation = event.locationInWindow
         let clickPoint = self.convert(eventLocation, from: nil)
         
-        Task {
-            for nextPath in self.segments
+        for nextPath in self.segments
+        {
+            if nextPath.contains(point: clickPoint)
             {
-                if await nextPath.contains(point: clickPoint)
-                {
-                    self.rightClickSelection = nextPath
-                    if self.currentSegments.firstIndex(of: nextPath) == nil {
-                        
-                        self.currentSegments = [nextPath]
-                    }
-                    self.needsDisplay = true
-                    NSMenu.popUpContextMenu(self.contextualMenu, with: event, for: self)
+                self.rightClickSelection = nextPath
+                if self.currentSegments.firstIndex(of: nextPath) == nil {
                     
-                    break
+                    self.currentSegments = [nextPath]
                 }
+                self.needsDisplay = true
+                NSMenu.popUpContextMenu(self.contextualMenu, with: event, for: self)
+                
+                break
             }
-            
-            self.rightClickSelection = nil
         }
+        
+        self.rightClickSelection = nil
     }
     
     // MARK: Zoom Functions
