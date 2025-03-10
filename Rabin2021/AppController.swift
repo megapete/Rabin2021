@@ -453,7 +453,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return
         }
         
-        guard let feMesh = await fePhase.CreateFE_Model() else {
+        guard let feMesh = await fePhase.CreateFE_Model(overwriteMesh: true) else {
             
             PCH_ErrorAlert(message: "Could not create mesh!")
             return
@@ -580,7 +580,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         do {
             
-            try await fePhase.GetFullModelAndSolve()
+            let fullMesh = try await fePhase.GetFullModelAndSolve()
+            DLog("Energy (mesh): \(await fullMesh.MagneticEnergy())")
+            DLog("Energy (phase): \(await fePhase.MagneticEnergy(useMesh: fullMesh))")
         }
         catch {
             
@@ -588,6 +590,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             let _ = alert.runModal()
             return
         }
+        
         /*
         guard let _ = fePhase.GetFullModelAndSolve() else {
             
@@ -601,7 +604,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return
         }
         
-        DLog("Energy: \(await fePhase.MagneticEnergy())")
+        
         
         for i in await 0..<model.segments.count {
             
