@@ -314,8 +314,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         self.inductanceLight.textColor = .red
         self.inductanceIsValid = false
         self.indCalcProgInd.isHidden = true
-        self.indCalcProgInd.minValue = 0.0
-        self.indCalcProgInd.maxValue = 100.0
+        // self.indCalcProgInd.minValue = 0.0
+        // self.indCalcProgInd.maxValue = 100.0
         self.indCalcLabel.isHidden = true
     }
     
@@ -324,10 +324,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
     }
     
-    // MARK: PchFePhaseDelegate routine(s)
-    /* func incrementInductanceCounter(totalSections: Int, phase: PchFiniteElementPackage.PchFePhase) {
-        
-    } */
+    // MARK: Long-running function completion routine(s)
     
     func didFinishInductanceCalculation() async {
         
@@ -341,6 +338,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         DLog("Got inductance completion message!")
         self.inductanceLight.textColor = await fePhase.inductanceMatrix != nil ? .green : .red
         
+        self.indCalcProgInd.stopAnimation(self)
         self.indCalcProgInd.isHidden = true
         self.indCalcLabel.isHidden = true
         
@@ -365,6 +363,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             let _ = alert.runModal()
             return
         }
+    }
+    
+    func didFinishSimulationRun() async {
+        
     }
     
     /*
@@ -450,12 +452,6 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         guard let fePhase = await CreateFePhase(xlFile: excelFile, model: model) else {
             
             PCH_ErrorAlert(message: "Could not create finite element model!")
-            return
-        }
-        
-        guard let feMesh = await fePhase.CreateFE_Model(overwriteMesh: true) else {
-            
-            PCH_ErrorAlert(message: "Could not create mesh!")
             return
         }
         
@@ -591,20 +587,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return
         }
         
-        /*
-        guard let _ = fePhase.GetFullModelAndSolve() else {
-            
-            PCH_ErrorAlert(message: "Could not solve full model!")
-            return
-        } */
         
         guard await fePhase.GetEddyLosses() else {
             
             PCH_ErrorAlert(message: "Could not get eddy losses!")
             return
         }
-        
-        
         
         for i in await 0..<model.segments.count {
             
@@ -617,7 +605,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         self.inductanceLight.textColor = .red
         self.indCalcLabel.isHidden = false
         self.indCalcProgInd.isHidden = false
-        self.indCalcProgInd.doubleValue = 0.0
+        self.indCalcProgInd.startAnimation(self)
+        // self.indCalcProgInd.doubleValue = 0.0
         
         do {
         
@@ -1109,7 +1098,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     @IBAction func handleShowWaveforms(_ sender: Any) {
         
-        guard let phModel = self.currentModel, let simModel = self.currentSimModel else {
+        guard let phModel = self.currentModel, self.currentSimModel != nil else {
             
             DLog("No simulation model!")
             return
@@ -1435,7 +1424,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     @IBAction func handleShowCoilResults(_ sender: Any) {
         
-        guard let phModel = self.currentModel, let simModel = self.currentSimModel else {
+        guard let phModel = self.currentModel, self.currentSimModel != nil else {
             
             DLog("No simulation model!")
             return
@@ -1880,7 +1869,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     @IBAction func handleZoomAll(_ sender: Any) {
         
-        guard let model = self.currentModel, /* model.segments.count > 0,*/ let core = self.currentCore else
+        guard self.currentModel != nil, /* model.segments.count > 0,*/ let core = self.currentCore else
         {
             return
         }
@@ -1893,7 +1882,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     @IBAction func handleZoomRect(_ sender: Any) {
         
-        guard let model = self.currentModel /*, model.segments.count > 0 */ else
+        guard self.currentModel != nil /*, model.segments.count > 0 */ else
         {
             return
         }

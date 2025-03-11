@@ -307,10 +307,13 @@ actor SimulationModel {
                 
                 for nextConnection in nonAdjConns {
                     
+                    //let srcTest = await model.NodeAt(segment: nextSegment, useFrom: true, connector: nextConnection.connector)
+                    //let destIDtest = nextConnection.segmentID
+                    //let destTest = await model.NodeAt(segmentID: destIDtest!, useFrom: false, connector: nextConnection.connector)
                     // get the source and dest nodes of the connection
                     guard let srcNode = await model.NodeAt(segment: nextSegment, useFrom: true, connector: nextConnection.connector), let destSegmentID = nextConnection.segmentID, let destNode = await model.NodeAt(segmentID: destSegmentID, useFrom: false, connector: nextConnection.connector) else {
                         
-                        ALog("WTF?")
+                        ALog("WTF??")
                         break
                     }
                     
@@ -923,7 +926,7 @@ actor SimulationModel {
         
         do {
             let Crhs = PchMatrix(vectorData: currentDrop)
-            let dVdt = try await modelC.Solve(B: Crhs)
+            async let dVdt = try await modelC.Solve(B: Crhs)
             
             // Solve for dI/dt
             // Start by getting the voltage drops ('BV')
@@ -934,9 +937,9 @@ actor SimulationModel {
             }
             
             let Mrhs = QuickVectorSubtract(lhs: voltageDrop, rhs: QuickRI(I: I, freqs: eddyFreqs))
-            let dIdt = try await M.Solve(B: PchMatrix(vectorData: Mrhs)) 
+            async let dIdt = try await M.Solve(B: PchMatrix(vectorData: Mrhs))
             
-            return await (dVdt.GetDoubleBuffer(), dIdt.GetDoubleBuffer())
+            return await (try dVdt.GetDoubleBuffer(), try dIdt.GetDoubleBuffer())
         }
         catch {
             
