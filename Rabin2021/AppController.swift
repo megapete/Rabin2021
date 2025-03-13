@@ -1580,6 +1580,27 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
     }
     
+    
+    @IBAction func handleShowUnfactoredMmatrix(_ sender: Any) {
+        
+        guard let model = self.currentModel else {
+            
+            return
+        }
+        
+        Task {
+            
+            guard let Mmatrix = await model.unfactoredM else {
+                
+                return
+            }
+            
+            let mWindow = Mmatrix.GetViewer()
+            mWindow.window?.title = "Unfactored Inductance Matrix"
+            mWindow.showWindow(self)
+        }
+    }
+    
     // MARK: File routines
     func doOpen(fileURL:URL) -> Bool {
         

@@ -480,6 +480,12 @@
                                     <action selector="handleShowBaseCmatrix:" target="XWq-sU-B2V" id="EFZ-zL-Fqt"/>
                                 </connections>
                             </menuItem>
+                            <menuItem title="Show Unfactored M-matrix..." id="hWz-mU-EPX">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleShowUnfactoredMmatrix:" target="XWq-sU-B2V" id="CnK-Mu-tpS"/>
+                                </connections>
+                            </menuItem>
                         </items>
                     </menu>
                 </menuItem>

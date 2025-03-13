@@ -31,7 +31,7 @@ class ShowCoilResultsDialog: PCH_DialogBox {
         
         coilPicker.removeAllItems()
         
-        Task {
+        // Task {
             
             //let segments = await phaseModel.CoilSegments()
             //let numCoils = segments.last!.radialPos + 1
@@ -42,7 +42,7 @@ class ShowCoilResultsDialog: PCH_DialogBox {
             }
             coilPicker.addItems(withTitles: coilNames)
             coilPicker.selectItem(at: 0)
-        }
+        // }
         
         let timeFormatter = NumberFormatter()
         timeFormatter.maximumFractionDigits = 0
