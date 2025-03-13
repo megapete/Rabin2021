@@ -144,7 +144,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// Inductance calculation indicators
     @IBOutlet weak var inductanceLight: NSTextField!
     @IBOutlet weak var indCalcProgInd: NSProgressIndicator!
-    @IBOutlet weak var indCalcLabel: NSTextField!
+    @IBOutlet weak var workingLabel: NSTextField!
     
     /// Window controller to display graphs
     // var graphWindowCtrl:PCH_GraphingWindow? = nil
@@ -154,6 +154,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     /// The current model that is stored in memory. This is what is actually displayed in the TransformerView and what all calculations are performed upon.
     var currentModel:PhaseModel? = nil
+    
+    /// Simulation calculation indicators
+    @IBOutlet weak var simulationLight: NSTextField!
+    @IBOutlet weak var simCalcProgInd: NSProgressIndicator!
     
     /// The current simulation model that is stored in memory
     var currentSimModel:SimulationModel? = nil
@@ -254,6 +258,16 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return result
         }
         
+        func MaximumInternodalVoltages(nodeRange:Range<Int>? = nil) async -> PchMatrix {
+            
+            let lowNode = max(0, nodeRange?.lowerBound ?? 0)
+            let highNode = min(stepResults.count, nodeRange?.upperBound ?? stepResults.count)
+            
+            let result = PchMatrix(matrixType: .symmetric, rows: UInt(highNode - lowNode), columns: UInt(highNode - lowNode))
+            
+            return result
+        }
+        
     }
     
     /// Coil Results windows
@@ -316,7 +330,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         self.indCalcProgInd.isHidden = true
         // self.indCalcProgInd.minValue = 0.0
         // self.indCalcProgInd.maxValue = 100.0
-        self.indCalcLabel.isHidden = true
+        self.simulationLight.textColor = .red
+        self.simCalcProgInd.isHidden = true
+        self.workingLabel.isHidden = true
     }
     
     func InitializeController()
@@ -340,7 +356,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         self.indCalcProgInd.stopAnimation(self)
         self.indCalcProgInd.isHidden = true
-        self.indCalcLabel.isHidden = true
+        if self.latestSimulationResult != nil {
+            
+            self.simulationLight.textColor = .yellow
+        }
+        // only hide the "Working..." label if the simulation calculation is not currently running
+        self.workingLabel.isHidden = self.simCalcProgInd.isHidden
         
         guard let model = self.currentModel, let feIndMatrix = await fePhase.inductanceMatrix else {
             
@@ -367,6 +388,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     func didFinishSimulationRun() async {
         
+        DLog("Got simulation-run completion message!")
+        
+        self.simulationLight.textColor = latestSimulationResult != nil ? .green : .red
+        
+        self.simCalcProgInd.stopAnimation(self)
+        self.simCalcProgInd.isHidden = true
+        // only hide the "Working..." label if the inductance calculation is not currently running
+        self.workingLabel.isHidden = self.indCalcProgInd.isHidden
     }
     
     /*
@@ -603,7 +632,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
         
         self.inductanceLight.textColor = .red
-        self.indCalcLabel.isHidden = false
+        self.workingLabel.isHidden = false
         self.indCalcProgInd.isHidden = false
         self.indCalcProgInd.startAnimation(self)
         // self.indCalcProgInd.doubleValue = 0.0
@@ -1083,15 +1112,22 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 let wfIndex = simDetailsDlog.waveFormPopUp.indexOfSelectedItem
                 let waveForm = SimulationModel.WaveForm(type: SimulationModel.WaveForm.Types.allCases[wfIndex], pkVoltage: peakVoltage)
                 
+                simulationLight.textColor = .red
+                simCalcProgInd.isHidden = false
+                simCalcProgInd.startAnimation(self)
+                workingLabel.isHidden = false
+                
                 let simResult = await simModel.DoSimulate(waveForm: waveForm, startTime: 0.0, endTime: waveForm.timeToZero, epsilon: 100.0 / 0.05E-6)
                 
                 if simResult.isEmpty {
                     
                     PCH_ErrorAlert(message: "Simulation failed!")
+                    await didFinishSimulationRun()
                     return
                 }
                 
                 self.latestSimulationResult = SimulationResults(waveForm: waveForm, peakVoltage: peakVoltage, stepResults: simResult)
+                await didFinishSimulationRun()
             }
         }
     }

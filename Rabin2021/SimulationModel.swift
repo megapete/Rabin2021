@@ -871,7 +871,7 @@ actor SimulationModel {
             h = delV * h
         }
         
-        DLog("Total number of unused steps: \(unusedSteps)")
+        DLog("Total number of recalculated steps: \(unusedSteps)")
         return result
     }
     
