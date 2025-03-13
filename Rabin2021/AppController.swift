@@ -265,6 +265,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             
             let result = PchMatrix(matrixType: .symmetric, rows: UInt(highNode - lowNode), columns: UInt(highNode - lowNode))
             
+            if highNode - lowNode == 0 {
+                
+                return result
+            }
+            
+    
+            
             return result
         }
         
