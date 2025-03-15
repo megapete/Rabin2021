@@ -129,6 +129,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     @IBOutlet weak var simulateMenuItem: NSMenuItem!
     @IBOutlet weak var showWaveformsMenuItem: NSMenuItem!
     @IBOutlet weak var showCoilResultsMenuItem: NSMenuItem!
+    @IBOutlet weak var showVoltageDiffsMenuItem: NSMenuItem!
     
     /// Inductance Calculations
     @IBOutlet weak var mainWdgInductanceMenuItem: NSMenuItem!
@@ -258,19 +259,81 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return result
         }
         
-        func MaximumInternodalVoltages(nodeRange:Range<Int>? = nil) async -> PchMatrix {
+        struct Location:Hashable {
             
-            let lowNode = max(0, nodeRange?.lowerBound ?? 0)
-            let highNode = min(stepResults.count, nodeRange?.upperBound ?? stepResults.count)
+            let row:Int
+            let col:Int
+        }
+        
+        // If forRange is nil, the entire simulation result is used (ie: all the results at all the time steps). The range is clamped to the size of the volts array in stepResults
+        func MaximumInternodalVoltages(forRange:ClosedRange<Int>? = nil) async -> PchMatrix {
             
-            let result = PchMatrix(matrixType: .symmetric, rows: UInt(highNode - lowNode), columns: UInt(highNode - lowNode))
+            guard let firstResult = stepResults.first, !firstResult.volts.isEmpty else {
+                
+                return PchMatrix(rows: UInt(0), columns: UInt(0))
+            }
+            
+            let lowNode = max(0, forRange?.lowerBound ?? 0)
+            let highNode = min(firstResult.volts.count - 1, forRange?.upperBound ?? firstResult.volts.count - 1)
             
             if highNode - lowNode == 0 {
                 
-                return result
+                return PchMatrix(rows: UInt(0), columns: UInt(0))
             }
             
-    
+            let nodeRange = ClosedRange(uncheckedBounds: (lowNode, highNode))
+            
+            var result:[Location:Double] = [:]
+            var firstTimeThrough = true
+            for nextResult in stepResults {
+                
+                let nextInterVolts = InternodalVoltages(volts: Array(nextResult.volts[nodeRange]))
+                
+                if firstTimeThrough {
+                    
+                    result = nextInterVolts
+                    firstTimeThrough = false
+                }
+                else {
+                    
+                    for (location, value) in nextInterVolts {
+                        
+                        let prevMax = result[location]!
+                        
+                        if value > prevMax {
+                            
+                            result[location] = value
+                        }
+                        
+                    }
+                }
+            }
+            
+            let dimension = UInt(highNode - lowNode + 1)
+            let matrix = PchMatrix(matrixType: .symmetric, numType: .Double, rows: dimension, columns:dimension)
+            
+            for (location, value) in result {
+                
+                await matrix.SetDoubleValue(value: value, row: location.row, col: location.col)
+            }
+            
+            return matrix
+        }
+        
+        func InternodalVoltages(volts:[Double]) -> [Location:Double] {
+            
+            let dimension = volts.count
+            
+            var result:[Location:Double] = [:]
+            for col in 0..<volts.count {
+                
+                // get the value in the col index just once
+                let voltsCol = volts[col]
+                for row in col+1..<volts.count {
+                    
+                    result[Location(row: row, col: col)] = abs(voltsCol - volts[row])
+                }
+            }
             
             return result
         }
@@ -1124,7 +1187,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 simCalcProgInd.startAnimation(self)
                 workingLabel.isHidden = false
                 
-                let simResult = await simModel.DoSimulate(waveForm: waveForm, startTime: 0.0, endTime: waveForm.timeToZero, epsilon: 100.0 / 0.05E-6)
+                let simResult = await simModel.DoSimulate(waveForm: waveForm, startTime: 0.0, endTime: waveForm.timeToZero, epsilon: 200.0 / 0.05E-6)
                 
                 if simResult.isEmpty {
                     
@@ -1454,14 +1517,28 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
     }
     
-    @IBAction func handleShowVoltageDiffs(_ sender: Any) {
+    @IBAction func handleShowMaxVoltageDiffs(_ sender: Any) {
         
-        doShowVoltageDiffs()
+        doShowMaxVoltageDiffs()
     }
     
-    func doShowVoltageDiffs() {
+    func doShowMaxVoltageDiffs(nodeRange:ClosedRange<Int>? = nil) {
         
+        guard let simResult = self.latestSimulationResult else {
+            
+            PCH_ErrorAlert(message: "You must run the simulation first!")
+            return
+        }
         
+        Task {
+            
+            // the routine we are calling will take care of clamping the nodeRange to acceptable values
+            let maxMatrix = await simResult.MaximumInternodalVoltages(forRange: nodeRange)
+            
+            let maxWindow = maxMatrix.GetViewer()
+            maxWindow.window?.title = "Maximum Internodal Voltages"
+            maxWindow.showWindow(self)
+        }
     }
     
     
@@ -2872,7 +2949,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return self.currentModel != nil && self.designIsValid && self.currentSimModel != nil
         }
         
-        if menuItem == self.showWaveformsMenuItem || menuItem == self.showCoilResultsMenuItem {
+        if menuItem == self.showWaveformsMenuItem || menuItem == self.showCoilResultsMenuItem || menuItem == self.showVoltageDiffsMenuItem {
             
             return self.currentModel != nil && self.currentSimModel != nil && self.latestSimulationResult != nil
         }

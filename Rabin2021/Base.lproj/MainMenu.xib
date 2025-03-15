@@ -43,6 +43,7 @@
                 <outlet property="saveMmatrixMenuItem" destination="I9o-un-V1m" id="GXy-pI-eYq"/>
                 <outlet property="saveUnfactoredMmatrixMenuItem" destination="I9o-un-V1m" id="PE5-k6-rUA"/>
                 <outlet property="showCoilResultsMenuItem" destination="P8O-Vr-t1K" id="Ihl-J1-x5K"/>
+                <outlet property="showVoltageDiffsMenuItem" destination="2EP-Oc-ejX" id="JcA-1g-Gld"/>
                 <outlet property="showWaveformsMenuItem" destination="QjX-pp-fL5" id="sb0-tI-ej0"/>
                 <outlet property="showWdgAsSingleSegmentMenuItem" destination="Aqp-v7-qka" id="wWQ-tl-Wef"/>
                 <outlet property="simCalcProgInd" destination="ar6-fH-ZoX" id="EOh-90-GTr"/>
@@ -371,10 +372,10 @@
                                     <action selector="handleShowWaveforms:" target="XWq-sU-B2V" id="FsU-il-qPE"/>
                                 </connections>
                             </menuItem>
-                            <menuItem title="Show Voltage Differences" id="2EP-Oc-ejX">
+                            <menuItem title="Show Max Voltage Differences" id="2EP-Oc-ejX">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
-                                    <action selector="handleShowVoltageDiffs:" target="XWq-sU-B2V" id="bmF-Kd-HYh"/>
+                                    <action selector="handleShowMaxVoltageDiffs:" target="XWq-sU-B2V" id="bmF-Kd-HYh"/>
                                 </connections>
                             </menuItem>
                             <menuItem isSeparatorItem="YES" id="e0t-hG-akE"/>
