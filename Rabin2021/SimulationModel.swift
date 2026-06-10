@@ -427,10 +427,12 @@ actor SimulationModel {
                 }
                 catch {
                     
-                    Task {
+                    await NSAlert.init(error: error).runModal()
+                    
+                    /*Task {
                         
                         await PCH_ErrorAlert(message: error.localizedDescription)
-                    }
+                    }*/
                     return nil
                 }
             }
@@ -445,10 +447,12 @@ actor SimulationModel {
                 }
                 catch {
                     
-                    Task {
+                    await NSAlert.init(error: error).runModal()
+                    
+                    /*Task {
                         
                         await PCH_ErrorAlert(message: error.localizedDescription)
-                    }
+                    }*/
                     return nil
                 }
             }

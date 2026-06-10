@@ -494,13 +494,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             
             if let file = xlFile {
                 
-                self.tankDepth = file.tankDepth
+                self.tankDepth = await file.tankDepth
                 
                 // The idea here is to create the current model as a Core and an array of BasicSections and save it into the class' currentSections property
-                self.currentCore = Core(diameter: file.core.diameter, realWindowHeight: file.core.windowHeight, legCenters: file.core.legCenters)
+                self.currentCore = await Core(diameter: file.core.diameter, realWindowHeight: file.core.windowHeight, legCenters: file.core.legCenters)
                 
                 // replace any currently saved basic sections with the new ones
-                self.currentSections = self.createBasicSections(xlFile: file)
+                self.currentSections = await self.createBasicSections(xlFile: file)
                 
                 self.currentXLfile = file
             }
@@ -567,7 +567,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         // 5. Terminal number greater than 2 have only a SINGLE COIL associated with them
         var refKVA = 0.0
         var terms:Set<Int> = []
-        for nextWinding in excelFile.windings {
+        for nextWinding in await excelFile.windings {
             
             if nextWinding.terminal.terminalNumber == 0 {
                 
@@ -599,7 +599,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         var turns:[Double] = Array(repeating: 0.0, count: terms.count)
         for nextTerm in terms {
             
-            for nextWinding in excelFile.windings {
+            for nextWinding in await excelFile.windings {
                 
                 if nextWinding.terminal.terminalNumber == nextTerm {
                     
@@ -628,7 +628,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             
             let nextTerm = otherTerms.first!
                 
-            for nextWdg in excelFile.windings {
+            for nextWdg in await excelFile.windings {
                 
                 if nextWdg.terminal.terminalNumber == nextTerm {
                     
@@ -646,18 +646,18 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         for nextTerm in terms {
             
             let voltage = turns[nextTerm - 1] * voltsPerTurn
-            currents[nextTerm - 1] = kvas[nextTerm - 1] * 1000.0 / Double(excelFile.numPhases) / voltage
+            currents[nextTerm - 1] = await kvas[nextTerm - 1] * 1000.0 / Double(excelFile.numPhases) / voltage
         }
         
         var firstSegmentIndex = 0
-        for wdgIndex in 0..<excelFile.windings.count {
+        for wdgIndex in await 0..<excelFile.windings.count {
             
             do {
                 
                 let lastSegmentIndex = try await model.GetHighestSection(coil: wdgIndex) + firstSegmentIndex
                 for segIndex in firstSegmentIndex...lastSegmentIndex {
                     
-                    let currentDirection = excelFile.windings[wdgIndex].terminal.terminalNumber == 2 ? -1.0 : 1.0
+                    let currentDirection = await excelFile.windings[wdgIndex].terminal.terminalNumber == 2 ? -1.0 : 1.0
                     // let currentDivider = excelFile.windings[wdgIndex].isDoubleStack ? 2.0 : 1.0
                     await fePhase.SetSeriesRmsCurrentForSection(segIndex, rmsAmps: Complex(currents[excelFile.windings[wdgIndex].terminal.terminalNumber - 1] * currentDirection))
                     // fePhase.window.sections[segIndex].seriesRmsCurrent = Complex(currents[excelFile.windings[wdgIndex].terminal.terminalNumber - 1] * currentDirection) // / currentDivider)
@@ -675,9 +675,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         do {
             
-            let fullMesh = try await fePhase.GetFullModelAndSolve()
+            let fullMesh = try await fePhase.GetFullModelAndSolve(withEddyCurrents: true)
             DLog("Energy (mesh): \(await fullMesh.MagneticEnergy())")
             DLog("Energy (phase): \(await fePhase.MagneticEnergy(useMesh: fullMesh))")
+            try await fePhase.SetEddyLosses()
         }
         catch {
             
@@ -687,11 +688,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
         
         
-        guard await fePhase.GetEddyLosses() else {
-            
-            PCH_ErrorAlert(message: "Could not get eddy losses!")
-            return
-        }
+        
         
         for i in await 0..<model.segments.count {
             
@@ -771,7 +768,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             
             if let xlFile = self.currentXLfile {
                 
-                let wdg = xlFile.windings[coil]
+                let wdg = await xlFile.windings[coil]
                 coilIsDoubleStack = wdg.isDoubleStack
                 coilHasEmbeddedTaps = wdg.numTurns.max != wdg.numTurns.nom || wdg.numTurns.min != wdg.numTurns.nom
                 let numDiscs = wdg.numAxialSections
@@ -920,12 +917,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         return PhaseModel(segments: result, core: self.currentCore!, tankDepth: self.tankDepth)
     }
     
-    func createBasicSections(xlFile:PCH_ExcelDesignFile) -> [BasicSection] {
+    func createBasicSections(xlFile:PCH_ExcelDesignFile) async -> [BasicSection] {
         
         // First off, we need to find the axial centers of the coils. We do this by finding the highest coil (max electrical height) and adding half that height to its bottom-edge-pack dimension. Other coils are then inserted into the model using that same center for all coils.
         var maxHeight = 0.0
         var maxHtEdgePack = 0.0
-        for nextWinding in xlFile.windings {
+        for nextWinding in await xlFile.windings {
             
             if nextWinding.electricalHeight > maxHeight {
                 maxHeight = nextWinding.electricalHeight
@@ -939,7 +936,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         var radialPos = 0
         
-        for nextWinding in xlFile.windings {
+        for nextWinding in await xlFile.windings {
             
             var axialPos = 0
             let wType = nextWinding.windingType
@@ -1064,7 +1061,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         let coilSegments = await model.CoilSegments()
         // do some simple checks to see if the xlFile and the model match, at least in terms of the number of coils and their basic sections
-        guard let lastSegment = coilSegments.last, lastSegment.radialPos == xlFile.windings.count - 1 else {
+        guard let lastSegment = coilSegments.last, await lastSegment.radialPos == xlFile.windings.count - 1 else {
             
             DLog("xlFile and model coil count do not match!")
             return nil
@@ -1077,7 +1074,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
         
         var totalFileSections = 0
-        for nextWinding in xlFile.windings {
+        for nextWinding in await xlFile.windings {
             
             let wType = nextWinding.windingType
             
@@ -1105,7 +1102,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         var feSections:[PchFePhase.Section] = []
         for nextSegment in coilSegments {
             
-            let wdg = xlFile.windings[nextSegment.radialPos]
+            let wdg = await xlFile.windings[nextSegment.radialPos]
             let wdgTurn = wdg.turnDefinition
             let strandsPerTurn = wdgTurn.numCablesAxial * wdgTurn.numCablesRadial * (wdgTurn.cable.conductor == .ctc ? wdgTurn.cable.numCTCstrands :  wdgTurn.cable.numStrandsAxial * wdgTurn.cable.numStrandsRadial)
             // default to a layer (or multi-start) winding (we always assume a 1-layer winding for this)
@@ -1124,10 +1121,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             feSections.append(newFeSection)
         }
         
-        let coreCenterToTank = xlFile.tankDepth / 2.0
-        let windowHt = xlFile.core.windowHeight
+        let coreCenterToTank = await xlFile.tankDepth / 2.0
+        let windowHt = await xlFile.core.windowHeight
         let constPotPt = NSPoint(x: coreCenterToTank, y: windowHt / 2)
-        let feWindow = PchFePhase.Window(zMin: 0.0, zMax: windowHt, rMin: xlFile.core.radius, rMax: coreCenterToTank, constPotentialPoint: constPotPt, sections: feSections)
+        let feWindow = await PchFePhase.Window(zMin: 0.0, zMax: windowHt, rMin: xlFile.core.radius, rMax: coreCenterToTank, constPotentialPoint: constPotPt, sections: feSections)
         
         let fePhase = PchFePhase(window: feWindow)
         
@@ -2968,5 +2965,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         return true
     }
     
+    func PCH_ErrorAlert(message: String, info: String? = nil) {
+        
+        var dlogMsg = message
+        if let info = info {
+            dlogMsg += ": \(info)"
+        }
+        
+        DLog(dlogMsg)
+    }
     
 }
