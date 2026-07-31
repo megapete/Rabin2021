@@ -321,7 +321,40 @@ struct SegmentPath:Equatable, Sendable  {
                         var channelUses:[ConnectorChannelUse] = []
                         var lane = 0
 
-                        if nextConnection.connector.fromIsOutside {
+                        let fromIsRadialCenter = nextConnection.connector.fromLocation == .center_upper || nextConnection.connector.fromLocation == .center_lower
+                        let toIsRadialCenter = nextConnection.connector.toLocation == .center_upper || nextConnection.connector.toLocation == .center_lower
+
+                        if fromIsRadialCenter && toIsRadialCenter {
+
+                            // Both ends are at the radial centre of the coil (typically its top and bottom terminals). A
+                            // vertical run alongside would pass through the coil body, so wrap around the outside of the coil.
+                            guard let highestSegmentIndex = try? await model.GetHighestSection(coil: self.segment.radialPos) else {
+
+                                return
+                            }
+
+                            let highestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: highestSegmentIndex))!
+                            let lowestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
+                            let coilTop = await highestSegment.z2
+                            let coilBottom = await lowestSegment.z1
+
+                            // upper terminals exit up over the top, lower terminals exit down under the bottom
+                            let fromExitY = nextConnection.connector.fromIsUpper ? coilTop + connectorCrossoverMargin : coilBottom - connectorCrossoverMargin
+                            let toExitY = nextConnection.connector.toIsUpper ? coilTop + connectorCrossoverMargin : coilBottom - connectorCrossoverMargin
+
+                            let outsideX = segRect.maxX + 0.010
+                            channelUses = [ConnectorChannelUse(channel: .vertical(baseX: outsideX), span: ConnectorSpan(fromExitY, toExitY))]
+                            lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
+                            let runX = outsideX + Double(lane) * connectorLaneSpacing
+
+                            connectorPath.move(to: fromPoint * dimensionMultiplier)
+                            connectorPath.line(to: NSPoint(x: fromPoint.x, y: fromExitY) * dimensionMultiplier)
+                            connectorPath.line(to: NSPoint(x: runX, y: fromExitY) * dimensionMultiplier)
+                            connectorPath.line(to: NSPoint(x: runX, y: toExitY) * dimensionMultiplier)
+                            connectorPath.line(to: NSPoint(x: toPoint.x, y: toExitY) * dimensionMultiplier)
+                            connectorPath.line(to: toPoint * dimensionMultiplier)
+                        }
+                        else if nextConnection.connector.fromIsOutside {
                             
                             if nextConnection.connector.toIsOutside {
 
@@ -347,9 +380,9 @@ struct SegmentPath:Equatable, Sendable  {
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
                                 connectorPath.line(to: (fromPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
 
-                                let startHtFraction = await (self.segment.zMean - lowestSegment.z1) / (highestSegment.z2 - lowestSegment.z1)
-                                let baseChannelY = startHtFraction < 0.5 ? (await lowestSegment.z1) - 0.055 : (await highestSegment.z2) + 0.055
-                                let laneSign = startHtFraction < 0.5 ? -1.0 : 1.0
+                                let crossover = ConnectorCrossover(fromZ: fromPoint.y, toZ: toPoint.y, extentBottom: await lowestSegment.z1, extentTop: await highestSegment.z2)
+                                let baseChannelY = crossover.baseChannelY
+                                let laneSign = crossover.goUp ? 1.0 : -1.0
                                 channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(fromPoint.x + 0.010, toPoint.x - 0.010))]
                                 lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
                                 let channelY = baseChannelY + laneSign * Double(lane) * connectorLaneSpacing
@@ -375,9 +408,9 @@ struct SegmentPath:Equatable, Sendable  {
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
                                 connectorPath.line(to: (fromPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
 
-                                let startHtFraction = await (self.segment.zMean - lowestSegment.z1) / (highestSegment.z2 - lowestSegment.z1)
-                                let baseChannelY = startHtFraction < 0.5 ? (await lowestSegment.z1) - 0.055 : (await highestSegment.z2) + 0.055
-                                let laneSign = startHtFraction < 0.5 ? -1.0 : 1.0
+                                let crossover = ConnectorCrossover(fromZ: fromPoint.y, toZ: toPoint.y, extentBottom: await lowestSegment.z1, extentTop: await highestSegment.z2)
+                                let baseChannelY = crossover.baseChannelY
+                                let laneSign = crossover.goUp ? 1.0 : -1.0
                                 channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(fromPoint.x - 0.010, toPoint.x + 0.010))]
                                 lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
                                 let channelY = baseChannelY + laneSign * Double(lane) * connectorLaneSpacing
@@ -418,8 +451,7 @@ struct SegmentPath:Equatable, Sendable  {
                     
                     let highestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: highestSegmentIndex))!
                     let lowestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
-                    let startHtFraction = await (self.segment.zMean - lowestSegment.z1) / (highestSegment.z2 - lowestSegment.z1)
-                    
+
                     connectorPath.move(to: fromPoint * dimensionMultiplier)
                     
                     var currentX = fromPoint.x + 0.010
@@ -442,8 +474,25 @@ struct SegmentPath:Equatable, Sendable  {
 
                     if !fromAndToInSameHilo {
 
-                        let baseChannelY = startHtFraction < 0.5 ? (await lowestSegment.z1) - 0.055 : (await highestSegment.z2) + 0.055
-                        let laneSign = startHtFraction < 0.5 ? -1.0 : 1.0
+                        // Find the axial extent spanning every coil between the source and destination so that the
+                        // cross-over channel clears them all instead of cutting through an intervening (or taller) coil.
+                        let minPos = min(self.segment.radialPos, otherSeg.radialPos)
+                        let maxPos = max(self.segment.radialPos, otherSeg.radialPos)
+                        var spanTop = await highestSegment.z2
+                        var spanBottom = await lowestSegment.z1
+                        for coil in minPos...maxPos {
+
+                            guard let hiIdx = try? await model.GetHighestSection(coil: coil),
+                                  let hiSeg = await model.SegmentAt(location: LocStruct(radial: coil, axial: hiIdx)),
+                                  let loSeg = await model.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else { continue }
+
+                            spanTop = max(spanTop, await hiSeg.z2)
+                            spanBottom = min(spanBottom, await loSeg.z1)
+                        }
+
+                        let crossover = ConnectorCrossover(fromZ: fromPoint.y, toZ: toPoint.y, extentBottom: spanBottom, extentTop: spanTop)
+                        let baseChannelY = crossover.baseChannelY
+                        let laneSign = crossover.goUp ? 1.0 : -1.0
                         channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(currentX, channelConnPoint.x))]
                         lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
                         currentY = baseChannelY + laneSign * Double(lane) * connectorLaneSpacing
@@ -849,6 +898,8 @@ struct TransformerViewConstants {
 
 /// Spacing (in model meters) between parallel connector lanes that share a routing channel.
 let connectorLaneSpacing = 0.004
+/// The axial clearance (in model meters) between the winding extent and the horizontal cross-over channel a connector routes through.
+let connectorCrossoverMargin = 0.055
 /// The on-screen length (in view points at magnification 1) of the lead stub drawn for a coil-end or tapping-gap
 /// (floating / ground / impulse) termination. It is scaled by the current view scale so it stays a consistent size on
 /// screen (like the ground / impulse symbols), and is half of the previous fixed length.
@@ -928,6 +979,18 @@ func ConnectorLeadVector(for location:Connector.Location, scaleSize:NSSize) -> N
     default:
         return nil
     }
+}
+
+/// Decide whether a connector should route over the top or under the bottom of the given axial extent, choosing
+/// whichever gives the shorter total vertical travel for the two endpoints. Returns the direction and the base
+/// cross-over channel Y (the height of the horizontal run, before any lane offset), in model coordinates.
+func ConnectorCrossover(fromZ:Double, toZ:Double, extentBottom:Double, extentTop:Double) -> (goUp:Bool, baseChannelY:Double) {
+
+    let costUp = (extentTop - fromZ) + (extentTop - toZ)
+    let costDown = (fromZ - extentBottom) + (toZ - extentBottom)
+    let goUp = costUp <= costDown
+
+    return (goUp, goUp ? extentTop + connectorCrossoverMargin : extentBottom - connectorCrossoverMargin)
 }
 
 /// The class that actually displays all the Segments the current model, along with all Connectors. There are also routines to update the mouse cursor depending on the current mode of the TransformerView, as well as mouseDown routines that do different things depending on the mode. See each function for a biref description of what it does. This class derives from NSView and conforms to the NSViewToolTipOwner and NSMenuItemValidation protocols.
