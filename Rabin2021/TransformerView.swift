@@ -203,6 +203,11 @@ struct SegmentPath:Equatable, Sendable  {
         // The current view scale (as used to size the ground / impulse symbols), so lead stubs stay a consistent size on screen.
         let scaleSize = txfoView.convert(NSSize(width: 1.0, height: 1.0), from: txfoView.scrollView)
 
+        // Geometry-derived routing offsets (Phase 3), so the routing scales with the physical size of the model.
+        let stub = txfoView.connectorStubOffset
+        let laneGap = txfoView.connectorLaneGap
+        let crossMargin = txfoView.connectorCrossoverClearance
+
         let selfConnections = await self.segment.connections
 
         for nextConnection in selfConnections {
@@ -339,13 +344,13 @@ struct SegmentPath:Equatable, Sendable  {
                             let coilBottom = await lowestSegment.z1
 
                             // upper terminals exit up over the top, lower terminals exit down under the bottom
-                            let fromExitY = nextConnection.connector.fromIsUpper ? coilTop + connectorCrossoverMargin : coilBottom - connectorCrossoverMargin
-                            let toExitY = nextConnection.connector.toIsUpper ? coilTop + connectorCrossoverMargin : coilBottom - connectorCrossoverMargin
+                            let fromExitY = nextConnection.connector.fromIsUpper ? coilTop + crossMargin : coilBottom - crossMargin
+                            let toExitY = nextConnection.connector.toIsUpper ? coilTop + crossMargin : coilBottom - crossMargin
 
-                            let outsideX = segRect.maxX + 0.010
+                            let outsideX = segRect.maxX + stub
                             channelUses = [ConnectorChannelUse(channel: .vertical(baseX: outsideX), span: ConnectorSpan(fromExitY, toExitY))]
                             lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
-                            let runX = outsideX + Double(lane) * connectorLaneSpacing
+                            let runX = outsideX + Double(lane) * laneGap
 
                             connectorPath.move(to: fromPoint * dimensionMultiplier)
                             connectorPath.line(to: NSPoint(x: fromPoint.x, y: fromExitY) * dimensionMultiplier)
@@ -358,9 +363,9 @@ struct SegmentPath:Equatable, Sendable  {
                             
                             if nextConnection.connector.toIsOutside {
 
-                                channelUses = [ConnectorChannelUse(channel: .vertical(baseX: fromPoint.x + 0.010), span: ConnectorSpan(fromPoint.y, toPoint.y))]
+                                channelUses = [ConnectorChannelUse(channel: .vertical(baseX: fromPoint.x + stub), span: ConnectorSpan(fromPoint.y, toPoint.y))]
                                 lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
-                                let runX = 0.010 + Double(lane) * connectorLaneSpacing
+                                let runX = stub + Double(lane) * laneGap
 
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
                                 connectorPath.line(to: (fromPoint + NSSize(width: runX, height: 0)) * dimensionMultiplier)
@@ -378,18 +383,18 @@ struct SegmentPath:Equatable, Sendable  {
                                 let lowestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
                                 
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
-                                connectorPath.line(to: (fromPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
+                                connectorPath.line(to: (fromPoint + NSSize(width: stub, height: 0)) * dimensionMultiplier)
 
-                                let crossover = ConnectorCrossover(fromZ: fromPoint.y, toZ: toPoint.y, extentBottom: await lowestSegment.z1, extentTop: await highestSegment.z2)
+                                let crossover = ConnectorCrossover(fromZ: fromPoint.y, toZ: toPoint.y, extentBottom: await lowestSegment.z1, extentTop: await highestSegment.z2, margin: crossMargin)
                                 let baseChannelY = crossover.baseChannelY
                                 let laneSign = crossover.goUp ? 1.0 : -1.0
-                                channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(fromPoint.x + 0.010, toPoint.x - 0.010))]
+                                channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(fromPoint.x + stub, toPoint.x - stub))]
                                 lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
-                                let channelY = baseChannelY + laneSign * Double(lane) * connectorLaneSpacing
+                                let channelY = baseChannelY + laneSign * Double(lane) * laneGap
 
-                                connectorPath.line(to: NSPoint(x: fromPoint.x + 0.010, y: channelY) * dimensionMultiplier)
-                                connectorPath.line(to: NSPoint(x: toPoint.x - 0.010, y: channelY) * dimensionMultiplier)
-                                connectorPath.line(to: (toPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
+                                connectorPath.line(to: NSPoint(x: fromPoint.x + stub, y: channelY) * dimensionMultiplier)
+                                connectorPath.line(to: NSPoint(x: toPoint.x - stub, y: channelY) * dimensionMultiplier)
+                                connectorPath.line(to: (toPoint + NSSize(width: -stub, height: 0)) * dimensionMultiplier)
                                 connectorPath.line(to: toPoint * dimensionMultiplier)
                             }
                         }
@@ -406,25 +411,25 @@ struct SegmentPath:Equatable, Sendable  {
                                 let lowestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
                                 
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
-                                connectorPath.line(to: (fromPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
+                                connectorPath.line(to: (fromPoint + NSSize(width: -stub, height: 0)) * dimensionMultiplier)
 
-                                let crossover = ConnectorCrossover(fromZ: fromPoint.y, toZ: toPoint.y, extentBottom: await lowestSegment.z1, extentTop: await highestSegment.z2)
+                                let crossover = ConnectorCrossover(fromZ: fromPoint.y, toZ: toPoint.y, extentBottom: await lowestSegment.z1, extentTop: await highestSegment.z2, margin: crossMargin)
                                 let baseChannelY = crossover.baseChannelY
                                 let laneSign = crossover.goUp ? 1.0 : -1.0
-                                channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(fromPoint.x - 0.010, toPoint.x + 0.010))]
+                                channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(fromPoint.x - stub, toPoint.x + stub))]
                                 lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
-                                let channelY = baseChannelY + laneSign * Double(lane) * connectorLaneSpacing
+                                let channelY = baseChannelY + laneSign * Double(lane) * laneGap
 
-                                connectorPath.line(to: NSPoint(x: fromPoint.x - 0.010, y: channelY) * dimensionMultiplier)
-                                connectorPath.line(to: NSPoint(x: toPoint.x + 0.010, y: channelY) * dimensionMultiplier)
-                                connectorPath.line(to: (toPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
+                                connectorPath.line(to: NSPoint(x: fromPoint.x - stub, y: channelY) * dimensionMultiplier)
+                                connectorPath.line(to: NSPoint(x: toPoint.x + stub, y: channelY) * dimensionMultiplier)
+                                connectorPath.line(to: (toPoint + NSSize(width: stub, height: 0)) * dimensionMultiplier)
                                 connectorPath.line(to: toPoint * dimensionMultiplier)
                             }
                             else {
 
-                                channelUses = [ConnectorChannelUse(channel: .vertical(baseX: fromPoint.x - 0.010), span: ConnectorSpan(fromPoint.y, toPoint.y))]
+                                channelUses = [ConnectorChannelUse(channel: .vertical(baseX: fromPoint.x - stub), span: ConnectorSpan(fromPoint.y, toPoint.y))]
                                 lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
-                                let runX = -(0.010 + Double(lane) * connectorLaneSpacing)
+                                let runX = -(stub + Double(lane) * laneGap)
 
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
                                 connectorPath.line(to: (fromPoint + NSSize(width: runX, height: 0)) * dimensionMultiplier)
@@ -454,19 +459,19 @@ struct SegmentPath:Equatable, Sendable  {
 
                     connectorPath.move(to: fromPoint * dimensionMultiplier)
                     
-                    var currentX = fromPoint.x + 0.010
+                    var currentX = fromPoint.x + stub
                     var currentY = fromPoint.y
                     if nextConnection.connector.fromIsOutside {
                         
-                        connectorPath.line(to: (fromPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
+                        connectorPath.line(to: (fromPoint + NSSize(width: stub, height: 0)) * dimensionMultiplier)
                     }
                     else { // from connector is inside
                         
-                        connectorPath.line(to: (fromPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
-                        currentX = fromPoint.x - 0.010
+                        connectorPath.line(to: (fromPoint + NSSize(width: -stub, height: 0)) * dimensionMultiplier)
+                        currentX = fromPoint.x - stub
                     }
                         
-                    let channelConnPoint = nextConnection.connector.toIsOutside ? toPoint + NSSize(width: 0.010, height: 0.0) : toPoint + NSSize(width: -0.010, height: 0.0)
+                    let channelConnPoint = nextConnection.connector.toIsOutside ? toPoint + NSSize(width: stub, height: 0.0) : toPoint + NSSize(width: -stub, height: 0.0)
 
                     let currentIdentity = ViewConnectorIdentity(fromSerialNumber: self.segment.serialNumber, toSerialNumber: otherSeg.serialNumber, fromLocation: nextConnection.connector.fromLocation, toLocation: nextConnection.connector.toLocation)
                     var channelUses:[ConnectorChannelUse] = []
@@ -490,12 +495,12 @@ struct SegmentPath:Equatable, Sendable  {
                             spanBottom = min(spanBottom, await loSeg.z1)
                         }
 
-                        let crossover = ConnectorCrossover(fromZ: fromPoint.y, toZ: toPoint.y, extentBottom: spanBottom, extentTop: spanTop)
+                        let crossover = ConnectorCrossover(fromZ: fromPoint.y, toZ: toPoint.y, extentBottom: spanBottom, extentTop: spanTop, margin: crossMargin)
                         let baseChannelY = crossover.baseChannelY
                         let laneSign = crossover.goUp ? 1.0 : -1.0
                         channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(currentX, channelConnPoint.x))]
                         lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
-                        currentY = baseChannelY + laneSign * Double(lane) * connectorLaneSpacing
+                        currentY = baseChannelY + laneSign * Double(lane) * laneGap
                         connectorPath.line(to: NSPoint(x: currentX, y: currentY) * dimensionMultiplier)
                     }
 
@@ -896,10 +901,24 @@ struct TransformerViewConstants {
 
 // MARK: - Connector lane routing (Phase 1: overlap avoidance)
 
-/// Spacing (in model meters) between parallel connector lanes that share a routing channel.
+// The routing offsets below are the fallback defaults; TransformerView.UpdateConnectorMetrics() overrides them with
+// values derived from the model geometry (Phase 3) so they scale with the physical size of the model.
+
+/// Default spacing (in model meters) between parallel connector lanes that share a routing channel.
 let connectorLaneSpacing = 0.004
-/// The axial clearance (in model meters) between the winding extent and the horizontal cross-over channel a connector routes through.
+/// Default radial offset (in model meters) that a connector steps out of a coil into the adjacent gap.
+let connectorStubDefault = 0.010
+/// Default axial clearance (in model meters) between the winding extent and the horizontal cross-over channel.
 let connectorCrossoverMargin = 0.055
+
+// Fractions used to derive the routing offsets from the model geometry (see UpdateConnectorMetrics). Chosen so that a
+// typical mid-size winding reproduces roughly the previous fixed offsets.
+/// Fraction of the tightest radial gap used for the step-out stub.
+let connectorStubGapFraction = 0.33
+/// Fraction of the tightest radial gap used for the spacing between parallel lanes.
+let connectorLaneGapFraction = 0.15
+/// Fraction of the winding height used for the axial cross-over clearance.
+let connectorCrossoverHeightFraction = 0.035
 /// The on-screen length (in view points at magnification 1) of the lead stub drawn for a coil-end or tapping-gap
 /// (floating / ground / impulse) termination. It is scaled by the current view scale so it stays a consistent size on
 /// screen (like the ground / impulse symbols), and is half of the previous fixed length.
@@ -984,13 +1003,13 @@ func ConnectorLeadVector(for location:Connector.Location, scaleSize:NSSize) -> N
 /// Decide whether a connector should route over the top or under the bottom of the given axial extent, choosing
 /// whichever gives the shorter total vertical travel for the two endpoints. Returns the direction and the base
 /// cross-over channel Y (the height of the horizontal run, before any lane offset), in model coordinates.
-func ConnectorCrossover(fromZ:Double, toZ:Double, extentBottom:Double, extentTop:Double) -> (goUp:Bool, baseChannelY:Double) {
+func ConnectorCrossover(fromZ:Double, toZ:Double, extentBottom:Double, extentTop:Double, margin:Double) -> (goUp:Bool, baseChannelY:Double) {
 
     let costUp = (extentTop - fromZ) + (extentTop - toZ)
     let costDown = (fromZ - extentBottom) + (toZ - extentBottom)
     let goUp = costUp <= costDown
 
-    return (goUp, goUp ? extentTop + connectorCrossoverMargin : extentBottom - connectorCrossoverMargin)
+    return (goUp, goUp ? extentTop + margin : extentBottom - margin)
 }
 
 /// The class that actually displays all the Segments the current model, along with all Connectors. There are also routines to update the mouse cursor depending on the current mode of the TransformerView, as well as mouseDown routines that do different things depending on the mode. See each function for a biref description of what it does. This class derives from NSView and conforms to the NSViewToolTipOwner and NSMenuItemValidation protocols.
@@ -1113,6 +1132,78 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     private var connectorsRebuildRunning = false
     private var connectorsRebuildPending = false
 
+    // MARK: Connector routing offsets (Phase 3: derived from the model geometry so they scale with model size)
+
+    /// The radial offset a connector steps out of a coil into the adjacent gap.
+    var connectorStubOffset = connectorStubDefault
+    /// The spacing between parallel connector lanes in a shared channel.
+    var connectorLaneGap = connectorLaneSpacing
+    /// The axial clearance between the winding extent and a horizontal cross-over channel.
+    var connectorCrossoverClearance = connectorCrossoverMargin
+
+    /// Recompute the connector routing offsets from the model geometry (tightest radial gap and winding height) so that
+    /// they scale with the physical size of the model. Falls back to the previous fixed defaults for degenerate geometry.
+    func UpdateConnectorMetrics() async {
+
+        let allSegments = segments.map { $0.segment }
+        guard !allSegments.isEmpty else { return }
+
+        // Gather each coil's radial extent (inside/outside edge) and the overall axial extent of the winding.
+        var coilInside:[Int:Double] = [:]
+        var coilOutside:[Int:Double] = [:]
+        var windingTop = -Double.greatestFiniteMagnitude
+        var windingBottom = Double.greatestFiniteMagnitude
+
+        for segment in allSegments {
+
+            let rect = await segment.rect
+            let pos = segment.radialPos
+            coilInside[pos] = min(coilInside[pos] ?? Double.greatestFiniteMagnitude, rect.minX)
+            coilOutside[pos] = max(coilOutside[pos] ?? -Double.greatestFiniteMagnitude, rect.maxX)
+            windingTop = max(windingTop, rect.maxY)
+            windingBottom = min(windingBottom, rect.minY)
+        }
+
+        // Smallest radial build across the coils (fallback radial unit when there is only one coil).
+        var minBuild = Double.greatestFiniteMagnitude
+        for pos in coilInside.keys {
+
+            if let inside = coilInside[pos], let outside = coilOutside[pos] {
+
+                minBuild = min(minBuild, outside - inside)
+            }
+        }
+
+        // Smallest positive hilo gap between radially-adjacent coils (preferred radial unit, since stubs sit in the gap).
+        let sortedPositions = coilInside.keys.sorted()
+        var minGap = Double.greatestFiniteMagnitude
+        if sortedPositions.count > 1 {
+
+            for i in 0 ..< (sortedPositions.count - 1) {
+
+                if let curOutside = coilOutside[sortedPositions[i]], let nextInside = coilInside[sortedPositions[i + 1]] {
+
+                    let gap = nextInside - curOutside
+                    if gap > 0 { minGap = min(minGap, gap) }
+                }
+            }
+        }
+
+        let radialUnit = minGap.isFinite ? minGap : (minBuild.isFinite ? minBuild : 0.0)
+        let windingHeight = windingTop - windingBottom
+
+        if radialUnit > 0 {
+
+            self.connectorStubOffset = radialUnit * connectorStubGapFraction
+            self.connectorLaneGap = radialUnit * connectorLaneGapFraction
+        }
+
+        if windingHeight > 0 {
+
+            self.connectorCrossoverClearance = windingHeight * connectorCrossoverHeightFraction
+        }
+    }
+
     /// Rebuild every connector's ViewConnector from scratch. Call this whenever the model changes, or whenever the
     /// view scale changes (so that scale-dependent geometry — the coil-end / gap lead stubs — re-fits to the new zoom).
     func RebuildConnectors() {
@@ -1126,6 +1217,9 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         connectorsRebuildRunning = true
 
         Task {
+
+            // Refresh the geometry-derived routing offsets before rebuilding (the model may have changed).
+            await self.UpdateConnectorMetrics()
 
             repeat {
 
