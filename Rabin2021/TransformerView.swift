@@ -547,7 +547,7 @@ struct SegmentPath:Equatable, Sendable  {
                 }
                 else if toLoc == .impulse {
 
-                    let impConnector = ViewConnector.ImpulseConnection(connectionPoint: toPoint * dimensionMultiplier, segments: (self.segment, nil), connector: nextConnection.connector, owner: SegmentPath.txfoView!, connectorDirection: .right)
+                    let impConnector = ViewConnector.ImpulseConnection(connectionPoint: toPoint * dimensionMultiplier, segments: (self.segment, nil), connector: nextConnection.connector, owner: SegmentPath.txfoView!, connectorDirection: specialDirection)
                     txfoView.viewConnectors.append(impConnector)
                 }
 
@@ -810,10 +810,22 @@ struct ViewConnector : Equatable {
         
         // Get the scale from the scrollView
         let scaleSize = owner.convert(NSSize(width: 1.0, height: 1.0), from: owner.scrollView)
-        
-        // set up the lead so that it is pointing to the right
-        let leadEndPoint = NSPoint(x: 10.0 * scaleSize.width, y: 0.0)
-        
+
+        // set theta from the direction so the lead points into free space (matching GroundConnection)
+        var theta = 0.0
+        if connectorDirection == .up {
+            theta = 0.5 * π
+        }
+        else if connectorDirection == .left {
+            theta = π
+        }
+        else if connectorDirection == .down {
+            theta = 1.5 * π
+        }
+
+        // set up the lead (it points to the right at theta = 0) and rotate it to the requested direction
+        let leadEndPoint = NSPoint(x: 10.0 * scaleSize.width, y: 0.0).Rotate(theta: theta)
+
         let circleRadius = ViewConnector.connectorCircleRadius * scaleSize.width
         let circleRectOrigin = connectionPoint + NSSize(width: -circleRadius, height: -circleRadius)
         let circleRect = NSRect(origin: circleRectOrigin, size: NSSize(width: circleRadius * 2, height: circleRadius * 2))
