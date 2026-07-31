@@ -199,8 +199,13 @@ struct SegmentPath:Equatable, Sendable  {
                 
         let model = SegmentPath.txfoView!.appController!.currentModel!
         let txfoView = SegmentPath.txfoView!
-        
-        for nextConnection in await self.segment.connections {
+
+        // The current view scale (as used to size the ground / impulse symbols), so lead stubs stay a consistent size on screen.
+        let scaleSize = txfoView.convert(NSSize(width: 1.0, height: 1.0), from: txfoView.scrollView)
+
+        let selfConnections = await self.segment.connections
+
+        for nextConnection in selfConnections {
             
             if let otherSegmentID = nextConnection.segmentID {
                                 
@@ -278,10 +283,25 @@ struct SegmentPath:Equatable, Sendable  {
                     toPoint = segRect.BottomLeft()
                 
                 default:
-                    
+
                     toPoint = NSPoint()
                 }
-                
+
+                // Coil ends and tapping gaps carry a floating "lead" stub. If this connection starts and/or ends at
+                // such a point, attach it to the tip of the existing lead rather than drawing a new stub beside it.
+                if let leadVector = ConnectorLeadVector(for: nextConnection.connector.fromLocation, scaleSize: scaleSize),
+                   selfConnections.contains(where: { $0.connector.fromLocation == nextConnection.connector.fromLocation && $0.connector.toLocation == .floating }) {
+
+                    fromPoint = fromPoint + leadVector
+                }
+
+                let otherConnections = await otherSeg.connections
+                if let leadVector = ConnectorLeadVector(for: nextConnection.connector.toLocation, scaleSize: scaleSize),
+                   otherConnections.contains(where: { $0.connector.fromLocation == nextConnection.connector.toLocation && $0.connector.toLocation == .floating }) {
+
+                    toPoint = toPoint + leadVector
+                }
+
                 // check if same coil
                 if await otherSeg.location.radial == self.segment.location.radial {
                     
@@ -290,20 +310,28 @@ struct SegmentPath:Equatable, Sendable  {
                         
                         connectorPath.move(to: fromPoint * dimensionMultiplier)
                         connectorPath.line(to: toPoint * dimensionMultiplier)
-                        
+
                         txfoView.viewConnectors.append(ViewConnector(segments: (self.segment, otherSeg), pathColor: self.segmentColor, connectorType: .adjacent, connectorDirection: .up, connector: nextConnection.connector, path: connectorPath))
                     }
                     else {
                         // non-adjacent section, same coil
                         print("Got a non-adjacent connection from Segment#\(self.segment.serialNumber) to Segment#\(otherSeg.serialNumber)")
-                        
+
+                        let currentIdentity = ViewConnectorIdentity(fromSerialNumber: self.segment.serialNumber, toSerialNumber: otherSeg.serialNumber, fromLocation: nextConnection.connector.fromLocation, toLocation: nextConnection.connector.toLocation)
+                        var channelUses:[ConnectorChannelUse] = []
+                        var lane = 0
+
                         if nextConnection.connector.fromIsOutside {
                             
                             if nextConnection.connector.toIsOutside {
-                                
+
+                                channelUses = [ConnectorChannelUse(channel: .vertical(baseX: fromPoint.x + 0.010), span: ConnectorSpan(fromPoint.y, toPoint.y))]
+                                lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
+                                let runX = 0.010 + Double(lane) * connectorLaneSpacing
+
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
-                                connectorPath.line(to: (fromPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
-                                connectorPath.line(to: (toPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
+                                connectorPath.line(to: (fromPoint + NSSize(width: runX, height: 0)) * dimensionMultiplier)
+                                connectorPath.line(to: (toPoint + NSSize(width: runX, height: 0)) * dimensionMultiplier)
                                 connectorPath.line(to: toPoint * dimensionMultiplier)
                             }
                             else {
@@ -318,24 +346,18 @@ struct SegmentPath:Equatable, Sendable  {
                                 
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
                                 connectorPath.line(to: (fromPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
-                                
+
                                 let startHtFraction = await (self.segment.zMean - lowestSegment.z1) / (highestSegment.z2 - lowestSegment.z1)
-                                if startHtFraction < 0.5 {
-                                    
-                                    // go down
-                                    await connectorPath.line(to: NSPoint(x: fromPoint.x + 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
-                                    await connectorPath.line(to: NSPoint(x: toPoint.x - 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
-                                    connectorPath.line(to: (toPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
-                                    connectorPath.line(to: toPoint * dimensionMultiplier)
-                                }
-                                else {
-                                    
-                                    // go up
-                                    await connectorPath.line(to: NSPoint(x: fromPoint.x + 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
-                                    await connectorPath.line(to: NSPoint(x: toPoint.x - 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
-                                    connectorPath.line(to: (toPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
-                                    connectorPath.line(to: toPoint * dimensionMultiplier)
-                                }
+                                let baseChannelY = startHtFraction < 0.5 ? (await lowestSegment.z1) - 0.055 : (await highestSegment.z2) + 0.055
+                                let laneSign = startHtFraction < 0.5 ? -1.0 : 1.0
+                                channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(fromPoint.x + 0.010, toPoint.x - 0.010))]
+                                lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
+                                let channelY = baseChannelY + laneSign * Double(lane) * connectorLaneSpacing
+
+                                connectorPath.line(to: NSPoint(x: fromPoint.x + 0.010, y: channelY) * dimensionMultiplier)
+                                connectorPath.line(to: NSPoint(x: toPoint.x - 0.010, y: channelY) * dimensionMultiplier)
+                                connectorPath.line(to: (toPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
+                                connectorPath.line(to: toPoint * dimensionMultiplier)
                             }
                         }
                         else { // fromConnector is inside
@@ -352,35 +374,36 @@ struct SegmentPath:Equatable, Sendable  {
                                 
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
                                 connectorPath.line(to: (fromPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
-                                
+
                                 let startHtFraction = await (self.segment.zMean - lowestSegment.z1) / (highestSegment.z2 - lowestSegment.z1)
-                                if startHtFraction < 0.5 {
-                                    
-                                    // go down
-                                    await connectorPath.line(to: NSPoint(x: fromPoint.x - 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
-                                    await connectorPath.line(to: NSPoint(x: toPoint.x + 0.010, y: lowestSegment.z1 - 0.025 - 0.03) * dimensionMultiplier)
-                                    connectorPath.line(to: (toPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
-                                    connectorPath.line(to: toPoint * dimensionMultiplier)
-                                }
-                                else {
-                                    
-                                    // go up
-                                    await connectorPath.line(to: NSPoint(x: fromPoint.x - 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
-                                    await connectorPath.line(to: NSPoint(x: toPoint.x + 0.010, y: highestSegment.z2 + 0.025 + 0.03) * dimensionMultiplier)
-                                    connectorPath.line(to: (toPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
-                                    connectorPath.line(to: toPoint * dimensionMultiplier)
-                                }
+                                let baseChannelY = startHtFraction < 0.5 ? (await lowestSegment.z1) - 0.055 : (await highestSegment.z2) + 0.055
+                                let laneSign = startHtFraction < 0.5 ? -1.0 : 1.0
+                                channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(fromPoint.x - 0.010, toPoint.x + 0.010))]
+                                lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
+                                let channelY = baseChannelY + laneSign * Double(lane) * connectorLaneSpacing
+
+                                connectorPath.line(to: NSPoint(x: fromPoint.x - 0.010, y: channelY) * dimensionMultiplier)
+                                connectorPath.line(to: NSPoint(x: toPoint.x + 0.010, y: channelY) * dimensionMultiplier)
+                                connectorPath.line(to: (toPoint + NSSize(width: 0.010, height: 0)) * dimensionMultiplier)
+                                connectorPath.line(to: toPoint * dimensionMultiplier)
                             }
                             else {
-                                
+
+                                channelUses = [ConnectorChannelUse(channel: .vertical(baseX: fromPoint.x - 0.010), span: ConnectorSpan(fromPoint.y, toPoint.y))]
+                                lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
+                                let runX = -(0.010 + Double(lane) * connectorLaneSpacing)
+
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
-                                connectorPath.line(to: (fromPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
-                                connectorPath.line(to: (toPoint + NSSize(width: -0.010, height: 0)) * dimensionMultiplier)
+                                connectorPath.line(to: (fromPoint + NSSize(width: runX, height: 0)) * dimensionMultiplier)
+                                connectorPath.line(to: (toPoint + NSSize(width: runX, height: 0)) * dimensionMultiplier)
                                 connectorPath.line(to: toPoint * dimensionMultiplier)
                             }
                         }
-                        
-                        txfoView.viewConnectors.append(ViewConnector(segments: (self.segment, otherSeg), pathColor: self.segmentColor, connectorType: .adjacent, connectorDirection: .variable, connector: nextConnection.connector, path: connectorPath))
+
+                        var nonAdjacentConnector = ViewConnector(segments: (self.segment, otherSeg), pathColor: self.segmentColor, connectorType: .adjacent, connectorDirection: .variable, connector: nextConnection.connector, path: connectorPath)
+                        nonAdjacentConnector.channelUses = channelUses
+                        nonAdjacentConnector.lane = lane
+                        txfoView.viewConnectors.append(nonAdjacentConnector)
                     }
                 }
                 else {
@@ -411,77 +434,69 @@ struct SegmentPath:Equatable, Sendable  {
                         currentX = fromPoint.x - 0.010
                     }
                         
+                    let channelConnPoint = nextConnection.connector.toIsOutside ? toPoint + NSSize(width: 0.010, height: 0.0) : toPoint + NSSize(width: -0.010, height: 0.0)
+
+                    let currentIdentity = ViewConnectorIdentity(fromSerialNumber: self.segment.serialNumber, toSerialNumber: otherSeg.serialNumber, fromLocation: nextConnection.connector.fromLocation, toLocation: nextConnection.connector.toLocation)
+                    var channelUses:[ConnectorChannelUse] = []
+                    var lane = 0
+
                     if !fromAndToInSameHilo {
-                        
-                        if startHtFraction < 0.5 {
-                            
-                            // go down
-                            currentY = await lowestSegment.z1 - 0.025 - 0.03
-                            connectorPath.line(to: NSPoint(x: currentX, y: currentY) * dimensionMultiplier)
-                        }
-                        else {
-                            
-                            // go up
-                            currentY = await highestSegment.z2 + 0.025 + 0.03
-                            connectorPath.line(to: NSPoint(x: currentX, y: currentY) * dimensionMultiplier)
-                            
-                        }
+
+                        let baseChannelY = startHtFraction < 0.5 ? (await lowestSegment.z1) - 0.055 : (await highestSegment.z2) + 0.055
+                        let laneSign = startHtFraction < 0.5 ? -1.0 : 1.0
+                        channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(currentX, channelConnPoint.x))]
+                        lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
+                        currentY = baseChannelY + laneSign * Double(lane) * connectorLaneSpacing
+                        connectorPath.line(to: NSPoint(x: currentX, y: currentY) * dimensionMultiplier)
                     }
-                    
-                    var channelConnPoint = NSPoint()
-                    if nextConnection.connector.toIsOutside {
-                        
-                        channelConnPoint = toPoint + NSSize(width: 0.010, height: 0.0)
-                    }
-                    else {
-                        
-                        channelConnPoint = toPoint + NSSize(width: -0.010, height: 0.0)
-                    }
-                    
+
                     connectorPath.line(to: NSPoint(x: channelConnPoint.x, y: currentY) * dimensionMultiplier)
                     connectorPath.line(to: channelConnPoint * dimensionMultiplier)
                     connectorPath.line(to: toPoint * dimensionMultiplier)
-                    
-                    txfoView.viewConnectors.append(ViewConnector(segments: (self.segment, otherSeg), pathColor: self.segmentColor, connectorType: .general, connectorDirection: .variable, connector: nextConnection.connector, path: connectorPath))
+
+                    var coilToCoilConnector = ViewConnector(segments: (self.segment, otherSeg), pathColor: self.segmentColor, connectorType: .general, connectorDirection: .variable, connector: nextConnection.connector, path: connectorPath)
+                    coilToCoilConnector.channelUses = channelUses
+                    coilToCoilConnector.lane = lane
+                    txfoView.viewConnectors.append(coilToCoilConnector)
                 }
             }
             else {
                 
-                // must be a 'termination' (ground, impulse, or floating)
+                // must be a 'termination' (ground, impulse, or floating). This draws the "lead" stub for a coil end or
+                // tapping gap; connectors to this point attach to the tip of this lead (see the routed branches above).
                 let fromLoc = nextConnection.connector.fromLocation
+                let leadVector = ConnectorLeadVector(for: fromLoc, scaleSize: scaleSize) ?? NSPoint()
+                toPoint = fromPoint + NSSize(width: leadVector.x, height: leadVector.y)
+
                 var specialDirection = ViewConnector.direction.down
-                if fromLoc == .center_lower || fromLoc == .inside_lower || fromLoc == .outside_lower {
-                    
-                    toPoint = fromPoint + NSSize(width: 0.0, height: -0.025)
-                }
-                else if fromLoc == .center_upper || fromLoc == .inside_upper || fromLoc == .outside_upper {
-                    
-                    toPoint = fromPoint + NSSize(width: 0.0, height: 0.025)
+                if fromLoc == .center_upper || fromLoc == .inside_upper || fromLoc == .outside_upper {
+
                     specialDirection = .up
                 }
                 else if fromLoc == .outside_center {
-                    
-                    toPoint = fromPoint + NSSize(width: 0.025, height: 0.0)
+
                     specialDirection = .right
                 }
-                
+                else if fromLoc == .inside_center {
+
+                    specialDirection = .left
+                }
+
                 connectorPath.move(to: fromPoint * dimensionMultiplier)
                 connectorPath.line(to: toPoint * dimensionMultiplier)
-                
+
                 let toLoc = nextConnection.connector.toLocation
                 if toLoc == .ground {
-                    
+
                     let gndConnector = ViewConnector.GroundConnection(connectionPoint: toPoint * dimensionMultiplier, segments: (self.segment, nil), connector: nextConnection.connector, owner: SegmentPath.txfoView!, connectorDirection: specialDirection)
-                    
                     txfoView.viewConnectors.append(gndConnector)
                 }
                 else if toLoc == .impulse {
-                    
+
                     let impConnector = ViewConnector.ImpulseConnection(connectionPoint: toPoint * dimensionMultiplier, segments: (self.segment, nil), connector: nextConnection.connector, owner: SegmentPath.txfoView!, connectorDirection: .right)
-                    
                     txfoView.viewConnectors.append(impConnector)
                 }
-                
+
                 txfoView.viewConnectors.append(ViewConnector(segments: (self.segment, nil), pathColor: self.segmentColor, connectorType: .general, connectorDirection: specialDirection, connector: nextConnection.connector, path: connectorPath))
             }
         }
@@ -615,7 +630,48 @@ struct ViewConnector : Equatable {
     
     /// The destination rectangle (in model coordinates) of the image
     var imageRect:NSRect = NSRect()
-    
+
+    // MARK: Phase 1 routing metadata (used to spread overlapping connectors into parallel lanes)
+
+    /// The routing channels this connector occupies, if it is lane-managed (empty ⇒ not lane-managed).
+    var channelUses:[ConnectorChannelUse] = []
+    /// The parallel-lane index assigned to this connector within its shared channels.
+    var lane:Int = 0
+
+    /// The identity of the logical connection this ViewConnector belongs to (duplicates share an identity).
+    var identity:ViewConnectorIdentity {
+
+        return ViewConnectorIdentity(fromSerialNumber: segments.from.serialNumber, toSerialNumber: segments.to?.serialNumber, fromLocation: connector.fromLocation, toLocation: connector.toLocation)
+    }
+
+    /// Assign the lowest lane index not used by any already-placed connector that shares a channel with an
+    /// overlapping span. Connectors that belong to the connection being (re)drawn are excluded, and duplicate
+    /// copies of any other connection are counted only once, so the result is stable across redraws.
+    static func assignLane(uses:[ConnectorChannelUse], existing:[ViewConnector], excluding identity:ViewConnectorIdentity) -> Int {
+
+        guard !uses.isEmpty else { return 0 }
+
+        var seenIdentities:Set<ViewConnectorIdentity> = []
+        var usedLanes:Set<Int> = []
+
+        for existingConnector in existing {
+
+            let existingIdentity = existingConnector.identity
+            if existingIdentity == identity { continue }
+            if !seenIdentities.insert(existingIdentity).inserted { continue }
+
+            let conflicts = existingConnector.channelUses.contains { existingUse in
+                uses.contains { newUse in existingUse.channel == newUse.channel && existingUse.span.overlaps(newUse.span) }
+            }
+
+            if conflicts { usedLanes.insert(existingConnector.lane) }
+        }
+
+        var lane = 0
+        while usedLanes.contains(lane) { lane += 1 }
+        return lane
+    }
+
     /// The end points of the path
     var endPoints:(p1:NSPoint, p2:NSPoint) {
         
@@ -784,9 +840,94 @@ struct ViewConnector : Equatable {
 
 /// Constants associated with TransformerView that are placed here to get them out of the MainActor
 struct TransformerViewConstants {
-    
+
     /// The distance (in meters) that is used to highlight the connectors (used for certain modes)
     static let connectorDistanceTolerance = 0.003 // meters
+}
+
+// MARK: - Connector lane routing (Phase 1: overlap avoidance)
+
+/// Spacing (in model meters) between parallel connector lanes that share a routing channel.
+let connectorLaneSpacing = 0.004
+/// The on-screen length (in view points at magnification 1) of the lead stub drawn for a coil-end or tapping-gap
+/// (floating / ground / impulse) termination. It is scaled by the current view scale so it stays a consistent size on
+/// screen (like the ground / impulse symbols), and is half of the previous fixed length.
+let connectorLeadScreenLength = 12.5
+/// Coordinate quantum (in model meters) used to decide whether two connector runs share a channel.
+private let connectorChannelQuantum = 0.002
+
+/// Identifies a routing channel (a shared straight run) that connectors can occupy, so that several
+/// connectors using the same channel can be spread out into parallel lanes instead of overlapping.
+struct ConnectorChannel:Hashable {
+
+    enum Orientation { case vertical, horizontal }
+
+    let orientation:Orientation
+    /// The quantized base coordinate of the run (the x-value for a vertical run, the y-value for a horizontal run).
+    let coordinateKey:Int
+
+    static func vertical(baseX:Double) -> ConnectorChannel {
+
+        return ConnectorChannel(orientation: .vertical, coordinateKey: Int((baseX / connectorChannelQuantum).rounded()))
+    }
+
+    static func horizontal(baseY:Double) -> ConnectorChannel {
+
+        return ConnectorChannel(orientation: .horizontal, coordinateKey: Int((baseY / connectorChannelQuantum).rounded()))
+    }
+}
+
+/// A connector's occupancy of a channel over a given span (the extent along the run direction), in model meters.
+struct ConnectorChannelUse {
+
+    let channel:ConnectorChannel
+    let span:ClosedRange<Double>
+}
+
+/// Identifies a logical connection so that duplicate ViewConnectors (e.g. a ground symbol plus its lead, or a
+/// connector that is re-drawn on an incremental update) are counted only once during lane assignment.
+struct ViewConnectorIdentity:Hashable {
+
+    let fromSerialNumber:Int
+    let toSerialNumber:Int?
+    let fromLocation:Connector.Location
+    let toLocation:Connector.Location
+}
+
+/// A closed range built from the two given values in either order.
+func ConnectorSpan(_ a:Double, _ b:Double) -> ClosedRange<Double> {
+
+    return Swift.min(a, b)...Swift.max(a, b)
+}
+
+/// The lead (stub) vector, in model coordinates, that a floating coil-end / tapping-gap termination draws from its
+/// take-off location (matching the geometry drawn in the termination branch of SetUpConnectors). The length is derived
+/// from the current view scale (`scaleSize`, as used by the ground / impulse symbols) so the lead is a consistent size
+/// on screen, then divided by dimensionMultiplier to bring it back into model coordinates. A connector to a location
+/// that has such a lead attaches to the tip (take-off point + this vector) instead of drawing its own stub. Returns nil
+/// for locations that do not have a lead.
+func ConnectorLeadVector(for location:Connector.Location, scaleSize:NSSize) -> NSPoint? {
+
+    let dx = connectorLeadScreenLength * scaleSize.width / dimensionMultiplier
+    let dy = connectorLeadScreenLength * scaleSize.height / dimensionMultiplier
+
+    switch location {
+
+    case .center_lower, .inside_lower, .outside_lower:
+        return NSPoint(x: 0.0, y: -dy)
+
+    case .center_upper, .inside_upper, .outside_upper:
+        return NSPoint(x: 0.0, y: dy)
+
+    case .outside_center:
+        return NSPoint(x: dx, y: 0.0)
+
+    case .inside_center:
+        return NSPoint(x: -dx, y: 0.0)
+
+    default:
+        return nil
+    }
 }
 
 /// The class that actually displays all the Segments the current model, along with all Connectors. There are also routines to update the mouse cursor depending on the current mode of the TransformerView, as well as mouseDown routines that do different things depending on the mode. See each function for a biref description of what it does. This class derives from NSView and conforms to the NSViewToolTipOwner and NSMenuItemValidation protocols.
@@ -897,21 +1038,50 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     /// An array of all the Segment paths in the model.
     /// - Warning: If it is necessary to add a large number of SegmentPaths (when initializing the model, for example), it is better to create a separate array in the calling routine and append it (or assign it, for initialization) to this property. The reason for this is that any change to the segments array will cause a recalculation of all the ViewConnectors, which tends to slow things down...a lot.
     var segments:[SegmentPath] = [] {
-        
+
         didSet {
-            
-            Task {
+
+            self.RebuildConnectors()
+        }
+    }
+
+    /// True while a connector rebuild is in progress, and whether another rebuild was requested while one was running.
+    /// These coalesce bursts of rebuild requests (e.g. rapid zooming) into a single serialized re-run.
+    private var connectorsRebuildRunning = false
+    private var connectorsRebuildPending = false
+
+    /// Rebuild every connector's ViewConnector from scratch. Call this whenever the model changes, or whenever the
+    /// view scale changes (so that scale-dependent geometry — the coil-end / gap lead stubs — re-fits to the new zoom).
+    func RebuildConnectors() {
+
+        if connectorsRebuildRunning {
+
+            connectorsRebuildPending = true
+            return
+        }
+
+        connectorsRebuildRunning = true
+
+        Task {
+
+            repeat {
+
+                connectorsRebuildPending = false
+
                 let allSegments = segments.map { $0.segment }
                 var maskSegments:[Int] = []
                 self.viewConnectors = []
                 for nextSegment in segments {
-                    
+
                     await nextSegment.SetUpConnectors(allSegments: allSegments, maskSegments: maskSegments)
                     maskSegments.append(nextSegment.segment.serialNumber)
                 }
-                
+
                 self.needsDisplay = true
-            }
+
+            } while connectorsRebuildPending
+
+            connectorsRebuildRunning = false
         }
     }
     
@@ -1025,6 +1195,15 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         
         // call our function createTrackingArea() so that we can check if the mouse is in our window for cursor-changing
         self.createTrackingArea()
+
+        // Rebuild the connectors when a trackpad pinch-zoom ends so that the scale-dependent lead stubs re-fit to the new zoom.
+        NotificationCenter.default.addObserver(self, selector: #selector(handleLiveMagnifyDidEnd(_:)), name: NSScrollView.didEndLiveMagnifyNotification, object: self.scrollView)
+    }
+
+    // Called when a trackpad pinch-zoom on the scrollView finishes.
+    @objc func handleLiveMagnifyDidEnd(_ notification: Notification) {
+
+        self.RebuildConnectors()
     }
     
     // We want to get first-responder messages, so we need to override the property and return true
@@ -1989,29 +2168,38 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         self.boundary = self.bounds
         
         self.boundary.size.width = (tankWallR - coreRadius) * dimensionMultiplier
-        
+
         self.needsDisplay = true
+
+        // re-fit the scale-dependent lead stubs to the new zoom
+        self.RebuildConnectors()
     }
-    
+
     // the zoom in/out ratio (maybe consider making this user-settable)
     var zoomRatio:CGFloat = 0.75
-    
+
     func handleZoomOut()
     {
         // Define the center of the new view and multiply the current scrollView magnification by the zoomRatio global to get the new view rectangle
         let contentCenter = NSPoint(x: self.scrollView.contentView.bounds.origin.x + self.scrollView.contentView.bounds.width / 2.0, y: self.scrollView.contentView.bounds.origin.y + self.scrollView.contentView.bounds.height / 2.0)
         self.scrollView.setMagnification(scrollView.magnification * zoomRatio, centeredAt: contentCenter)
         self.needsDisplay = true
+
+        // re-fit the scale-dependent lead stubs to the new zoom
+        self.RebuildConnectors()
     }
-    
+
     func handleZoomIn()
     {
         // Define the center of the new view and divide the current scrollView magnification by the zoomRatio global to get the new view rectangle
         let contentCenter = NSPoint(x: self.scrollView.contentView.bounds.origin.x + self.scrollView.contentView.bounds.width / 2.0, y: self.scrollView.contentView.bounds.origin.y + self.scrollView.contentView.bounds.height / 2.0)
         self.scrollView.setMagnification(scrollView.magnification / zoomRatio, centeredAt: contentCenter)
         self.needsDisplay = true
+
+        // re-fit the scale-dependent lead stubs to the new zoom
+        self.RebuildConnectors()
     }
-    
+
     func handleZoomRect(zRect:NSRect)
     {
         // reset the zoomRect
@@ -2031,5 +2219,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         // set the magnification (it is guaranteed to be a "zoom in") and center it at the new center point
         self.scrollView.setMagnification(scrollView.magnification / zoomFactor, centeredAt: clipView.convert(contentCenter, from: self))
         self.needsDisplay = true
+
+        // re-fit the scale-dependent lead stubs to the new zoom
+        self.RebuildConnectors()
     }
 }
