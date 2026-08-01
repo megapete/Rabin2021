@@ -503,20 +503,30 @@ actor SimulationModel {
     }
     
     struct SimulationStepResult {
-        
+
         let volts:[Double]
         let amps:[Double]
         let time:Double
     }
-    
-    func DoSimulate(waveForm:WaveForm, startTime:Double, endTime:Double, epsilon:Double, deltaT:Double = 0.05E-6, Vstart:[Double]? = nil, Istart:[Double]? = nil) async -> [SimulationStepResult] {
-        
-        // We run the simulation twice: the first time with the default fundamental frequency at each disc, then calculate the real fundamental frequencies (storing them), then run the sim a second time with the calculated fundamental frequencies
-        
-        let interimResult = await SimulateRK45(waveForm: waveForm, startTime: startTime, endTime: endTime, epsilon: epsilon, deltaT: deltaT, Vstart: Vstart, Istart: Istart)
-        
+
+    /// A progress report emitted by a running simulation. The 'fractionComplete' value covers the _entire_ DoSimulate() call (ie: both RK45 passes), so it advances monotonically from 0 to 1 over the whole run.
+    struct ProgressUpdate:Sendable {
+
+        let fractionComplete:Double
+        let phase:String
+    }
+
+    /// Run the full simulation (two RK45 passes).
+    /// - parameter progress: An optional AsyncStream continuation that receives ProgressUpdates as the simulation advances. The continuation is _not_ finished by this routine - the caller owns it.
+    /// - returns: An array of SimulationStepResults, or an empty array if the simulation failed **or was cancelled**. Use Task.isCancelled at the call site to tell the two apart.
+    func DoSimulate(waveForm:WaveForm, startTime:Double, endTime:Double, epsilon:Double, deltaT:Double = 0.05E-6, Vstart:[Double]? = nil, Istart:[Double]? = nil, progress:AsyncStream<ProgressUpdate>.Continuation? = nil) async -> [SimulationStepResult] {
+
+        // We run the simulation twice: the first time with the default fundamental frequency at each disc, then calculate the real fundamental frequencies (storing them), then run the sim a second time with the calculated fundamental frequencies. Each pass gets half of the reported progress range.
+
+        let interimResult = await SimulateRK45(waveForm: waveForm, startTime: startTime, endTime: endTime, epsilon: epsilon, deltaT: deltaT, Vstart: Vstart, Istart: Istart, progress: progress, progressRange: 0.0..<0.5, phase: "Pass 1 of 2")
+
         guard !interimResult.isEmpty else {
-            
+
             return []
         }
         
@@ -536,9 +546,14 @@ actor SimulationModel {
         }
         
         eddyFreqs = newEddyFreqs
-        
-        let result = await SimulateRK45(waveForm: waveForm, startTime: startTime, endTime: endTime, epsilon: epsilon, deltaT: deltaT, Vstart: Vstart, Istart: Istart)
-        
+
+        if Task.isCancelled {
+
+            return []
+        }
+
+        let result = await SimulateRK45(waveForm: waveForm, startTime: startTime, endTime: endTime, epsilon: epsilon, deltaT: deltaT, Vstart: Vstart, Istart: Istart, progress: progress, progressRange: 0.5..<1.0, phase: "Pass 2 of 2")
+
         return result
     }
     
@@ -748,28 +763,46 @@ actor SimulationModel {
     /// - parameter Vstart: An optional set of initial voltages at time 'startTime'. If 'nil', then it is assumed that initial voltages are 0
     /// - parameter Istart: An optional set of initial currents at time 'startTime'. If 'nil', then it is assumed that initial currents are 0
     /// - returns: An array of SimulationStepResults
+    /// - parameter progress: An optional AsyncStream continuation that receives ProgressUpdates as the run advances
+    /// - parameter progressRange: The sub-range of the overall (0...1) progress that this call is responsible for
+    /// - parameter phase: The text that identifies this pass in the emitted ProgressUpdates
     /// - Note: Only the voltage is used to determine whether the calculation is within tolerance (ie: current is not used)
-    func SimulateRK45(waveForm:WaveForm, startTime:Double, endTime:Double, epsilon:Double, deltaT:Double = 0.05E-6, Vstart:[Double]? = nil, Istart:[Double]? = nil) async -> [SimulationStepResult] {
-        
+    /// - Note: Returns an empty array if the enclosing Task is cancelled
+    func SimulateRK45(waveForm:WaveForm, startTime:Double, endTime:Double, epsilon:Double, deltaT:Double = 0.05E-6, Vstart:[Double]? = nil, Istart:[Double]? = nil, progress:AsyncStream<ProgressUpdate>.Continuation? = nil, progressRange:Range<Double> = 0.0..<1.0, phase:String = "") async -> [SimulationStepResult] {
+
         guard startTime < endTime else {
-            
+
             DLog("Start must be less than end!")
             return []
         }
-        
+
         var V:[Double] = await Vstart == nil ? Array(repeating: 0.0, count: baseC.rows) : Vstart!
         var I:[Double] = await Istart == nil ? Array(repeating: 0.0, count: M.rows) : Istart!
-        
+
         var result:[SimulationStepResult] = [SimulationStepResult(volts: V, amps: I, time: startTime)]
-        
+
         var currentTime = startTime
         var h = deltaT
         var unusedSteps = 0
-        
+
+        // Progress is reported as the fraction of the simulated time-span that has been covered. Note that the adaptive time-step makes this decidedly non-linear in wall-clock time: h is small early on (when dV/dt at the impulse front is large) and grows as the wave flattens out, so the indicator crawls at first and then accelerates. It is monotonic, though - a rejected step simply doesn't advance currentTime.
+        let timeSpan = endTime - startTime
+        let progressSpan = progressRange.upperBound - progressRange.lowerBound
+        var lastReportedPU = -1.0
+
+        progress?.yield(ProgressUpdate(fractionComplete: progressRange.lowerBound, phase: phase))
+
         while currentTime < endTime {
-            
+
+            // Cancellation is cooperative, so bail out here rather than at the (throttled) progress-report site below - a long run of rejected steps would otherwise never reach that site.
+            if Task.isCancelled {
+
+                DLog("Simulation cancelled at time \(currentTime * 1.0E6) µs")
+                return []
+            }
+
             h = min(h, endTime - currentTime)
-            
+
             // This all comes from the pdf document "rungekutta_adaptive_timestep"
             let f1 = await DifferentialFormula(waveForm: waveForm, t: currentTime, V: V, I: I)
             let dVk1 = h * f1.dVdt
@@ -865,6 +898,17 @@ actor SimulationModel {
                 
                 let nextStepResult = SimulationStepResult(volts: V, amps: I, time: currentTime)
                 result.append(nextStepResult)
+
+                // Only report when the indicator would actually move. A 100pt-wide bar has about 100 useful positions, so 0.2% granularity is already generous, and a run of 10^5+ steps would otherwise swamp the main actor with updates.
+                let pu = (currentTime - startTime) / timeSpan
+                if pu - lastReportedPU >= 0.002 {
+
+                    lastReportedPU = pu
+                    progress?.yield(ProgressUpdate(fractionComplete: progressRange.lowerBound + pu * progressSpan, phase: phase))
+
+                    // Guarantees the loop stays preemptible (and cancellable) even if none of the awaits above ever actually suspend
+                    await Task.yield()
+                }
             }
             else {
                 
@@ -875,6 +919,9 @@ actor SimulationModel {
             h = delV * h
         }
         
+        // The throttle above can swallow the last report if the final (clamped) step is a small one, so pin the indicator to the end of this pass's range explicitly
+        progress?.yield(ProgressUpdate(fractionComplete: progressRange.upperBound, phase: phase))
+
         DLog("Total number of recalculated steps: \(unusedSteps)")
         return result
     }

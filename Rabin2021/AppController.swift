@@ -127,6 +127,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// Simulation
     @IBOutlet weak var createSimModelMenuItem: NSMenuItem!
     @IBOutlet weak var simulateMenuItem: NSMenuItem!
+    @IBOutlet weak var cancelSimulationMenuItem: NSMenuItem!
     @IBOutlet weak var showWaveformsMenuItem: NSMenuItem!
     @IBOutlet weak var showCoilResultsMenuItem: NSMenuItem!
     @IBOutlet weak var showVoltageDiffsMenuItem: NSMenuItem!
@@ -162,6 +163,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     /// The current simulation model that is stored in memory
     var currentSimModel:SimulationModel? = nil
+
+    /// The currently-running simulation, if any. Held so that it can be cancelled (and so that a second simulation can't be launched on top of a running one).
+    var runningSimulationTask:Task<Void, Never>? = nil
     
     struct SimulationResults {
         
@@ -465,9 +469,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         DLog("Got simulation-run completion message!")
         
         self.simulationLight.textColor = latestSimulationResult != nil ? .green : .red
-        
-        self.simCalcProgInd.stopAnimation(self)
+
+        self.simCalcProgInd.doubleValue = 0.0
+        self.simCalcProgInd.toolTip = nil
         self.simCalcProgInd.isHidden = true
+        self.runningSimulationTask = nil
         // only hide the "Working..." label if the inductance calculation is not currently running
         self.workingLabel.isHidden = self.indCalcProgInd.isHidden
     }
@@ -1178,31 +1184,64 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 return
             }
             
-            Task {
-                
+            self.runningSimulationTask = Task {
+
                 let wfIndex = simDetailsDlog.waveFormPopUp.indexOfSelectedItem
                 let waveForm = SimulationModel.WaveForm(type: SimulationModel.WaveForm.Types.allCases[wfIndex], pkVoltage: peakVoltage)
-                
+
+                // The simulation reports its progress through an AsyncStream. '.bufferingNewest(1)' is the important part: the solver never blocks waiting on the UI, and whatever we read is always the most recent value.
+                let (progressStream, progressContinuation) = AsyncStream<SimulationModel.ProgressUpdate>.makeStream(bufferingPolicy: .bufferingNewest(1))
+
                 simulationLight.textColor = .red
+                simCalcProgInd.isIndeterminate = false
+                simCalcProgInd.minValue = 0.0
+                simCalcProgInd.maxValue = 100.0
+                simCalcProgInd.doubleValue = 0.0
                 simCalcProgInd.isHidden = false
-                simCalcProgInd.startAnimation(self)
                 workingLabel.isHidden = false
-                
-                let simResult = await simModel.DoSimulate(waveForm: waveForm, startTime: 0.0, endTime: waveForm.timeToZero, epsilon: 200.0 / 0.05E-6)
-                
+
+                // Each iteration of this loop resumes on the main actor, which is what actually lets AppKit redraw the bar between updates.
+                let progressTask = Task { @MainActor in
+
+                    for await nextUpdate in progressStream {
+
+                        self.simCalcProgInd.doubleValue = nextUpdate.fractionComplete * 100.0
+                        // 'workingLabel' is shared with the inductance calculation, so the pass identification goes on the bar's tooltip instead of overwriting it
+                        self.simCalcProgInd.toolTip = nextUpdate.phase
+                    }
+                }
+
+                let simResult = await simModel.DoSimulate(waveForm: waveForm, startTime: 0.0, endTime: waveForm.timeToZero, epsilon: 200.0 / 0.05E-6, progress: progressContinuation)
+
+                progressContinuation.finish()
+                await progressTask.value
+
+                self.runningSimulationTask = nil
+
+                // DoSimulate() returns an empty array for both failure and cancellation, so check which one happened before complaining to the user
                 if simResult.isEmpty {
-                    
-                    PCH_ErrorAlert(message: "Simulation failed!")
+
+                    if !Task.isCancelled {
+
+                        PCH_ErrorAlert(message: "Simulation failed!")
+                    }
+
                     await didFinishSimulationRun()
                     return
                 }
-                
+
                 self.latestSimulationResult = SimulationResults(waveForm: waveForm, peakVoltage: peakVoltage, stepResults: simResult)
                 await didFinishSimulationRun()
             }
         }
     }
-    
+
+    @IBAction func handleCancelSimulation(_ sender: Any) {
+
+        // Cancellation is cooperative - the task tears down its own UI when SimulateRK45() returns its empty array
+        self.runningSimulationTask?.cancel()
+    }
+
     @IBAction func handleShowWaveforms(_ sender: Any) {
         
         guard let phModel = self.currentModel, self.currentSimModel != nil else {
@@ -2946,8 +2985,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
         
         if menuItem == self.simulateMenuItem {
-            
-            return self.currentModel != nil && self.designIsValid && self.currentSimModel != nil
+
+            return self.currentModel != nil && self.designIsValid && self.currentSimModel != nil && self.runningSimulationTask == nil
+        }
+
+        if menuItem == self.cancelSimulationMenuItem {
+
+            return self.runningSimulationTask != nil
         }
         
         if menuItem == self.showWaveformsMenuItem || menuItem == self.showCoilResultsMenuItem || menuItem == self.showVoltageDiffsMenuItem {

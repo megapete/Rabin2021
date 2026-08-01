@@ -47,6 +47,7 @@
                 <outlet property="showWaveformsMenuItem" destination="QjX-pp-fL5" id="sb0-tI-ej0"/>
                 <outlet property="showWdgAsSingleSegmentMenuItem" destination="Aqp-v7-qka" id="wWQ-tl-Wef"/>
                 <outlet property="simCalcProgInd" destination="ar6-fH-ZoX" id="EOh-90-GTr"/>
+                <outlet property="cancelSimulationMenuItem" destination="Cn1-sM-q01" id="Cn1-sM-q03"/>
                 <outlet property="simulateMenuItem" destination="qgl-wB-C1d" id="6gm-BU-6n3"/>
                 <outlet property="simulationLight" destination="yKp-7M-HKH" id="sQW-KM-J6p"/>
                 <outlet property="splitSegmentToBasicSectionsMenuItem" destination="hmW-Yq-C8J" id="aNg-xP-L1a"/>
@@ -363,6 +364,11 @@
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
                                     <action selector="handleDoSimulate:" target="XWq-sU-B2V" id="nhz-vR-Yv3"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Cancel Simulation" keyEquivalent="." id="Cn1-sM-q01">
+                                <connections>
+                                    <action selector="handleCancelSimulation:" target="XWq-sU-B2V" id="Cn1-sM-q02"/>
                                 </connections>
                             </menuItem>
                             <menuItem isSeparatorItem="YES" id="7eO-Pc-VaZ"/>
