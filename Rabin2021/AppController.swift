@@ -432,7 +432,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         DLog("Got inductance completion message!")
         self.inductanceLight.textColor = await fePhase.inductanceMatrix != nil ? .green : .red
         
-        self.indCalcProgInd.stopAnimation(self)
+        self.indCalcProgInd.doubleValue = 0.0
+        self.indCalcProgInd.toolTip = nil
         self.indCalcProgInd.isHidden = true
         if self.latestSimulationResult != nil {
             
@@ -708,33 +709,55 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             
         }
         
+        // The inductance calculation reports one update per section (ie: per row of the matrix). Same pattern as the simulation bar: '.bufferingNewest(1)' so the solver never blocks on the UI, and the stream is drained on the main actor so AppKit can actually redraw between updates.
+        let (indProgressStream, indProgressContinuation) = AsyncStream<PchFePhase.InductanceProgress>.makeStream(bufferingPolicy: .bufferingNewest(1))
+
+        let indProgressTask = Task { @MainActor in
+
+            for await nextUpdate in indProgressStream {
+
+                self.indCalcProgInd.doubleValue = nextUpdate.fractionComplete * 100.0
+                self.indCalcProgInd.toolTip = "Section \(nextUpdate.completedSections) of \(nextUpdate.totalSections)"
+            }
+        }
+
         self.inductanceLight.textColor = .red
         self.workingLabel.isHidden = false
+        self.indCalcProgInd.isIndeterminate = false
+        self.indCalcProgInd.minValue = 0.0
+        self.indCalcProgInd.maxValue = 100.0
+        self.indCalcProgInd.doubleValue = 0.0
         self.indCalcProgInd.isHidden = false
-        self.indCalcProgInd.startAnimation(self)
-        // self.indCalcProgInd.doubleValue = 0.0
-        
+
         do {
-        
-            try await fePhase.CalculateInductanceMatrix(useConcurrency: true, assumeSymmetric: true)
-            
+
+            try await fePhase.CalculateInductanceMatrix(useConcurrency: true, assumeSymmetric: true, progress: indProgressContinuation)
+
+            indProgressContinuation.finish()
+            await indProgressTask.value
+
             guard let indMatrix = await fePhase.inductanceMatrix else {
-                
+
                 PCH_ErrorAlert(message: "An impossible error has occurred!")
                 return
             }
-            
+
             await model.SetInductanceMatrices(unfactoreM: indMatrix, M: try await indMatrix.FactorizedAs(.Cholesky))
-        
+
             await didFinishInductanceCalculation()
-            
+
             try await model.CalculateCapacitanceMatrix()
             capacitanceIsValid = true
             // DLog("Coil 0 Cs: \(try model.CoilSeriesCapacitance(coil: 0))")
             // DLog("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: 1))")
         }
         catch {
-            
+
+            // Tear the indicator down on the error path too, otherwise the bar is left on screen at whatever value it had reached
+            indProgressContinuation.finish()
+            await indProgressTask.value
+            await didFinishInductanceCalculation()
+
             let alert = NSAlert(error: error)
             let _ = alert.runModal()
             return
