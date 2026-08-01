@@ -205,12 +205,12 @@ struct BasicSection:Codable, Sendable {
             return []
         }
         
-        var result:[Int] = []
-        
-        for i in 0..<basicSections.count {
-            
+        let result:[Int] = []
+
+        for _ in 0..<basicSections.count {
+
         }
-        
+
         return result
     }
     

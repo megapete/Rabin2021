@@ -39,22 +39,27 @@ class GetNumberDialog: PCH_DialogBox {
         super.init(viewNibFileName: "GetNumber", windowTitle: windowTitle, hideCancel: false)
     }
     
+    // awakeFromNib() is 'nonisolated' on NSObject, so assume main-actor isolation explicitly (nib
+    // loading always happens on the main thread) before touching any of the outlets.
     override func awakeFromNib() {
-        
-        self.descLabel.stringValue = self.descriptiveText
-        self.unitsLabel.stringValue = self.unitsText
-        self.noteLabel.stringValue = self.noteText
-        
-        if let formatter = self.fieldFormatter
-        {
-            self.numberField.formatter = formatter
+
+        MainActor.assumeIsolated {
+
+            self.descLabel.stringValue = self.descriptiveText
+            self.unitsLabel.stringValue = self.unitsText
+            self.noteLabel.stringValue = self.noteText
+
+            if let formatter = self.fieldFormatter
+            {
+                self.numberField.formatter = formatter
+            }
+            else
+            {
+                self.numberField.formatter = NumberFormatter()
+            }
+
+            self.numberField.doubleValue = self.numberValue
         }
-        else
-        {
-            self.numberField.formatter = NumberFormatter()
-        }
-        
-        self.numberField.doubleValue = self.numberValue
     }
     
     override func handleOk() {

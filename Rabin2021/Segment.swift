@@ -48,8 +48,9 @@ actor Segment: Equatable /*, Hashable */ {
         hasher.combine(self.serialNumber)
     } */
     
-    /// A locked value for storing the next serial number
-    nonisolated(unsafe) private static var nextSerialNumberStore: OSAllocatedUnfairLock<Int> = OSAllocatedUnfairLock(initialState: -1)
+    /// A locked value for storing the next serial number. NOTE: this must stay a 'let' - replacing the
+    /// lock itself would not be atomic, so resetSerialNumber() mutates the value _through_ the lock.
+    private static let nextSerialNumberStore: OSAllocatedUnfairLock<Int> = OSAllocatedUnfairLock(initialState: -1)
     
     /// Thread-safe way of getting the next available serial number
     public static var nextSerialNumber: Int {
@@ -1037,7 +1038,7 @@ actor Segment: Equatable /*, Hashable */ {
     /// Reset the value of the next Segment serial number to be assigned to 0. NOTE:  Any Segments that may have been created by the user prior to calling this function SHOULD BE DESTROYED to avoid problems when testing for equality between Segments (the equality test reiles on the the serial number).
     static func resetSerialNumber()
     {
-        Segment.nextSerialNumberStore = OSAllocatedUnfairLock(initialState: -1)
+        Segment.nextSerialNumberStore.withLock { $0 = -1 }
     }
     
     /*

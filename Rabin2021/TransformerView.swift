@@ -589,7 +589,7 @@ struct ViewConnector : Equatable {
     var segments:(from:Segment, to:Segment?)
     
     /// The global Ground cursor and its creation routine
-    static let GroundCursor:NSCursor = ViewConnector.LoadGroundCursor()
+    @MainActor static let GroundCursor:NSCursor = ViewConnector.LoadGroundCursor()
     
     static func LoadGroundCursor() -> NSCursor {
         
@@ -607,7 +607,7 @@ struct ViewConnector : Equatable {
     }
     
     /// The global Impulse cursor and its creation routine
-    static let ImpulseCursor:NSCursor = ViewConnector.LoadImpulseCursor()
+    @MainActor static let ImpulseCursor:NSCursor = ViewConnector.LoadImpulseCursor()
     
     static let impulseImagePoint = NSPoint(x: 9, y: 22)
    
@@ -625,7 +625,7 @@ struct ViewConnector : Equatable {
     }
     
     /// The global Add Connection cursor and its creation routine
-    static let AddConnectionCursor:NSCursor = ViewConnector.LoadAddConnectorCursor()
+    @MainActor static let AddConnectionCursor:NSCursor = ViewConnector.LoadAddConnectorCursor()
     
     static func LoadAddConnectorCursor() -> NSCursor {
         
@@ -640,7 +640,7 @@ struct ViewConnector : Equatable {
     }
     
     /// The global pliers cursor and its creation routine
-    static let PliersCursor:NSCursor = ViewConnector.LoadPliersCursor()
+    @MainActor static let PliersCursor:NSCursor = ViewConnector.LoadPliersCursor()
     
     static func LoadPliersCursor() -> NSCursor {
         
@@ -1353,20 +1353,25 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     // The scrollview that this view is in
     @IBOutlet weak var scrollView:NSScrollView!
         
-    // Override awakeFromNib() to do some initialization
+    // Override awakeFromNib() to do some initialization. Note that NSObject's awakeFromNib() is
+    // 'nonisolated' in the SDK, so this override does not inherit the class's @MainActor - nib
+    // loading is always on the main thread, so assume the isolation explicitly.
     override func awakeFromNib() {
-        
-        // stuff ourself into the SegmentPath.txfoView global
-        SegmentPath.txfoView = self
-        
-        // mark our window as 'wanting' mouse-moved events
-        self.window!.acceptsMouseMovedEvents = true
-        
-        // call our function createTrackingArea() so that we can check if the mouse is in our window for cursor-changing
-        self.createTrackingArea()
 
-        // Rebuild the connectors when a trackpad pinch-zoom ends so that the scale-dependent lead stubs re-fit to the new zoom.
-        NotificationCenter.default.addObserver(self, selector: #selector(handleLiveMagnifyDidEnd(_:)), name: NSScrollView.didEndLiveMagnifyNotification, object: self.scrollView)
+        MainActor.assumeIsolated {
+
+            // stuff ourself into the SegmentPath.txfoView global
+            SegmentPath.txfoView = self
+
+            // mark our window as 'wanting' mouse-moved events
+            self.window!.acceptsMouseMovedEvents = true
+
+            // call our function createTrackingArea() so that we can check if the mouse is in our window for cursor-changing
+            self.createTrackingArea()
+
+            // Rebuild the connectors when a trackpad pinch-zoom ends so that the scale-dependent lead stubs re-fit to the new zoom.
+            NotificationCenter.default.addObserver(self, selector: #selector(handleLiveMagnifyDidEnd(_:)), name: NSScrollView.didEndLiveMagnifyNotification, object: self.scrollView)
+        }
     }
 
     // Called when a trackpad pinch-zoom on the scrollView finishes.
@@ -1576,7 +1581,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     // MARK: Tooltips to display over segments
     func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?) -> String
     {
-        var result = "Tooltip!"
+        let result = "Tooltip!"
         
         
         
@@ -1637,7 +1642,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     @IBAction func handleMoveWdgRadially(_ sender: Any) {
         
-        guard let appCtrl = self.appController else
+        guard self.appController != nil else
         {
             return
         }
@@ -1647,7 +1652,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     @IBAction func handleMoveWdgAxially(_ sender: Any) {
         
-        guard let appCtrl = self.appController else
+        guard self.appController != nil else
         {
             return
         }
@@ -1657,7 +1662,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     @IBAction func handleToggleActivation(_ sender: Any) {
         
-        guard let appCtrl = self.appController else
+        guard self.appController != nil else
         {
             return
         }
@@ -1667,7 +1672,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     @IBAction func handleActivateAllWindingTurns(_ sender: Any) {
         
-        guard let appCtrl = self.appController else
+        guard self.appController != nil else
         {
             return
         }
@@ -1677,7 +1682,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     @IBAction func handleDeactivateAllWindingTurns(_ sender: Any) {
         
-        guard let appCtrl = self.appController else
+        guard self.appController != nil else
         {
             return
         }
@@ -1688,7 +1693,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     @IBAction func handleSplitSegment(_ sender: Any) {
         
-        guard let appCtrl = self.appController else
+        guard self.appController != nil else
         {
             return
         }

@@ -20,7 +20,7 @@ xcodebuild -project ImpulseDistribution.xcodeproj -scheme ImpulseDistribution -c
 
 - Normal development is done in Xcode (open `ImpulseDistribution.xcodeproj`, ⌘R to run).
 - **There is no test target** — do not look for or attempt to run XCTest.
-- Swift 5.0, macOS deployment target 26.0, **Apple Silicon only** (`arm64`; see commit "Set project to build for Apple Silicon only").
+- **Swift 6 language mode** with `SWIFT_STRICT_CONCURRENCY = complete`, macOS deployment target 26.0, **Apple Silicon only** (`arm64`; see commit "Set project to build for Apple Silicon only"). Note that these two settings are on the **app target only** — the project level is still `SWIFT_STRICT_CONCURRENCY = targeted`, which is what the SPM packages inherit. Do not move them up to the project, and do not enable `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`; both break `PchMatrixPackage`.
 - `PchMatrix.swift` requires the preprocessor macros `ACCELERATE_NEW_LAPACK=1` and `ACCELERATE_LAPACK_ILP64=1` (set in the project's Apple Clang – Preprocessing build settings). These are needed because of Apple's 2023 LAPACK/BLAS changes.
 
 ## Dependencies (Swift Package Manager)
@@ -62,3 +62,10 @@ The physics model is layered from smallest to largest unit. Understanding this h
 ## Concurrency
 
 The model layer is **actor-based** — `PhaseModel`, `Segment`, and `SimulationModel` are all `actor`s, and most model methods are `async`. Many model types are `Sendable`/`Codable`. When adding or calling model code, expect `await` and respect actor isolation; concurrency correctness here has been an ongoing source of fixes.
+
+Two AppKit patterns recur in the UI layer, both because the callback is `nonisolated` even though it only ever runs on the main thread:
+
+- **`awakeFromNib()`** — `NSObject`'s declaration is `nonisolated`, so an override does *not* inherit its class's `@MainActor`. Every existing override therefore wraps its body in `MainActor.assumeIsolated { … }`.
+- **`Timer` blocks** — the `scheduledTimer(withTimeInterval:repeats:block:)` closure is `@Sendable` and nonisolated; the animation timer in `CoilResultsDisplayWindow` uses the same `MainActor.assumeIsolated { … }` wrapper.
+
+`assumeIsolated` *traps* if the assumption is ever wrong, so only use it where the main thread is guaranteed — otherwise hop with `Task { @MainActor in … }`.

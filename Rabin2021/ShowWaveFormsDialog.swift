@@ -45,38 +45,42 @@ class ShowWaveFormsDialog: PCH_DialogBox {
         super.init(viewNibFileName: "ShowWaveFormsView", windowTitle: "Show Waveforms", hideCancel: false)
     }
     
+    // awakeFromNib() is 'nonisolated' on NSObject, so assume main-actor isolation explicitly (nib
+    // loading always happens on the main thread) before touching any of the outlets.
     override func awakeFromNib() {
-        
-        coilPicker.removeAllItems()
-        // let segments = phaseModel.CoilSegments()
-        // let numCoils = segments.last!.radialPos + 1
-        var coilNames:[String] = []
-        for i in 1...numCoils {
-            
-            coilNames.append("\(i)")
+
+        MainActor.assumeIsolated {
+
+            coilPicker.removeAllItems()
+            // let segments = phaseModel.CoilSegments()
+            // let numCoils = segments.last!.radialPos + 1
+            var coilNames:[String] = []
+            for i in 1...numCoils {
+
+                coilNames.append("\(i)")
+            }
+            coilPicker.addItems(withTitles: coilNames)
+            coilPicker.selectItem(at: 0)
+
+            var segNames:[String] = []
+
+            for i in 1...highestSections[0]+1 {
+
+                segNames.append("\(i)")
+            }
+
+            rangeFromPicker.removeAllItems()
+            rangeToPicker.removeAllItems()
+
+            rangeFromPicker.addItems(withTitles: segNames)
+            rangeToPicker.addItems(withTitles: segNames)
+
+            rangeFromPicker.selectItem(at: 0)
+            rangeToPicker.selectItem(at: highestSections[0])
+
+            rangeFromPicker.isEnabled = false
+            rangeToPicker.isEnabled = false
         }
-        coilPicker.addItems(withTitles: coilNames)
-        coilPicker.selectItem(at: 0)
-        
-        var segNames:[String] = []
-        
-        for i in 1...highestSections[0]+1 {
-            
-            segNames.append("\(i)")
-        }
-        
-        rangeFromPicker.removeAllItems()
-        rangeToPicker.removeAllItems()
-        
-        rangeFromPicker.addItems(withTitles: segNames)
-        rangeToPicker.addItems(withTitles: segNames)
-        
-        rangeFromPicker.selectItem(at: 0)
-        rangeToPicker.selectItem(at: highestSections[0])
-        
-        rangeFromPicker.isEnabled = false
-        rangeToPicker.isEnabled = false
-        
     }
     
     @IBAction func handleSegmentSelection(_ sender: Any) {

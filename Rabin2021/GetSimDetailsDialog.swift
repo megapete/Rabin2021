@@ -22,13 +22,18 @@ class SimDetailsDlog : PCH_DialogBox {
         super.init(viewNibFileName: "GetSimDetailsView", windowTitle: "Simulation Setup", hideCancel: false)
     }
     
+    // awakeFromNib() is 'nonisolated' on NSObject, so assume main-actor isolation explicitly (nib
+    // loading always happens on the main thread) before touching any of the outlets.
     override func awakeFromNib() {
-        
-        waveFormPopUp.removeAllItems()
-        waveFormPopUp.addItems(withTitles: waveFormStrings)
-        
-        voltageField.formatter = NumberFormatter()
-        voltageField.integerValue = 30
+
+        MainActor.assumeIsolated {
+
+            waveFormPopUp.removeAllItems()
+            waveFormPopUp.addItems(withTitles: waveFormStrings)
+
+            voltageField.formatter = NumberFormatter()
+            voltageField.integerValue = 30
+        }
     }
     
 }

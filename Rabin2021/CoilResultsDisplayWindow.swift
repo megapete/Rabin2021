@@ -196,18 +196,23 @@ class CoilResultsDisplayWindow: NSWindowController {
         simIsPaused = false
         SetButtonStates()
         
+        // The Timer block is @Sendable and nonisolated, but the timer is scheduled on (and fires
+        // from) the main runloop, so assume main-actor isolation to reach our UI state.
         simTimer = Timer.scheduledTimer(withTimeInterval: animationTimeInterval, repeats: true) { timer in
-                        
-            self.UpdatePathWithCurrentSimIndex()
-            self.currentSimIndex += self.animationStride
-            
-            if self.resultData.stepResults.isEmpty || self.currentSimIndex >= self.resultData.stepResults.count {
-                
-                self.doStopSimulationAndReset()
-                return
+
+            MainActor.assumeIsolated {
+
+                self.UpdatePathWithCurrentSimIndex()
+                self.currentSimIndex += self.animationStride
+
+                if self.resultData.stepResults.isEmpty || self.currentSimIndex >= self.resultData.stepResults.count {
+
+                    self.doStopSimulationAndReset()
+                    return
+                }
+
+                self.currentSimTime = self.resultData.stepResults[self.currentSimIndex].time
             }
-            
-            self.currentSimTime = self.resultData.stepResults[self.currentSimIndex].time
         }
     }
     

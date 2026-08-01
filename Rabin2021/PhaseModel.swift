@@ -495,9 +495,9 @@ actor PhaseModel /*:Codable */ {
             
             // at this point, if fromSegment and toSegment are axially adjacent and the connection parameter was such that the only possible node was the "shared" node, that node would already have been returned
             
-            if let otherSegment = toSegment {
-                
-                
+            if toSegment != nil {
+
+
             }
             else {
                 
@@ -920,7 +920,7 @@ actor PhaseModel /*:Codable */ {
                     }
                 }
                 
-                var connectionCountGreaterThanOne:Bool = await firstNewSegment.connections.count > 1
+                let connectionCountGreaterThanOne:Bool = await firstNewSegment.connections.count > 1
                 if await lastNewSegment.connections.count > 1 || connectionCountGreaterThanOne {
                     
                     ALog("Fuckin' shit!")
@@ -1018,7 +1018,7 @@ actor PhaseModel /*:Codable */ {
                 // Here we now have the newIncomingConnector and newOutgoingConnector defined, we just need to add the connectors within the new Segments
                 var incomingConnector = newIncomingConnector!
                 var outgoingConnector = newIncomingConnector!
-                var lastSegmentID = await firstNewSegment.connections.count == 0 ? nil : firstNewSegment.connections[0].segmentID
+                let lastSegmentID = await firstNewSegment.connections.count == 0 ? nil : firstNewSegment.connections[0].segmentID
                 var lastSegment = lastSegmentID == nil ? nil : segmentStore.first(where: { $0.serialNumber == lastSegmentID })
                 
                 for nextSegment in newSegments {

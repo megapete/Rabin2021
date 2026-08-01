@@ -13,7 +13,7 @@ let PCH_RABIN2021_IterationCount = 200
 
 let PCH_CIR_FILETYPE = "cir"
 
-var rb2021_progressIndicatorWindow:PCH_ProgressIndicatorWindow? = nil
+@MainActor var rb2021_progressIndicatorWindow:PCH_ProgressIndicatorWindow? = nil
 
 import Cocoa
 import Accelerate
@@ -321,9 +321,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
         
         func InternodalVoltages(volts:[Double]) -> [Location:Double] {
-            
-            let dimension = volts.count
-            
+
             var result:[Location:Double] = [:]
             for col in 0..<volts.count {
                 
@@ -380,29 +378,35 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     }
     
     // MARK: Initialization
+    // NSObject's awakeFromNib() is 'nonisolated' in the SDK, so this override does NOT inherit the
+    // class's @MainActor. Nib loading always happens on the main thread, so assume the isolation
+    // explicitly rather than leaving the UI accesses below unchecked.
     override func awakeFromNib() {
-        
-        txfoView.appController = self
-        
-        rb2021_progressIndicatorWindow = PCH_ProgressIndicatorWindow()
-        
-        let formatter = NumberFormatter()
-        formatter.maximumFractionDigits = 1
-        
-        self.rLocationTextField.formatter = formatter
-        self.zLocationTextField.formatter = formatter
-        
-        self.rLocationTextField.doubleValue = 0
-        self.zLocationTextField.doubleValue = 0
-        
-        self.inductanceLight.textColor = .red
-        self.inductanceIsValid = false
-        self.indCalcProgInd.isHidden = true
-        // self.indCalcProgInd.minValue = 0.0
-        // self.indCalcProgInd.maxValue = 100.0
-        self.simulationLight.textColor = .red
-        self.simCalcProgInd.isHidden = true
-        self.workingLabel.isHidden = true
+
+        MainActor.assumeIsolated {
+
+            txfoView.appController = self
+
+            rb2021_progressIndicatorWindow = PCH_ProgressIndicatorWindow()
+
+            let formatter = NumberFormatter()
+            formatter.maximumFractionDigits = 1
+
+            self.rLocationTextField.formatter = formatter
+            self.zLocationTextField.formatter = formatter
+
+            self.rLocationTextField.doubleValue = 0
+            self.zLocationTextField.doubleValue = 0
+
+            self.inductanceLight.textColor = .red
+            self.inductanceIsValid = false
+            self.indCalcProgInd.isHidden = true
+            // self.indCalcProgInd.minValue = 0.0
+            // self.indCalcProgInd.maxValue = 100.0
+            self.simulationLight.textColor = .red
+            self.simCalcProgInd.isHidden = true
+            self.workingLabel.isHidden = true
+        }
     }
     
     func InitializeController()
@@ -2746,7 +2750,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         Task {
             
-            let indMatrix = await self.doMainWindingInductances()
+            let _ = await self.doMainWindingInductances()
         }
         
     }
@@ -2755,7 +2759,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// - Returns: A matrix where entry i,i is the self-inductance of the winding in the 'i' radial position (0 closest to the core), and entry i,j (and j,i) is the mutual inductance beyween coil i and coil j
     func doMainWindingInductances() async -> PchMatrix? {
         
-        guard let model = self.currentModel, let xlFile = currentXLfile, let iMatrix = await model.unfactoredM , let fePhase = self.currentFePhase else {
+        guard let model = self.currentModel, currentXLfile != nil, let iMatrix = await model.unfactoredM , let fePhase = self.currentFePhase else {
             
             DLog("A valid model, a valid XL file, and an unfactored inductance matrix must be defined!")
             return nil
