@@ -135,6 +135,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// Inductance Calculations
     @IBOutlet weak var mainWdgInductanceMenuItem: NSMenuItem!
     @IBOutlet weak var mainWdgImpedanceMenuItem: NSMenuItem!
+    @IBOutlet weak var cancelInductanceMenuItem: NSMenuItem!
     
     /// R and Z indication on the main window
     @IBOutlet weak var rLocationTextField: NSTextField!
@@ -166,6 +167,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
     /// The currently-running simulation, if any. Held so that it can be cancelled (and so that a second simulation can't be launched on top of a running one).
     var runningSimulationTask:Task<Void, Never>? = nil
+
+    /// The currently-running inductance calculation, if any. Held so that it can be cancelled.
+    var runningInductanceTask:Task<Void, Error>? = nil
     
     struct SimulationResults {
         
@@ -729,10 +733,19 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         self.indCalcProgInd.doubleValue = 0.0
         self.indCalcProgInd.isHidden = false
 
-        do {
+        // The calculation is wrapped in its own Task purely so that it can be cancelled - updateModel() itself is called from several places, none of which hold onto a Task we could reach.
+        let inductanceTask = Task { @MainActor in
 
             try await fePhase.CalculateInductanceMatrix(useConcurrency: true, assumeSymmetric: true, progress: indProgressContinuation)
+        }
 
+        self.runningInductanceTask = inductanceTask
+
+        do {
+
+            try await inductanceTask.value
+
+            self.runningInductanceTask = nil
             indProgressContinuation.finish()
             await indProgressTask.value
 
@@ -754,19 +767,43 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         catch {
 
             // Tear the indicator down on the error path too, otherwise the bar is left on screen at whatever value it had reached
+            self.runningInductanceTask = nil
             indProgressContinuation.finish()
             await indProgressTask.value
             await didFinishInductanceCalculation()
 
-            let alert = NSAlert(error: error)
-            let _ = alert.runModal()
+            // A user-requested cancellation is not a failure, so no alert. The matrix is incomplete either way, so the model has to be marked invalid - didFinishInductanceCalculation() only sets the flag on the success path, and a previous run could have left it true.
+            inductanceIsValid = false
+
+            if error is CancellationError {
+
+                DLog("Inductance calculation cancelled")
+            }
+            else {
+
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
+            }
+
+            // Still refresh the drawing - the segment changes that triggered this update have already been applied to the model
+            if !reinitialize {
+
+                self.updateViews()
+            }
+
             return
         }
-        
+
         if !reinitialize {
-            
+
             self.updateViews()
         }
+    }
+
+    @IBAction func handleCancelInductanceCalculation(_ sender: Any) {
+
+        // Cooperative, and the mesh routines themselves don't check for cancellation - the checkpoints in the package's InductanceForMesh() mean this takes effect within roughly one section's worth of work
+        self.runningInductanceTask?.cancel()
     }
     
     /// Initialize the model using the BasicSections already created. If currentXLFile is non-nil, some extra initialziation is done _USING THAT FILE_. **If this behaviour is not desired, set currentXLFile to nil before calling this function.** If there is already a model in memory, it is lost.
@@ -3015,6 +3052,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         if menuItem == self.cancelSimulationMenuItem {
 
             return self.runningSimulationTask != nil
+        }
+
+        if menuItem == self.cancelInductanceMenuItem {
+
+            return self.runningInductanceTask != nil
         }
         
         if menuItem == self.showWaveformsMenuItem || menuItem == self.showCoilResultsMenuItem || menuItem == self.showVoltageDiffsMenuItem {

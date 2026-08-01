@@ -47,6 +47,7 @@
                 <outlet property="showWaveformsMenuItem" destination="QjX-pp-fL5" id="sb0-tI-ej0"/>
                 <outlet property="showWdgAsSingleSegmentMenuItem" destination="Aqp-v7-qka" id="wWQ-tl-Wef"/>
                 <outlet property="simCalcProgInd" destination="ar6-fH-ZoX" id="EOh-90-GTr"/>
+                <outlet property="cancelInductanceMenuItem" destination="Cn2-sM-q01" id="Cn2-sM-q03"/>
                 <outlet property="cancelSimulationMenuItem" destination="Cn1-sM-q01" id="Cn1-sM-q03"/>
                 <outlet property="simulateMenuItem" destination="qgl-wB-C1d" id="6gm-BU-6n3"/>
                 <outlet property="simulationLight" destination="yKp-7M-HKH" id="sQW-KM-J6p"/>
@@ -346,6 +347,13 @@
                             </menuItem>
                             <menuItem title="Winding Impedance Pairs..." id="Fsb-Bk-n0a">
                                 <modifierMask key="keyEquivalentModifierMask"/>
+                            </menuItem>
+                            <menuItem isSeparatorItem="YES" id="Cn2-sM-q04"/>
+                            <menuItem title="Cancel Inductance Calculation" id="Cn2-sM-q01">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleCancelInductanceCalculation:" target="XWq-sU-B2V" id="Cn2-sM-q02"/>
+                                </connections>
                             </menuItem>
                         </items>
                     </menu>
