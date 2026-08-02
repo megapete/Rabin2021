@@ -69,7 +69,18 @@ The physics model is layered from smallest to largest unit. Understanding this h
 
   Two consequences worth knowing: every frequency sees its **own** R, so there is no "fundamental frequency" estimate and no two-pass scheme; and **bandwidth is a real accuracy control**, exposed in the simulation dialog, not a free parameter.
 
-  Verified end-to-end against an independent RK4 integration of the same ODEs on a synthetic ladder: worst nodal disagreement 2.4e-4 of peak, solve residual 3e-16, impulsed and grounded nodes exact.
+  **Validation results** (synthetic 5-node/4-segment ladder; re-run these if the assembly is ever touched):
+
+  | check | result |
+  |---|---|
+  | solve residual ‖Ax−b‖/‖b‖ | 3.1e-16 |
+  | α at impulsed / grounded node | exactly 1.0 / 0.0 |
+  | vs. independent RK4 of the same ODEs | 2.4e-4 of peak |
+  | **vs. ngspice `.ac`**, 161 freqs, 1 kHz–10 MHz | **3.3e-7** |
+  | vs. ngspice `.tran`, t ≥ 1 µs | 2.5e-4 |
+  | vs. ngspice `.tran`, first sample (49 ns) | 5.2e-3 |
+
+  The `.ac` result is the important one: it isolates the **assembly** (signs, row surgery, block offsets) from the transform, and 3.3e-7 is the precision of ngspice's own printed output — i.e. exact agreement. The `.tran` residual is entirely the NILT's known wavefront-truncation behaviour, which is why it collapses from 5.2e-3 at the first sample to a flat 2.5e-4 past 1 µs. A future `.tran` regression that does *not* show that shape is a real bug, not transform error.
 
 - **`SimulationModel.swift`** (`actor SimulationModel`) — built from a `PhaseModel`. Its `init` does the work that both solvers depend on: resolving jumpers into merged node groups, building the `vDropInd`/`iDropInd` incidence arrays, and applying the boundary-condition row surgery to the capacitance matrix. It owns `M` (Cholesky-factorized, for the RK45 path) and **`unfactoredM`** (the matrix itself, which the frequency-domain solver needs — reading `M` there would assemble the Cholesky factor as though it were the inductance). `Snapshot()` extracts a `Sendable` `NetworkSnapshot` so the frequency sweep can run with no actor hops in its inner loop.
   - `SolveFrequencyDomain(waveForm:displaySpan:maximumFrequency:progress:)` is the **live entry point**. Results come back on a **uniform** time grid.

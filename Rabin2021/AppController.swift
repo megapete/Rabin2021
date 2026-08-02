@@ -3083,9 +3083,16 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
                 guard shunt.capacitance > 0 else { continue }
 
+                let from = nodeName(node.number)
                 let other = shunt.toNode < 0 ? "0" : nodeName(shunt.toNode)
 
-                result += String(format: "CP%d %@ %@ %.6E\n", shuntIndex, nodeName(node.number), other, shunt.capacitance)
+                // A grounded node's shunt capacitance to ground collapses to a
+                // component with both terminals on node 0 once grounded nodes
+                // are mapped onto SPICE's ground. It carries no current and
+                // ngspice rejects it, so drop it.
+                guard from != other else { continue }
+
+                result += String(format: "CP%d %@ %@ %.6E\n", shuntIndex, from, other, shunt.capacitance)
                 shuntIndex += 1
             }
         }
