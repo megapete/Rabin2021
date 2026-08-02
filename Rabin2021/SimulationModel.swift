@@ -332,11 +332,30 @@ actor SimulationModel {
     }
     
     var R:[Resistance] = []
-    // The frequency for each disc at each time step needs to be calculated properly. First time through we'll give everybody the same number based on what is written in DelVecchio (3E) 12.11.2 (between eqs 12.103 and 12.104)
+
+    /// The single frequency at which the RK45 cross-check evaluates every
+    /// segment's resistance. From DelVecchio 3E 12.11.2 (between eqs 12.103
+    /// and 12.104).
+    ///
+    /// A time-marching solver can only carry ONE resistance per segment for
+    /// the whole run - R cannot vary with frequency in the time domain without
+    /// a convolution. That limitation is why the old `DoSimulate` ran the
+    /// entire simulation twice: once to produce currents, then an FFT of those
+    /// currents to guess a per-segment "fundamental frequency", then again
+    /// with the guesses.
+    ///
+    /// That whole scheme is gone. The frequency-domain solver evaluates R at
+    /// each frequency exactly, so nothing needs to be estimated. What remains
+    /// here is a fixed frequency for the RK45 path only.
+    ///
+    /// **Comparing the two solvers:** they will not agree unless both use the
+    /// same R. Pin the frequency-domain solver to a constant resistance with
+    /// `NetworkSnapshot.resistanceFrequencyOverride` set to this value; then
+    /// the two are solving identical equations and any disagreement is a real
+    /// numerical difference rather than a modelling one.
     static let defaultEddyFreq = 0.15E6
-    
-    var eddyFreqs:[Double]? = nil
-    
+
+
     var impulsedNodes:Set<Node> = []
     var groundedNodes:Set<Node> = []
     var floatingNodes:Set<Node> = []
@@ -702,126 +721,6 @@ actor SimulationModel {
         return await FrequencyDomainSolver.Sweep(snapshot: snapshot, waveForm: waveForm, grid: grid, progress: progress) ?? []
     }
 
-    /// Run the full simulation (two RK45 passes).
-    /// - parameter progress: An optional AsyncStream continuation that receives ProgressUpdates as the simulation advances. The continuation is _not_ finished by this routine - the caller owns it.
-    /// - returns: An array of SimulationStepResults, or an empty array if the simulation failed **or was cancelled**. Use Task.isCancelled at the call site to tell the two apart.
-    func DoSimulate(waveForm:WaveForm, startTime:Double, endTime:Double, epsilon:Double, deltaT:Double = 0.05E-6, Vstart:[Double]? = nil, Istart:[Double]? = nil, progress:AsyncStream<ProgressUpdate>.Continuation? = nil) async -> [SimulationStepResult] {
-
-        // We run the simulation twice: the first time with the default fundamental frequency at each disc, then calculate the real fundamental frequencies (storing them), then run the sim a second time with the calculated fundamental frequencies. Each pass gets half of the reported progress range.
-
-        let interimResult = await SimulateRK45(waveForm: waveForm, startTime: startTime, endTime: endTime, epsilon: epsilon, deltaT: deltaT, Vstart: Vstart, Istart: Istart, progress: progress, progressRange: 0.0..<0.5, phase: "Pass 1 of 2")
-
-        guard !interimResult.isEmpty else {
-
-            return []
-        }
-        
-        var segmentAmps:[[Double]] = Array(repeating: [], count: interimResult[0].amps.count)
-        for nextResult in interimResult {
-            
-            for i in 0..<segmentAmps.count {
-                
-                segmentAmps[i].append(nextResult.amps[i])
-            }
-        }
-        
-        var newEddyFreqs = Array(repeating: SimulationModel.defaultEddyFreq, count: segmentAmps.count)
-        for nextSignal in 0..<segmentAmps.count {
-            
-            newEddyFreqs[nextSignal] = GetFundamentalFrequency(Isignal: segmentAmps[nextSignal], startTime: startTime, endTime: endTime)
-        }
-        
-        eddyFreqs = newEddyFreqs
-
-        if Task.isCancelled {
-
-            return []
-        }
-
-        let result = await SimulateRK45(waveForm: waveForm, startTime: startTime, endTime: endTime, epsilon: epsilon, deltaT: deltaT, Vstart: Vstart, Istart: Istart, progress: progress, progressRange: 0.5..<1.0, phase: "Pass 2 of 2")
-
-        return result
-    }
-    
-    func GetFundamentalFrequency(Isignal:[Double], startTime:Double, endTime:Double) -> Double {
-        
-        // get rid of the dc-component of the signal (from https://sam-koblenski.blogspot.com/2015/11/everyday-dsp-for-programmers-dc-and.html)
-        var signal:[Float] = []
-        
-        let alpha:Float = 0.9
-        var wPrev:Float = 0.0
-        for x_t in Isignal {
-            
-            let wNew = Float(x_t) + alpha * wPrev;
-            signal.append(wNew - wPrev)
-            wPrev = wNew
-        }
-        
-        // This next bunch of stuff is essential cut-and-paste from Apple's documentation. It could probably be optimized but for now I'll just use it as-is
-        let n = signal.count
-        let log2n = vDSP_Length(log2(Float(n)))
-        
-        guard let fftSetUp = vDSP.FFT(log2n: log2n, radix: .radix2, ofType: DSPSplitComplex.self) else {
-                                        
-            ALog("Can't create FFT Setup.")
-            return Double.greatestFiniteMagnitude
-        }
-        
-        let halfN = Int(n / 2)
-        var forwardInputReal = [Float](repeating: 0, count: halfN)
-        var forwardInputImag = [Float](repeating: 0, count: halfN)
-        var forwardOutputReal = [Float](repeating: 0, count: halfN)
-        var forwardOutputImag = [Float](repeating: 0, count: halfN)
-        
-        forwardInputReal.withUnsafeMutableBufferPointer { forwardInputRealPtr in
-            forwardInputImag.withUnsafeMutableBufferPointer { forwardInputImagPtr in
-                forwardOutputReal.withUnsafeMutableBufferPointer { forwardOutputRealPtr in
-                    forwardOutputImag.withUnsafeMutableBufferPointer { forwardOutputImagPtr in
-                        
-                        // Create a `DSPSplitComplex` to contain the signal.
-                        var forwardInput = DSPSplitComplex(realp: forwardInputRealPtr.baseAddress!,
-                                                           imagp: forwardInputImagPtr.baseAddress!)
-                        
-                        // Convert the real values in `signal` to complex numbers.
-                        signal.withUnsafeBytes {
-                            vDSP.convert(interleavedComplexVector: [DSPComplex]($0.bindMemory(to: DSPComplex.self)),
-                                         toSplitComplexVector: &forwardInput)
-                        }
-                        
-                        // Create a `DSPSplitComplex` to receive the FFT result.
-                        var forwardOutput = DSPSplitComplex(realp: forwardOutputRealPtr.baseAddress!,
-                                                            imagp: forwardOutputImagPtr.baseAddress!)
-                        
-                        // Perform the forward FFT.
-                        fftSetUp.forward(input: forwardInput,
-                                         output: &forwardOutput)
-                    }
-                }
-            }
-        }
-        
-        var xFFT:[Double] = []
-        var maxIndex = -1
-        var maxMag = 0.0
-        for i in 0..<halfN {
-            
-            let compVal = Complex(Double(forwardOutputReal[i]), Double(forwardOutputImag[i]))
-            let mag = compVal.length
-            if mag > maxMag {
-                
-                maxMag = mag
-                maxIndex = i
-            }
-            
-            xFFT.append(mag)
-        }
-        
-        let fundFreq = Double(maxIndex) / (endTime - startTime)
-        DLog("Fundamental frequency: \(fundFreq) Hz")
-        
-        return fundFreq
-    }
-    
     /*
     /// Call to simulate the impulse shot using the given parameters and 'self'
     /// - Note: !!!!!!!! Do not use this call, preference should be given to SimulateRK45() !!!!!!!!!!!!!!!!!!!!!
@@ -906,7 +805,7 @@ actor SimulationModel {
                     voltageDrop[i] = interimV[indexBase.belowNode] - interimV[indexBase.aboveNode]
                 }
                 
-                let Mrhs = QuickVectorSubtract(lhs: voltageDrop, rhs: QuickRI(I: interimI, freqs: eddyFreqs))
+                let Mrhs = QuickVectorSubtract(lhs: voltageDrop, rhs: QuickRI(I: interimI, frequency: SimulationModel.defaultEddyFreq))
                 guard let dIdt = M.SolvePositiveDefinite(B: PchMatrix(vectorData: Mrhs)) else {
                     
                     DLog("Pos/Def Solve failed!")
@@ -940,6 +839,104 @@ actor SimulationModel {
     }
     */
     
+    /// Run both solvers on the same problem and report how far apart they are.
+    ///
+    /// # Why this exists
+    ///
+    /// An exact method fails silently. If an incidence sign is flipped or a
+    /// row-surgery step lands in the wrong order, the frequency-domain solver
+    /// produces a perfectly conditioned system, solves it to machine
+    /// precision, and returns a smooth, plausible, wrong answer. Nothing in
+    /// its own diagnostics can catch that, because they check the solve rather
+    /// than the physics.
+    ///
+    /// RK45 catches it, because it reaches the answer by a completely
+    /// different route - marching the ODEs in time rather than solving them
+    /// algebraically per frequency - while sharing the same matrices and
+    /// incidence arrays. Agreement between the two is strong evidence both are
+    /// right; disagreement localises the problem immediately.
+    ///
+    /// # Matching the two
+    ///
+    /// Both are pinned to the SAME constant resistance
+    /// (`defaultEddyFreq`) via `resistanceFrequencyOverride`. Without that
+    /// they solve different equations - the frequency-domain path varies R
+    /// with frequency and RK45 cannot - and any disagreement would be
+    /// meaningless. So this compares the two *numerical methods*, not the two
+    /// resistance models.
+    ///
+    /// - returns: The worst absolute nodal voltage difference, the peak
+    ///   voltage it should be judged against, and the time it occurred - or
+    ///   nil if either solver failed.
+    func CompareSolvers(waveForm:WaveForm, displaySpan:Double, maximumFrequency:Double) async -> (worstDifference:Double, peakVoltage:Double, atTime:Double)? {
+
+        guard var snapshot = await Snapshot() else {
+
+            return nil
+        }
+
+        snapshot.resistanceFrequencyOverride = SimulationModel.defaultEddyFreq
+
+        let grid = LaplaceGrid.DefaultGrid(displaySpan: displaySpan, maximumFrequency: maximumFrequency)
+
+        guard let frequencyResult = await FrequencyDomainSolver.Sweep(snapshot: snapshot, waveForm: waveForm, grid: grid), !frequencyResult.isEmpty else {
+
+            DLog("The frequency-domain solver failed")
+            return nil
+        }
+
+        // 200 V per 0.05 us step, the tolerance the old UI used to pass.
+        let rk45Result = await SimulateRK45(waveForm: waveForm, startTime: 0.0, endTime: displaySpan, epsilon: 200.0 / 0.05E-6)
+
+        guard !rk45Result.isEmpty else {
+
+            DLog("RK45 failed or was cancelled")
+            return nil
+        }
+
+        // RK45 lands on adaptive times that will not coincide with the uniform
+        // grid, so its output is interpolated onto the grid. Linear is enough:
+        // its steps are orders of magnitude finer than the grid spacing, so
+        // the interpolation error is far below the difference being measured.
+        var worst = 0.0
+        var worstAt = 0.0
+        var peak = 0.0
+        var rkIndex = 0
+
+        for step in frequencyResult {
+
+            while rkIndex + 1 < rk45Result.count - 1, rk45Result[rkIndex + 1].time < step.time {
+
+                rkIndex += 1
+            }
+
+            guard rkIndex + 1 < rk45Result.count else { break }
+
+            let before = rk45Result[rkIndex]
+            let after = rk45Result[rkIndex + 1]
+            let span = after.time - before.time
+            let weight = span > 0.0 ? (step.time - before.time) / span : 0.0
+
+            for node in 0..<min(step.volts.count, before.volts.count) {
+
+                let interpolated = before.volts[node] + weight * (after.volts[node] - before.volts[node])
+                let difference = abs(step.volts[node] - interpolated)
+
+                peak = max(peak, abs(interpolated))
+
+                if difference > worst {
+
+                    worst = difference
+                    worstAt = step.time
+                }
+            }
+        }
+
+        DLog("Solver comparison: worst nodal difference \(worst) V against a peak of \(peak) V (\(peak > 0 ? worst / peak : 0) relative) at t = \(worstAt * 1.0E6) µs")
+
+        return (worst, peak, worstAt)
+    }
+
     /// Use the RK45 method (with adaptive timesteps) to simulate the impulse shot. Note that the 'deltaT' argument is only used as a startng point. It has a default value of 0.05E-6
     /// - parameter waveForm: A valid WaveForm to use for the simulation
     /// - parameter startTime: The beginning time of the simulation, usually 0
@@ -970,6 +967,10 @@ actor SimulationModel {
         var currentTime = startTime
         var h = deltaT
         var unusedSteps = 0
+        var consecutiveRejections = 0
+
+        // See the failure exit at the bottom of the loop for why this exists.
+        let hMin = (endTime - startTime) * 1.0E-12
 
         // Progress is reported as the fraction of the simulated time-span that has been covered. Note that the adaptive time-step makes this decidedly non-linear in wall-clock time: h is small early on (when dV/dt at the impulse front is large) and grows as the wave flattens out, so the indicator crawls at first and then accelerates. It is monotonic, though - a rejected step simply doesn't advance currentTime.
         let timeSpan = endTime - startTime
@@ -990,11 +991,19 @@ actor SimulationModel {
             h = min(h, endTime - currentTime)
 
             // This all comes from the pdf document "rungekutta_adaptive_timestep"
-            let f1 = await DifferentialFormula(waveForm: waveForm, t: currentTime, V: V, I: I)
+            guard let f1 = await DifferentialFormula(waveForm: waveForm, t: currentTime, V: V, I: I) else {
+
+                DLog("Derivative evaluation 1 failed at t = \(currentTime * 1.0E6) µs")
+                return []
+            }
             let dVk1 = h * f1.dVdt
             let dIk1 = h * f1.dIdt
             
-            let f2 = await DifferentialFormula(waveForm: waveForm, t: currentTime + h / 4, V: V + (0.25 * dVk1), I: I + (0.25 * dIk1))
+            guard let f2 = await DifferentialFormula(waveForm: waveForm, t: currentTime + h / 4, V: V + (0.25 * dVk1), I: I + (0.25 * dIk1)) else {
+
+                DLog("Derivative evaluation 2 failed at t = \(currentTime * 1.0E6) µs")
+                return []
+            }
             let dVk2 = h * f2.dVdt
             let dIk2 = h * f2.dIdt
             var dV = 3.0/32.0 * dVk1
@@ -1002,7 +1011,11 @@ actor SimulationModel {
             var dI = 3.0/32.0 * dIk1
             dI = dI + 9.0/32.0 * dIk2
             
-            let f3 = await DifferentialFormula(waveForm: waveForm, t: currentTime + 3 * h / 8, V: V + dV, I: I + dI)
+            guard let f3 = await DifferentialFormula(waveForm: waveForm, t: currentTime + 3 * h / 8, V: V + dV, I: I + dI) else {
+
+                DLog("Derivative evaluation 3 failed at t = \(currentTime * 1.0E6) µs")
+                return []
+            }
             let dVk3 = h * f3.dVdt
             let dIk3 = h * f3.dIdt
             dV = 1932.0/2197.0 * dVk1 
@@ -1012,7 +1025,11 @@ actor SimulationModel {
             dI = dI - 7200.0/2197.0 * dIk2
             dI = dI + 7296.0/2197.0 * dIk3
             
-            let f4 = await DifferentialFormula(waveForm: waveForm, t: currentTime + 12 * h / 13, V: V + dV, I: I + dI)
+            guard let f4 = await DifferentialFormula(waveForm: waveForm, t: currentTime + 12 * h / 13, V: V + dV, I: I + dI) else {
+
+                DLog("Derivative evaluation 4 failed at t = \(currentTime * 1.0E6) µs")
+                return []
+            }
             let dVk4 = h * f4.dVdt
             let dIk4 = h * f4.dIdt
             dV = 439.0/216.0 * dVk1 
@@ -1024,7 +1041,11 @@ actor SimulationModel {
             dI = dI + 3680.0/513.0 * dIk3
             dI = dI - 845.0/4104.0 * dIk4
             
-            let f5 = await DifferentialFormula(waveForm: waveForm, t: currentTime + h, V: V + dV, I: I + dI)
+            guard let f5 = await DifferentialFormula(waveForm: waveForm, t: currentTime + h, V: V + dV, I: I + dI) else {
+
+                DLog("Derivative evaluation 5 failed at t = \(currentTime * 1.0E6) µs")
+                return []
+            }
             let dVk5 = h * f5.dVdt
             let dIk5 = h * f5.dIdt
             dV = -8.0/27.0 * dVk1
@@ -1037,10 +1058,16 @@ actor SimulationModel {
             dI = dI - 3544.0/2565.0 * dIk3
             dI = dI + 1859.0/4104.0 * dIk4
             dI = dI - 11.0/40.0 * dIk5
-            let f6 = await DifferentialFormula(waveForm: waveForm, t: currentTime + h / 2, V: V + dV, I: I + dI)
+            guard let f6 = await DifferentialFormula(waveForm: waveForm, t: currentTime + h / 2, V: V + dV, I: I + dI) else {
+
+                DLog("Derivative evaluation 6 failed at t = \(currentTime * 1.0E6) µs")
+                return []
+            }
             let dVk6 = h * f6.dVdt
-            // let dIk6 = h * f6.dIdt
-            
+            // f6.dIdt is computed by DifferentialFormula whether or not it is
+            // used, so the current error estimate below is free.
+            let dIk6 = h * f6.dIdt
+
             var newV = V + 25.0/216.0 * dVk1
             newV = newV + 1408.0/2565.0 * dVk3
             newV = newV + 2197.0/4104.0 * dVk4
@@ -1056,34 +1083,53 @@ actor SimulationModel {
             checkV = checkV + 28561.0/56430.0 * dVk4
             checkV = checkV - 9.0/50.0 * dVk5
             checkV = checkV + 2.0/55.0 * dVk6
-            /*
             var checkI = I + 16.0/135.0 * dIk1
             checkI = checkI + 6656.0/12825.0 * dIk3
             checkI = checkI + 28561.0/56430.0 * dIk4
             checkI = checkI - 9.0/50.0 * dIk5
             checkI = checkI + 2.0/55.0 * dIk6
-            */
-            
+
+            // Error per unit step for both state blocks. V and I are coupled -
+            // an unchecked error in I feeds straight back into dV/dt through
+            // 'currentDrop' on the next step - so controlling only V, as this
+            // routine used to, controls half of a coupled system.
             let vR = (1.0 / h) * (checkV - newV).map(abs)
-            // let iR = (1.0 / h) * (checkI - newI).map(abs)
-            
-            guard let max_vR = vR.max() /*, let max_iR = iR.max() */ else {
-                
-                DLog("Could not get max value!")
+            let iR = (1.0 / h) * (checkI - newI).map(abs)
+
+            guard let max_vR = vR.max(), let max_iR = iR.max() else {
+
+                DLog("Could not get max value - a derivative evaluation probably failed")
                 return []
             }
-            
-            let delV = 0.84 * pow(epsilon / max_vR, 0.25)
-            // let delI = 0.84 * pow(epsilon / max_iR, 0.25)
-            
-            if max_vR <= epsilon /* && max_iR <= epsilon */ {
-                
+
+            // The two blocks are in different units and differ by many orders
+            // of magnitude, so they cannot share one absolute tolerance. The
+            // current tolerance is scaled by the ratio of the two states'
+            // magnitudes, which keeps the two checks comparably strict without
+            // needing a second user-facing number.
+            //
+            // This is deliberately cruder than the frequency-domain path needs
+            // to be. SimulateRK45 is now a cross-check, not the production
+            // solver, and a defensible tolerance is enough for that job.
+            let iScale = max(1.0E-12, I.map(abs).max() ?? 1.0) / max(1.0E-12, V.map(abs).max() ?? 1.0)
+            let epsilonI = epsilon * iScale
+
+            // Burden & Faires' step-size factor, CLAMPED. Unclamped, a near-zero
+            // error estimate sends this to infinity (and h with it), while a
+            // persistent failure lets h collapse without bound.
+            let rawDelta = min(0.84 * pow(epsilon / max(max_vR, 1.0E-300), 0.25),
+                               0.84 * pow(epsilonI / max(max_iR, 1.0E-300), 0.25))
+            let delV = min(max(rawDelta, 0.1), 4.0)
+
+            if max_vR <= epsilon && max_iR <= epsilonI {
+
                 currentTime += h
                 V = newV
                 I = newI
                 
                 let nextStepResult = SimulationStepResult(volts: V, amps: I, time: currentTime)
                 result.append(nextStepResult)
+                consecutiveRejections = 0
 
                 // Only report when the indicator would actually move. A 100pt-wide bar has about 100 useful positions, so 0.2% granularity is already generous, and a run of 10^5+ steps would otherwise swamp the main actor with updates.
                 let pu = (currentTime - startTime) / timeSpan
@@ -1100,9 +1146,34 @@ actor SimulationModel {
                 
                 DLog("Error too great at time \(currentTime * 1.0E6) µs; Step: \(h * 1.0E6) µs. Adjusting step and trying again!")
                 unusedSteps += 1
+                consecutiveRejections += 1
             }
-            
+
             h = delV * h
+
+            // Bail out rather than spin forever.
+            //
+            // Without this the routine had no lower bound on h and no failure
+            // exit: if the tolerance could not be met, h shrank without limit,
+            // and once it underflowed to where currentTime + h == currentTime
+            // in floating point the `while currentTime < endTime` loop could
+            // never terminate. Cancelling the task was the only way out.
+            //
+            // hMin is tied to the span rather than being an absolute constant
+            // so it scales with the problem: 10^-12 of the run is far below
+            // any step a converging solution needs, and comfortably above the
+            // point where currentTime stops advancing.
+            if h < hMin {
+
+                DLog("Step size collapsed to \(h) s at t = \(currentTime * 1.0E6) µs after \(consecutiveRejections) consecutive rejections. Giving up.")
+                return []
+            }
+
+            if consecutiveRejections > 25 {
+
+                DLog("25 consecutive rejected steps at t = \(currentTime * 1.0E6) µs. Giving up.")
+                return []
+            }
         }
         
         // The throttle above can swallow the last report if the final (clamped) step is a small one, so pin the indicator to the end of this pass's range explicitly
@@ -1113,7 +1184,7 @@ actor SimulationModel {
     }
     
     
-    private func DifferentialFormula(waveForm:WaveForm, t:Double, V:[Double], I:[Double]) async -> (dVdt:[Double], dIdt:[Double]) {
+    private func DifferentialFormula(waveForm:WaveForm, t:Double, V:[Double], I:[Double]) async -> (dVdt:[Double], dIdt:[Double])? {
         
         var voltageDrop:[Double] = await Array(repeating: 0.0, count: M.rows)
         var currentDrop:[Double] = await Array(repeating: 0.0, count: baseC.rows)
@@ -1173,14 +1244,38 @@ actor SimulationModel {
                 voltageDrop[i] = V[indexBase.belowNode] - V[indexBase.aboveNode]
             }
             
-            let Mrhs = QuickVectorSubtract(lhs: voltageDrop, rhs: QuickRI(I: I, freqs: eddyFreqs))
+            let Mrhs = QuickVectorSubtract(lhs: voltageDrop, rhs: QuickRI(I: I, frequency: SimulationModel.defaultEddyFreq))
             async let dIdt = try await M.Solve(B: PchMatrix(vectorData: Mrhs))
             
-            return await (try dVdt.GetDoubleBuffer(), try dIdt.GetDoubleBuffer())
+            let resultV = try await dVdt.GetDoubleBuffer()
+            let resultI = try await dIdt.GetDoubleBuffer()
+
+            // A short buffer here would be just as corrupting as the empty one
+            // the error path used to return, and just as invisible - see the
+            // note on the catch block below.
+            guard resultV.count == currentDrop.count, resultI.count == voltageDrop.count else {
+
+                DLog("A solve returned \(resultV.count)/\(resultI.count) values, expected \(currentDrop.count)/\(voltageDrop.count)")
+                return nil
+            }
+
+            return (resultV, resultI)
         }
         catch {
-            
-            return ([], [])
+
+            // Returns nil rather than ([], []).
+            //
+            // The old empty-array return was silently destructive: the vector
+            // operators in this file are built on `zip`, which TRUNCATES to the
+            // shorter operand rather than trapping. An empty derivative
+            // therefore turned V and I into empty arrays, every subsequent
+            // stage quietly produced empty arrays too, and the caller
+            // eventually failed several steps later at `vR.max()` with the
+            // misleading message "Could not get max value!" - miles from the
+            // actual failure. Making the type Optional forces the caller to
+            // deal with it at the point it happens.
+            DLog("A derivative solve failed: \(error)")
+            return nil
         }
     }
     
@@ -1223,15 +1318,18 @@ actor SimulationModel {
     }
     
     /// Multiply the (diagonal) R matrix by the vector I. Note that this routine does no dimension checking (or any checking of any kind, for that matter)
-    func QuickRI(I:[Double], freqs:[Double]?) -> [Double] {
-        
+    ///
+    /// Every segment is evaluated at the SAME frequency - see
+    /// `defaultEddyFreq` for why a time-domain solver has no other option, and
+    /// what that means when comparing against the frequency-domain path.
+    func QuickRI(I:[Double], frequency:Double) -> [Double] {
+
         var result:[Double] = Array(repeating: 0.0, count: I.count)
         for i in 0..<I.count {
-            
-            let frequency = freqs == nil ? SimulationModel.defaultEddyFreq : freqs![i]
+
             result[i] = R[i].EffectiveResistanceAt(newFreq: frequency) * I[i]
         }
-        
+
         return result
     }
 }

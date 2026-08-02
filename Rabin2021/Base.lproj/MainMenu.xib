@@ -49,6 +49,7 @@
                 <outlet property="simCalcProgInd" destination="ar6-fH-ZoX" id="EOh-90-GTr"/>
                 <outlet property="cancelInductanceMenuItem" destination="Cn2-sM-q01" id="Cn2-sM-q03"/>
                 <outlet property="cancelSimulationMenuItem" destination="Cn1-sM-q01" id="Cn1-sM-q03"/>
+                <outlet property="compareSolversMenuItem" destination="Cmp-Sv-Mi1" id="Cmp-Sv-Ou1"/>
                 <outlet property="simulateMenuItem" destination="qgl-wB-C1d" id="6gm-BU-6n3"/>
                 <outlet property="simulationLight" destination="yKp-7M-HKH" id="sQW-KM-J6p"/>
                 <outlet property="splitSegmentToBasicSectionsMenuItem" destination="hmW-Yq-C8J" id="aNg-xP-L1a"/>
@@ -377,6 +378,13 @@
                             <menuItem title="Cancel Simulation" keyEquivalent="." id="Cn1-sM-q01">
                                 <connections>
                                     <action selector="handleCancelSimulation:" target="XWq-sU-B2V" id="Cn1-sM-q02"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem isSeparatorItem="YES" id="Cmp-Sv-Sp1"/>
+                            <menuItem title="Compare Solvers (Debug)…" id="Cmp-Sv-Mi1">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleCompareSolvers:" target="XWq-sU-B2V" id="Cmp-Sv-Ac1"/>
                                 </connections>
                             </menuItem>
                             <menuItem isSeparatorItem="YES" id="7eO-Pc-VaZ"/>

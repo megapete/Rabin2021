@@ -202,6 +202,22 @@ struct NetworkSnapshot:Sendable {
     /// The very large resistance standing in for "no connection".
     let floatingResistance:Double
 
+    /// When non-nil, every segment's resistance is evaluated at THIS frequency
+    /// instead of at the frequency being solved.
+    ///
+    /// This exists solely to make the RK45 cross-check meaningful. A
+    /// time-marching solver can only carry one resistance per segment for a
+    /// whole run, so with the frequency dependence active the two solvers are
+    /// not solving the same equations and a disagreement between them cannot
+    /// be attributed to anything in particular. Pinning this to
+    /// `SimulationModel.defaultEddyFreq` makes them identical, so any
+    /// remaining difference is purely numerical - which is exactly what a
+    /// cross-check should be measuring.
+    ///
+    /// Leave it nil for production runs. Setting it throws away the main
+    /// advantage of solving in the frequency domain.
+    var resistanceFrequencyOverride:Double? = nil
+
     /// Total unknowns.
     var unknownCount:Int { nodeCount + segmentCount }
 }
@@ -302,7 +318,7 @@ enum FrequencyDomainSolver {
 
         // --- Segment block: -B*V + (s*M + Z)*I = 0 -------------------------
         let omega = s.imaginary
-        let frequency = abs(omega) / (2.0 * π)
+        let frequency = snapshot.resistanceFrequencyOverride ?? (abs(omega) / (2.0 * π))
 
         for segment in 0..<nS {
 

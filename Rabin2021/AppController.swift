@@ -128,6 +128,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     @IBOutlet weak var createSimModelMenuItem: NSMenuItem!
     @IBOutlet weak var simulateMenuItem: NSMenuItem!
     @IBOutlet weak var cancelSimulationMenuItem: NSMenuItem!
+    @IBOutlet weak var compareSolversMenuItem: NSMenuItem!
     @IBOutlet weak var showWaveformsMenuItem: NSMenuItem!
     @IBOutlet weak var showCoilResultsMenuItem: NSMenuItem!
     @IBOutlet weak var showVoltageDiffsMenuItem: NSMenuItem!
@@ -1296,6 +1297,78 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 self.latestSimulationResult = SimulationResults(waveForm: waveForm, peakVoltage: peakVoltage, stepResults: simResult)
                 await didFinishSimulationRun()
             }
+        }
+    }
+
+    /// Runs both solvers on the same problem and reports how far apart they are.
+    ///
+    /// This is a correctness tool, not a feature. See SimulationModel.CompareSolvers() for why an independent second method is worth keeping around: the frequency-domain solver cannot detect its own assembly errors, because a wrong system of equations still solves cleanly.
+    ///
+    /// Both are pinned to the same constant resistance, so what is being compared is the two numerical methods and not the two resistance models.
+    @IBAction func handleCompareSolvers(_ sender: Any) {
+
+        guard let simModel = self.currentSimModel else {
+
+            DLog("No simulation model!")
+            return
+        }
+
+        var waveForms:[String] = []
+        SimulationModel.WaveForm.Types.allCases.forEach {
+
+            waveForms.append($0.rawValue)
+        }
+
+        let simDetailsDlog = SimDetailsDlog(waveFormStrings: waveForms)
+
+        guard simDetailsDlog.runModal() == .OK else {
+
+            return
+        }
+
+        let peakVoltage = simDetailsDlog.voltageField.doubleValue * 1000
+        let bandwidth = simDetailsDlog.bandwidthInHz
+        let wfIndex = simDetailsDlog.waveFormPopUp.indexOfSelectedItem
+
+        guard abs(peakVoltage) >= 10000 else {
+
+            PCH_ErrorAlert(message: "Cannot simulate with a voltage less than 10kV!")
+            return
+        }
+
+        self.runningSimulationTask = Task {
+
+            let waveForm = SimulationModel.WaveForm(type: SimulationModel.WaveForm.Types.allCases[wfIndex], pkVoltage: peakVoltage)
+
+            simulationLight.textColor = .red
+            workingLabel.isHidden = false
+            simCalcProgInd.isIndeterminate = true
+            simCalcProgInd.isHidden = false
+            simCalcProgInd.startAnimation(nil)
+
+            // RK45 is slow - that is the entire reason it was replaced - so this can take a while on a full-size model. Run it on something small.
+            let comparison = await simModel.CompareSolvers(waveForm: waveForm, displaySpan: waveForm.timeToZero, maximumFrequency: bandwidth)
+
+            simCalcProgInd.stopAnimation(nil)
+            self.runningSimulationTask = nil
+            await didFinishSimulationRun()
+
+            guard let comparison else {
+
+                if !Task.isCancelled {
+
+                    PCH_ErrorAlert(message: "One of the two solvers failed - see the log for which.")
+                }
+                return
+            }
+
+            let relative = comparison.peakVoltage > 0 ? comparison.worstDifference / comparison.peakVoltage : 0.0
+
+            let alert = NSAlert()
+            alert.messageText = "Solver comparison"
+            alert.informativeText = String(format: "Worst nodal voltage difference: %.4g V\nPeak nodal voltage: %.4g V\nRelative: %.3e\nAt t = %.3f µs\n\nBoth solvers used the same constant resistance, so this measures the numerical methods only. Agreement at the 1e-3 level or better means both are solving the same equations correctly.", comparison.worstDifference, comparison.peakVoltage, relative, comparison.atTime * 1.0E6)
+            alert.alertStyle = relative < 1.0E-2 ? .informational : .warning
+            let _ = alert.runModal()
         }
     }
 
@@ -2789,65 +2862,246 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
     }
     
+    /// Build a SPICE netlist for the current model.
+    ///
+    /// # What this is for
+    ///
+    /// External validation of `FrequencyDomainSolver`. An exact method fails
+    /// silently - a wrong system of equations still solves cleanly - so the
+    /// only way to be confident the assembled network really is the network
+    /// intended is to hand the same circuit to an independent tool.
+    ///
+    /// Two analyses are emitted, and they check different things:
+    ///
+    ///   - `.ac` compares like with like. The solver IS a frequency-domain
+    ///     solve, so an AC sweep sidesteps every time-stepping difference and
+    ///     any mismatch is an assembly error, localised to a frequency. Drive
+    ///     the comparison with the transfer function: divide the solver's
+    ///     nodal voltage by U(jw) and compare against SPICE's AC result, which
+    ///     uses a unit source.
+    ///   - `.tran` then checks the inverse transform. With `.ac` already
+    ///     matching, any remaining discrepancy is in the NILT stage.
+    ///
+    /// # Use a SMALL model
+    ///
+    /// Mutual inductance in SPICE is one `K` card per pair - 190 of them for
+    /// 20 segments, but around 20,000 for 200, where it becomes numerically
+    /// fragile as k approaches 1. Validate on 10-20 segments. The solver's
+    /// code path does not change with size, so correctness there is
+    /// correctness everywhere; the large case is what SPICE cannot do, which
+    /// is the whole reason this program computes the inductance matrix itself.
+    ///
+    /// ngspice is recommended over LTspice for the dense coupling.
+    ///
+    /// # Per-unit
+    ///
+    /// The source is 1 V peak, so results come out per-unit and can be
+    /// compared against the solver at any impulse level.
     func doCreateCirFile(filename:String) async -> String? {
-        
+
         guard let model = self.currentModel else {
-            
+
             DLog("No model is currently defined!")
             return nil
         }
-        
-        var result:String = "FILE: " + filename.uppercased() + "\n"
-        
-        // The initial resistance-to-self-inductance id index is 40000
-        var resistanceToInductanceIndexID = 40000
-        // The initial shunt capacitance id index is 50000
-        var shuntIndexID = 50000
-        
-        for nextNode in await model.nodes {
-            
-            // Start with shunt capacitances from this node
-            for nextShuntCap in nextNode.shuntCapacitances {
-                
-                // make sure we only define the shunt capacitance in one direction
-                if nextShuntCap.toNode > nextNode.number {
-                    
-                    let shuntCap = String(format: "C%d %d %d %.4E\n", shuntIndexID, nextNode.number, nextShuntCap.toNode, nextShuntCap.capacitance)
-                    shuntIndexID += 1
-                    result += shuntCap
-                }
+
+        guard let indMatrix = await model.unfactoredM else {
+
+            DLog("The inductance matrix has not been calculated!")
+            return nil
+        }
+
+        let segments = await model.CoilSegments()
+        let nodes = await model.nodes
+
+        guard !segments.isEmpty, !nodes.isEmpty else {
+
+            DLog("The model has no segments or no nodes!")
+            return nil
+        }
+
+        let grounded = Set(await model.NodesOfType(connType: .ground).map({ $0.number }))
+        let impulsed = Set(await model.NodesOfType(connType: .impulse).map({ $0.number }))
+
+        guard !grounded.isEmpty, !impulsed.isEmpty else {
+
+            DLog("The model needs at least one grounded and one impulsed node!")
+            return nil
+        }
+
+        // SPICE node 0 IS ground, so grounded model nodes collapse onto it
+        // rather than getting a node of their own. Everything else is offset by
+        // one so that model node 0 does not collide with SPICE's ground.
+        func nodeName(_ number:Int) -> String {
+
+            return grounded.contains(number) ? "0" : "N\(number)"
+        }
+
+        // Which nodes bracket each segment. Same derivation as
+        // SimulationModel.init: a node records the segments below and above
+        // it, so scanning the nodes inverts that into segment -> nodes.
+        var below = [Int](repeating: -1, count: segments.count)
+        var above = [Int](repeating: -1, count: segments.count)
+
+        for node in nodes {
+
+            if let belowSegment = node.belowSegment, !belowSegment.isStaticRing, !belowSegment.isRadialShield,
+               let index = try? await model.SegmentIndex(segment: belowSegment) {
+
+                above[index] = node.number
             }
-            
-            let Cj = await nextNode.belowSegment != nil ? nextNode.belowSegment!.seriesCapacitance : 0.0
-            let Cj1 = await nextNode.aboveSegment != nil ? nextNode.aboveSegment!.seriesCapacitance : 0.0
-            
-            guard Cj > 0.0 || Cj1 > 0.0 else {
-                
-                let alert = NSAlert()
-                alert.messageText = "The node has no segments!"
-                alert.alertStyle = .warning
-                let _ = alert.runModal()
-                return nil
-            }
-            
-            if let belowSeg = nextNode.belowSegment {
-                
-                let prevNodeNumber = nextNode.number - 1
-                
-                // The series capacitance
-                let seriesCap = String(format: "C%d %d %d %.4E\n", belowSeg.serialNumber, prevNodeNumber, nextNode.number, Cj)
-                
-                // The series resistance
-                let seriesRes = await String(format: "R%d %d %d %.4E\n", belowSeg.serialNumber, prevNodeNumber, nextNode.number, belowSeg.resistance())
-                
+
+            if let aboveSegment = node.aboveSegment, !aboveSegment.isStaticRing, !aboveSegment.isRadialShield,
+               let index = try? await model.SegmentIndex(segment: aboveSegment) {
+
+                below[index] = node.number
             }
         }
-        
+
+        let k1 = 14285.0
+        let k2 = 3.3333333E6
+
+        var result = "* SPICE netlist generated by ImpulseDistribution\n"
+        result += "* " + filename + "\n"
+        result += "* \(segments.count) segments, \(nodes.count) nodes\n"
+        result += "*\n"
+        result += "* Generated to cross-check FrequencyDomainSolver. Run the .ac sweep first:\n"
+        result += "* it compares directly against the solver's own per-frequency solution.\n"
+        result += "* Divide the solver's nodal voltage by U(jw) to get the transfer function\n"
+        result += "* that .ac reports, since the source here is a unit source.\n"
+        result += "*\n"
+        result += "* Source is 1V peak, so all results are per-unit.\n"
+        result += "*\n\n"
+
+        // --- the impulse source ---
+        //
+        // EXP(V1 V2 TD1 TAU1 TD2 TAU2) with V1=0, TD1=TD2=0 evaluates to
+        //     V2 * ( exp(-t/TAU2) - exp(-t/TAU1) )
+        // so TAU1 = 1/k2 and TAU2 = 1/k1 reproduce the full wave
+        //     v0 * ( exp(-k1*t) - exp(-k2*t) )
+        // exactly - the same function as SimulationModel.WaveForm.V(t).
+        //
+        // The DC/AC prefix makes the same source usable for the .ac sweep,
+        // where the transient description is ignored and the unit AC magnitude
+        // is used instead.
+        result += "* Full wave 1.2 x 50 us, 1V peak (v0 = 1.03 pu, per DelVecchio)\n"
+
+        for node in impulsed.sorted() {
+
+            result += String(format: "VIMP%d %@ 0 DC 0 AC 1 EXP(0 %.6E 0 %.6E 0 %.6E)\n", node, nodeName(node), 1.03, 1.0 / k2, 1.0 / k1)
+        }
+
+        // --- series branches: R and L per segment, series capacitance across ---
+        result += "\n* Segment branches: L in series with R, series capacitance in parallel\n"
+
+        for (index, segment) in segments.enumerated() {
+
+            guard below[index] >= 0, above[index] >= 0 else {
+
+                DLog("Segment \(index) is missing a node - cannot export")
+                return nil
+            }
+
+            guard let selfInductance:Double = await indMatrix[index, index], selfInductance > 0 else {
+
+                DLog("Segment \(index) has a non-positive self-inductance")
+                return nil
+            }
+
+            let lowNode = nodeName(below[index])
+            let highNode = nodeName(above[index])
+            let midNode = "S\(index)"
+
+            result += String(format: "L%d %@ %@ %.6E\n", index, lowNode, midNode, selfInductance)
+            result += await String(format: "R%d %@ %@ %.6E\n", index, midNode, highNode, segment.resistance())
+
+            let seriesCapacitance = await segment.seriesCapacitance
+
+            if seriesCapacitance > 0 {
+
+                result += String(format: "CS%d %@ %@ %.6E\n", index, lowNode, highNode, seriesCapacitance)
+            }
+        }
+
+        // --- mutual inductance ---
+        //
+        // k_ij = M_ij / sqrt(L_ii * L_jj). SPICE requires |k| < 1 and the
+        // resulting matrix to be positive definite; both are guaranteed here,
+        // because the inductance matrix has already been successfully
+        // Cholesky-factorized (see AppController's inductance calculation) and
+        // that succeeds only for a positive-definite matrix.
+        //
+        // Adjacent discs give k of 0.99 and above, which is where SPICE
+        // implementations start to struggle - hence the small-model advice.
+        result += "\n* Mutual inductance: \(segments.count * (segments.count - 1) / 2) coupling coefficients\n"
+
+        var worstCoupling = 0.0
+
+        for i in 0..<segments.count {
+
+            for j in (i + 1)..<segments.count {
+
+                guard let lii:Double = await indMatrix[i, i], let ljj:Double = await indMatrix[j, j], let mij:Double = await indMatrix[i, j] else {
+
+                    continue
+                }
+
+                let denominator = (lii * ljj).squareRoot()
+
+                guard denominator > 0 else { continue }
+
+                let k = mij / denominator
+
+                guard abs(k) > 1.0E-9 else { continue }
+
+                worstCoupling = max(worstCoupling, abs(k))
+
+                // Clamp strictly inside unity. A k of exactly 1 is rejected by
+                // every SPICE, and rounding in the division can produce one
+                // even when the matrix itself is fine.
+                let safe = min(max(k, -0.999999), 0.999999)
+
+                result += String(format: "K%d_%d L%d L%d %.9f\n", i, j, i, j, safe)
+            }
+        }
+
+        result += String(format: "* strongest coupling in this model: %.6f\n", worstCoupling)
+
+        // --- shunt capacitances ---
+        result += "\n* Shunt capacitances (toNode -1 means to ground)\n"
+
+        var shuntIndex = 0
+
+        for node in nodes {
+
+            for shunt in node.shuntCapacitances {
+
+                // Each pair is stored on both nodes, so emit only one
+                // direction. -1 means ground, which is never a real node
+                // number and so always passes this test.
+                guard shunt.toNode < 0 || shunt.toNode > node.number else { continue }
+
+                guard shunt.capacitance > 0 else { continue }
+
+                let other = shunt.toNode < 0 ? "0" : nodeName(shunt.toNode)
+
+                result += String(format: "CP%d %@ %@ %.6E\n", shuntIndex, nodeName(node.number), other, shunt.capacitance)
+                shuntIndex += 1
+            }
+        }
+
+        // --- analyses ---
+        result += "\n* .ac first: it compares directly against the solver's per-frequency result.\n"
+        result += "* .tran afterwards checks the inverse transform.\n"
+        result += ".ac dec 100 1E3 1E7\n"
+        result += ".tran 5E-9 100E-6 0 5E-9\n"
+        result += "\n* Adjacent discs couple at k > 0.99, so the default tolerances are too loose.\n"
+        result += ".options reltol=1e-6 abstol=1e-12 vntol=1e-9 gmin=1e-15\n"
         result += ".end\n"
-        
+
         return result
     }
-    
+
     @IBAction func handleMainWdgInductances(_ sender: Any) {
         
         Task {
@@ -3047,6 +3301,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return self.currentModel != nil && self.designIsValid
         }
         
+        if menuItem == self.compareSolversMenuItem {
+
+            return self.currentSimModel != nil && self.runningSimulationTask == nil
+        }
+
         if menuItem == self.simulateMenuItem {
 
             return self.currentModel != nil && self.designIsValid && self.currentSimModel != nil && self.runningSimulationTask == nil
