@@ -1698,43 +1698,53 @@ actor PhaseModel /*:Codable */ {
         }
     }
     
-    // Calculate the capacitance to the tank and to the other coils of the outermost coil (per Kulkarne 7.15)
+    // Calculate the capacitance to the tank and to the other coils of the outermost coil (per Kulkarni 7.15)
     func OuterShuntCapacitance() async throws -> Double {
-        
+
         guard let lastCoilSeg = self.CoilSegments().last else {
-            
+
             throw PhaseModelError(info: "Outermost coil", type: .CoilDoesNotExist)
         }
-        
+
         do {
-            
+
             let sTank = self.tankDepth / 2
             let tSolidTank = 0.25 * 0.0254
             let tOilTank = await sTank - lastCoilSeg.r2 - tSolidTank
             let H = try await EffectiveHeight(coil: lastCoilSeg.radialPos)
-            let R = await (lastCoilSeg.r1 + lastCoilSeg.r2) / 2
-            
+
+            // Kulkarni 7.15 is built on the cylinder-to-ground-plane result D.30, C = 2πε0/cosh⁻¹(s/R) per unit length, where R is the
+            // radius of the cylinder whose SURFACE carries the charge. A winding is a conducting shell, so from the outside it presents
+            // its outer radius - not its mean radius, which would understate C by inflating cosh⁻¹(s/R). Both ratios below are safely
+            // greater than 1: the tank cannot be inside the coil, and adjacent phases cannot overlap.
+            let R = await lastCoilSeg.r2
+
+            // The (t_oil + t_solid)/(t_oil/ε_oil + t_solid/ε_solid) factor is 7.15's effective relative permittivity for the series
+            // oil/barrier stack filling the gap.
             let firstTermTank = 2 * π * ε0 * H / acosh(sTank / R)
             let secondTermTank = (tOilTank + tSolidTank) / ((tOilTank / εOil) + (tSolidTank / εBoard))
-            
+
             let Ctank = firstTermTank * secondTermTank
-            
+
             let sCoils:Double = self.core.legCenters / 2
             let tSolidCoils = 2 * tSolidTank
             let tOilCoils:Double = await self.core.legCenters - (lastCoilSeg.r2 * 2) - tSolidCoils
-            
+
             let firstTermCoils = 2 * π * ε0 * H / acosh(sCoils / R)
             let secondTermCoil = (tOilCoils + tSolidCoils) / ((tOilCoils / εOil) + (tSolidCoils / εBoard))
-            
-            let Ccoils = firstTermCoils * secondTermCoil
-            
+
+            // Kulkarni, immediately below 7.15: the capacitance between the outermost windings of two phases is HALF the value given by
+            // 7.15, with s equal to half the distance between the two winding axes (which is what sCoils is). Appendix D says the same
+            // thing directly - the two-cylinder result D.28 is πε0/cosh⁻¹(s/R), exactly half the cylinder-to-plane D.30 used above.
+            let Ccoils = 0.5 * firstTermCoils * secondTermCoil
+
             return Ctank + Ccoils
         }
         catch {
-            
+
             throw error
         }
-        
+
     }
     
     func CoilInnerShuntCapacitance(coil:Int) async throws -> Double {

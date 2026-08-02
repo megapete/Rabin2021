@@ -80,9 +80,14 @@ actor Segment: Equatable /*, Hashable */ {
         }
     } */
     
-    /// A class constant for the thickness of a standard static ring
+    /// A class constant for the thickness of a standard static ring. This is the OVERALL (wrapped) dimension - the conductor plus
+    /// 'staticRingInsulationPerSide' of wrap on each face - so a static ring's rect covers its insulation the same way a disc's does.
     static let stdStaticRingThickness = 0.625 * meterPerInch
-    
+
+    /// The insulation wrap on ONE side of a static ring. Static rings are always wrapped with 3mm per side. Note that this is a
+    /// per-side figure, unlike BasicSectionWindingData.TurnData.turnInsulation, which is a two-sided total.
+    static let staticRingInsulationPerSide = 0.003
+
     /// This segment's serial number
     // private var serialnumberStore:Int
     
@@ -721,25 +726,53 @@ actor Segment: Equatable /*, Hashable */ {
                 return Cs
             }
             else if self.wdgType == .helical {
-                
-                // for helical coils, we ignore things like static rings and whether it's an end-turn
+
+                // A helical turn has Cs = 0, so Stein's formula degenerates (α → ∞) and DelVecchio's "conventional" formula 12.41 has to
+                // be used instead. 12.41 (Cconv = Cs + 4/3·Cdd) is derived for EQUAL disc-disc spacings on both sides. Redoing the shunt
+                // energy integral 12.25 for unequal spacings, with Ca = 2·Cdd1, Cb = 2·Cdd2, Va = V, Vb = 0 and the assumed linear
+                // V(x) = V(1 − x/L) of 12.37:
+                //
+                //     Eshunt = (Ca/2L)∫₀ᴸ[V(x) − V]²dx + (Cb/2L)∫₀ᴸ[V(x)]²dx = (V²/3)(Cdd1 + Cdd2)
+                //
+                // and with E = ½CV² that gives C = Cs + 2/3·(Cdd1 + Cdd2) - i.e. 4/3 of the AVERAGE of the two, which collapses back to
+                // 12.41 when they are equal. The old code used max(gap) on both sides, which is the *smaller* of the two Cdd and so
+                // understated the capacitance whenever the gaps differed.
                 let aboveGap = axialGaps!.above
                 let belowGap = axialGaps!.below
-                
-                let gapToUse = max(aboveGap, belowGap)
-                let Cdd = Segment.DiscToDiscSeriesCapacitance(belowGap: gapToUse, aboveGap: gapToUse, basicSection: self.basicSections[0])
-                
-                return Cs + 4 / 3 * max(Cdd.below, Cdd.above)
+
+                let srForCdd = adjStaticRing ?? (above:false, below:false)
+                let Cdd = Segment.DiscToDiscSeriesCapacitance(belowGap: belowGap, aboveGap: aboveGap, basicSection: self.basicSections[0], staticRing: srForCdd)
+
+                // At a coil end with no static ring, the "gap" handed to us is the clearance to the yoke. That is a capacitance to
+                // ground, not a turn-to-turn one, so it stores no series energy and that side contributes nothing - the helical analogue
+                // of DelVecchio 12.7, where the end disc is given Ca = 0.
+                var CddBelow = Cdd.below
+                var CddAbove = Cdd.above
+
+                if let endDiscLoc = endDisc {
+
+                    if endDiscLoc.lowest && !srForCdd.below {
+
+                        CddBelow = 0.0
+                    }
+
+                    if endDiscLoc.highest && !srForCdd.above {
+
+                        CddAbove = 0.0
+                    }
+                }
+
+                return Cs + 2.0 / 3.0 * (CddBelow + CddAbove)
             }
             else if self.wdgType == .disc {
-                
+
                 let aboveGap = axialGaps!.above
                 let belowGap = axialGaps!.below
-                
+
                 let bs = self.basicSections[0]
-                
-                let Cdd = Segment.DiscToDiscSeriesCapacitance(belowGap: belowGap, aboveGap: aboveGap, basicSection: bs)
-                
+
+                let Cdd = Segment.DiscToDiscSeriesCapacitance(belowGap: belowGap, aboveGap: aboveGap, basicSection: bs, staticRing: adjStaticRing ?? (above:false, below:false))
+
                 if let endDiscLoc = endDisc, endDiscLoc != (false, false) {
                     
                     if let staticRing = adjStaticRing, staticRing != (false, false) {
@@ -776,15 +809,21 @@ actor Segment: Equatable /*, Hashable */ {
                     var Yb:Double = 0.0
                     var alpha:Double =  0.0
                     
-                    if let staticRing = adjStaticRing {
-                    
+                    // The (false, false) test matters: when this Segment holds several discs, the recursion above hands each end disc a
+                    // NON-nil tuple with the far side cleared - (false, adjStaticRing!.below) for the bottom disc, (adjStaticRing!.above,
+                    // false) for the top - so a disc at the opposite end of the Segment from the ring arrives here with both flags false.
+                    // Without this test it took the DelVecchio 12.6 path anyway and got α = √((Cdd_above + 2·Cdd_below)/Cs) instead of the
+                    // symmetric 12.54 α = √(2(Cdd_above + Cdd_below)/Cs), i.e. √(3/4) of the correct value for equal gaps. The endDisc
+                    // test on the branch above has always had the equivalent guard.
+                    if let staticRing = adjStaticRing, staticRing != (false, false) {
+
                         let useCdd = staticRing.below ? Cdd.above : Cdd.below
                         let Ca = staticRing.below ? Cdd.below : Cdd.above
-                        
+
                         let Csum = Ca + 2 * useCdd
                         Ya = Ca / Csum
                         Yb = 2 * useCdd / Csum
-                        
+
                         alpha = sqrt(Csum / Cs)
                     }
                     else {
@@ -835,37 +874,64 @@ actor Segment: Equatable /*, Hashable */ {
     
     
     /// Return the Cdd values per DelVecchio equation 12.52 (3rd edition) for the gap above an below the given BasicSection.
-    static func DiscToDiscSeriesCapacitance(belowGap:Double, aboveGap:Double, basicSection:BasicSection) -> (below:Double, above:Double) {
-        
+    ///
+    /// Units: metres and Farads throughout. Cdd = ε0·π·(Rout² − Rin²)·[ fks/Σ(ℓ/ε)_ks + (1 − fks)/Σ(ℓ/ε)_oil ], where Σ(ℓ/ε) is the
+    /// series thickness/permittivity sum of every layer lying between the two conductors (DelVecchio 12.51 generalized past two layers).
+    ///
+    /// - Parameter staticRing: Which side (if either) of the BasicSection faces a static ring rather than another disc. Per DelVecchio
+    /// 12.6 the disc-to-static-ring capacitance Ca plays the role of Cdd on that side, but the insulation in that gap is not the same:
+    /// see the note on the solid-insulation term below.
+    static func DiscToDiscSeriesCapacitance(belowGap:Double, aboveGap:Double, basicSection:BasicSection, staticRing:(above:Bool, below:Bool) = (false, false)) -> (below:Double, above:Double) {
+
         let fks = Double(basicSection.wdgData.discData.numAxialColumns) * basicSection.wdgData.discData.axialColumnWidth / (π * (basicSection.r1 + basicSection.r2))
-        let tp = /* 2.0 * */ basicSection.wdgData.turn.turnInsulation
-        
+
+        // 'turnInsulation' is the TOTAL (two-sided) insulation on a turn, so a turn presents half of it to the gap on each of its two
+        // faces. A disc-to-disc gap therefore holds two of those halves - one from each disc - which is exactly why DelVecchio 12.52
+        // uses the full tp for that case and not 2·tp. Do not add a factor of 2 here.
+        let tp = basicSection.wdgData.turn.turnInsulation
+
+        // The gaps passed in are measured between the *insulated* surfaces (a disc's z1/z2 are over-paper, and a static ring's rect is
+        // its overall wrapped thickness), so a gap is pure key spacer or oil and every solid layer has to be added in separately.
+        // Against another disc that is tp; against a static ring it is this disc's half-thickness plus the ring's own wrap, which is
+        // substantial (3 mm per side) and dominates the term.
+        func solidTerm(facesStaticRing:Bool) -> Double {
+
+            if facesStaticRing {
+
+                return (tp / 2.0 + Segment.staticRingInsulationPerSide) / εPaper
+            }
+
+            return tp / εPaper
+        }
+
         var Cdd_below = ε0 * π * (basicSection.r2 * basicSection.r2 - basicSection.r1 * basicSection.r1)
         var Cdd_above = Cdd_below
         // calculate Cdd for the gap below the segment
         if belowGap > 0.0 {
-            
-            let firstTerm = fks / ((tp / εPaper) + (belowGap / εBoard))
-            let secondTerm = (1 - fks) / ((tp / εPaper) + (belowGap / εOil))
+
+            let solid = solidTerm(facesStaticRing: staticRing.below)
+            let firstTerm = fks / (solid + (belowGap / εBoard))
+            let secondTerm = (1 - fks) / (solid + (belowGap / εOil))
             Cdd_below *= (firstTerm + secondTerm)
         }
         else {
-            
+
             Cdd_below = 0.0
         }
-        
+
         // calculate Cdd for the gap above the segment
         if aboveGap > 0.0 {
-            
-            let firstTerm = fks / ((tp / εPaper) + (aboveGap / εBoard))
-            let secondTerm = (1 - fks) / ((tp / εPaper) + (aboveGap / εOil))
+
+            let solid = solidTerm(facesStaticRing: staticRing.above)
+            let firstTerm = fks / (solid + (aboveGap / εBoard))
+            let secondTerm = (1 - fks) / (solid + (aboveGap / εOil))
             Cdd_above *= (firstTerm + secondTerm)
         }
         else {
-            
+
             Cdd_above = 0.0
         }
-        
+
         return (Cdd_below, Cdd_above)
     }
     
@@ -944,9 +1010,14 @@ actor Segment: Equatable /*, Hashable */ {
         // For disc & sheet coils, this corresponds to Ctt in the DelVeccio book. For layer windings, it is the turn-turn capacitance in the axial direction (my own invention).
         
         if self.wdgType == .disc || self.wdgType == .layer {
-            
-            let tau = /* 2.0 * */ self.basicSections[0].wdgData.turn.turnInsulation
-            
+
+            // DelVecchio 12.47 wants τp to be the TWO-SIDED paper thickness of a turn (his worked example on p.337 states "The 2-sided
+            // paper thickness is 1 mm" and then uses τp = 0.001), and the design file's insulation fields are two-sided totals as well,
+            // so this is used as-is. Do NOT reintroduce a factor of 2: Ctt goes as 1/τp, so doing so halves every disc capacitance in
+            // the model. The 'height - tau' below is the matching assumption - it only yields the bare copper height h if tau is the
+            // full two-sided figure.
+            let tau = self.basicSections[0].wdgData.turn.turnInsulation
+
             // the calculation of the turn thickness of layer windings does not account for ducts in the winding
             let h = self.wdgType == .disc ? self.basicSections[0].height - tau : self.basicSections[0].width / Double(self.basicSections[0].wdgData.layers.numLayers)
             
@@ -1020,7 +1091,9 @@ actor Segment: Equatable /*, Hashable */ {
         srRect.origin.y += offsetY
         srRect.size.height = srThickness
         // we need to create a dummy cable definition for the static ring
-        let srWdgData = BasicSectionWindingData(type: .disc, discData: BasicSectionWindingData.DiscData(numAxialColumns: 10, axialColumnWidth: 0.038), layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: 0, axialDimn: 0, turnInsulation: 0.125 * meterPerInch, resistancePerMeter: 0, strandRadial: 0, strandAxial: 0))
+        // turnInsulation is a two-sided total by convention, so store twice the per-side wrap. The capacitance code reads the constant
+        // directly (it only ever gets handed the *disc's* BasicSection), but keep the two in step so they can never disagree.
+        let srWdgData = BasicSectionWindingData(type: .disc, discData: BasicSectionWindingData.DiscData(numAxialColumns: 10, axialColumnWidth: 0.038), layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: 0, axialDimn: 0, turnInsulation: 2.0 * Segment.staticRingInsulationPerSide, resistancePerMeter: 0, strandRadial: 0, strandAxial: 0))
         let srSection = BasicSection(location: srLocation, N: 0.0, I: 0.0, wdgData: srWdgData,  rect: srRect)
         
         do {
