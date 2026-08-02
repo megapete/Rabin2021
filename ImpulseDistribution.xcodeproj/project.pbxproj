@@ -33,6 +33,9 @@
 		F531E27F2B7C0B9F004DE02F /* WaveFormDisplayWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = F531E27D2B7C0B9F004DE02F /* WaveFormDisplayWindow.xib */; };
 		F531E2812B7C0BC3004DE02F /* WaveFormDisplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F531E2802B7C0BC3004DE02F /* WaveFormDisplayView.swift */; };
 		F53EB3CF2B6938A400299736 /* SimulationModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F53EB3CE2B6938A400299736 /* SimulationModel.swift */; };
+		F5C0DE012C50000100AA0001 /* ConductorImpedance.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C0DE002C50000100AA0001 /* ConductorImpedance.swift */; };
+		F5C0DE032C50000100AA0002 /* NumericalLaplaceTransform.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C0DE022C50000100AA0002 /* NumericalLaplaceTransform.swift */; };
+		F5C0DE052C50000100AA0003 /* FrequencyDomainSolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C0DE042C50000100AA0003 /* FrequencyDomainSolver.swift */; };
 		F561C3C82B4838AF00C9CEDE /* PchBasePackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3C72B4838AF00C9CEDE /* PchBasePackage */; };
 		F561C3CA2B4838AF00C9CEDE /* PchDialogBoxPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3C92B4838AF00C9CEDE /* PchDialogBoxPackage */; };
 		F561C3CC2B4838AF00C9CEDE /* PchExcelDesignFilePackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3CB2B4838AF00C9CEDE /* PchExcelDesignFilePackage */; };
@@ -71,6 +74,9 @@
 		F531E27D2B7C0B9F004DE02F /* WaveFormDisplayWindow.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = WaveFormDisplayWindow.xib; sourceTree = "<group>"; };
 		F531E2802B7C0BC3004DE02F /* WaveFormDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveFormDisplayView.swift; sourceTree = "<group>"; };
 		F53EB3CE2B6938A400299736 /* SimulationModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulationModel.swift; sourceTree = "<group>"; };
+		F5C0DE002C50000100AA0001 /* ConductorImpedance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConductorImpedance.swift; sourceTree = "<group>"; };
+		F5C0DE022C50000100AA0002 /* NumericalLaplaceTransform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NumericalLaplaceTransform.swift; sourceTree = "<group>"; };
+		F5C0DE042C50000100AA0003 /* FrequencyDomainSolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrequencyDomainSolver.swift; sourceTree = "<group>"; };
 		F5EBD03C2B7FABD00043CC4C /* ShowWaveFormsDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShowWaveFormsDialog.swift; sourceTree = "<group>"; };
 		F5EBD03E2B7FAC040043CC4C /* ShowWaveFormsView.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = ShowWaveFormsView.xib; sourceTree = "<group>"; };
 		F5ED29EC270F1F9C003E84CB /* Segment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Segment.swift; sourceTree = "<group>"; };
@@ -124,6 +130,9 @@
 				D39444F52718D9C700206019 /* GetNumberDialog.swift */,
 				F5ED29EE271709B0003E84CB /* PhaseModel.swift */,
 				F53EB3CE2B6938A400299736 /* SimulationModel.swift */,
+				F5C0DE002C50000100AA0001 /* ConductorImpedance.swift */,
+				F5C0DE022C50000100AA0002 /* NumericalLaplaceTransform.swift */,
+				F5C0DE042C50000100AA0003 /* FrequencyDomainSolver.swift */,
 				F531E2762B7BBAAC004DE02F /* GetSimDetailsDialog.swift */,
 				F531E27A2B7BFE03004DE02F /* GetSimDetailsView.xib */,
 				F531E2802B7C0BC3004DE02F /* WaveFormDisplayView.swift */,
@@ -263,6 +272,9 @@
 				D3926C08270F3D3C00D2D17C /* Core.swift in Sources */,
 				F51D53CF2B90FF4E00F92CB8 /* CoilResultsDisplayWindow.swift in Sources */,
 				F53EB3CF2B6938A400299736 /* SimulationModel.swift in Sources */,
+				F5C0DE012C50000100AA0001 /* ConductorImpedance.swift in Sources */,
+				F5C0DE032C50000100AA0002 /* NumericalLaplaceTransform.swift in Sources */,
+				F5C0DE052C50000100AA0003 /* FrequencyDomainSolver.swift in Sources */,
 				F5EBD03D2B7FABD00043CC4C /* ShowWaveFormsDialog.swift in Sources */,
 				F5ED29ED270F1F9C003E84CB /* Segment.swift in Sources */,
 				F531E27E2B7C0B9F004DE02F /* WaveFormDisplayWindow.swift in Sources */,

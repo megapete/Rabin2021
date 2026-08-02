@@ -190,20 +190,69 @@ actor SimulationModel {
             {
                 let k1 = 14285.0
                 let k2 = 3.3333333E6
-                
+
                 let v0 = 1.03 * pkVoltage
-                
+
                 let result = v0 * (k2 * e(-k2 * t) - k1 * e(-k1 * t))
-                
+
                 return result
             }
-            
+
             ALog("Undefined waveform")
             return 0.0
         }
+
+        /// The Laplace transform U(s) of `V(t)`.
+        ///
+        /// For the full wave, V(t) = v0*(exp(-k1*t) - exp(-k2*t)), and the
+        /// transform of exp(-a*t) is 1/(s+a), so
+        ///
+        ///     U(s) = v0 * ( 1/(s+k1) - 1/(s+k2) )
+        ///
+        /// This is EXACT - there is no numerical transform of the source
+        /// anywhere in the frequency-domain path, and therefore no error from
+        /// representing it.
+        ///
+        /// Note the frequency-domain solver drives the impulsed node with this
+        /// (the voltage) rather than with `dV` (its derivative), which is what
+        /// the RK45 path integrates. Imposing the voltage algebraically is
+        /// both simpler and drift-free.
+        ///
+        /// Combining over a common denominator gives
+        /// v0*(k2-k1)/((s+k1)*(s+k2)), which shows the 1/s^2 decay at large s
+        /// that forces `FrequencyDomainSolver` to subtract the asymptote
+        /// before inverting - see that file's header.
+        func U(_ s:Complex<Double>) -> Complex<Double> {
+
+            if self.type == Types.FullWave {
+
+                let k1 = 14285.0
+                let k2 = 3.3333333E6
+
+                let v0 = 1.03 * pkVoltage
+
+                return Complex(v0) * (Complex(1.0) / (s + Complex(k1)) - Complex(1.0) / (s + Complex(k2)))
+            }
+
+            ALog("Undefined waveform")
+            return Complex(0.0)
+        }
     }
     
+    /// The inductance matrix in CHOLESKY-FACTORIZED form. Used by the RK45
+    /// path, which only ever solves with it.
     let M:PchMatrix
+
+    /// The inductance matrix itself, unfactorized.
+    ///
+    /// The frequency-domain solver needs the actual matrix, not a
+    /// factorization of it, because it builds `s*M + Z(s)` as a new system at
+    /// every frequency rather than solving against M. Reading `M` here instead
+    /// would silently assemble the Cholesky factor as though it were the
+    /// inductance - a mistake that produces a plausible-looking but entirely
+    /// wrong answer.
+    let unfactoredM:PchMatrix
+
     let baseC:PchMatrix
     var modelC:PchMatrix
     
@@ -216,34 +265,69 @@ actor SimulationModel {
     /// iDrop is the current drop at a node represented as an array with the node index as the index into the NODE array, and a 2-element tuple as the value. The tuple holds the segment indices: (j, j+1), where 'j' is as defined in Delvecchio
     var iDropInd:[(belowSeg:Int, aboveSeg:Int)] = []
     
-    struct Resistance {
-        
+    /// `Sendable` so that `NetworkSnapshot` can carry it out of the actor and
+    /// into the parallel frequency sweep. Every stored property is a `Double`,
+    /// so the conformance is unconditional.
+    struct Resistance:Sendable {
+
         let dc:Double
         let effRadius:Double
         let eddyPURadial:Double
         let eddyPUAxial:Double
         let strandRadial:Double
         let strandAxial:Double
-        let freq:Double = 60.0
-        
-        // This comes from DelVecchio Eqs: 12.103 & 12.104
+
+        /// The effective AC resistance of the segment at a given frequency.
+        ///
+        /// # The model
+        ///
+        /// Three additive contributions, each scaled from its 60 Hz value by a
+        /// dimensionless Dowell shape ratio (see `ConductorImpedance` for the
+        /// functions themselves and for why this replaced DelVecchio 12.103 &
+        /// 12.104):
+        ///
+        ///     R(f) = R_dc * [   F_R(xi_r(f))  / F_R(xi_r(60))
+        ///                     + eddyPURadial * G_R(xi_ax(f)) / G_R(xi_ax(60))
+        ///                     + eddyPUAxial  * G_R(xi_ra(f)) / G_R(xi_ra(60)) ]
+        ///
+        /// # Which strand dimension pairs with which eddy component
+        ///
+        /// This preserves the pairing of the original implementation exactly:
+        ///
+        ///     eddyPURadial  <->  strandAxial     (radial eddy loss is driven
+        ///                                         by the AXIAL leakage field,
+        ///                                         which diffuses across the
+        ///                                         strand's axial dimension)
+        ///     eddyPUAxial   <->  strandRadial    (and vice versa)
+        ///
+        /// The crossed pairing looks like a bug and is not - it is the same as
+        /// the original code, where `eddyRadialFactor` divided by `bAx` and
+        /// `eddyAxialFactor` divided by `bRa`. Do not "fix" it without
+        /// checking the design-file convention first.
+        ///
+        /// # Anchoring at 60 Hz
+        ///
+        /// At f = 60 every ratio is exactly 1, so this returns
+        /// `dc * (1 + eddyPURadial + eddyPUAxial)` - precisely the resistance
+        /// the Excel design file describes. Everything else is scaled from
+        /// that anchor, so no absolute magnitude calibration is involved.
+        ///
+        /// # Guarantees
+        ///
+        /// The result is always >= `dc` and always finite for any input
+        /// frequency, including zero and negative ones. The NaN path that the
+        /// old implementation had (a negative frequency reaching `sqrt`) does
+        /// not exist here.
+        ///
+        /// - parameter newFreq: The frequency of interest, in Hz.
         func EffectiveResistanceAt(newFreq:Double) -> Double {
-            
-            // rhoCopper is 1/conductivity_of_copper
-            let jouleFactor = effRadius / 2 * sqrt(π * µ0 * newFreq / rhoCopper)
-            let jouleResAtNewFreq = jouleFactor * dc
-            
-            let bAx = strandAxial
-            let bRa = strandRadial
-            let eddyBaseFactor = 6.0 * sqrt(newFreq) / (pow(π * µ0 / rhoCopper, 1.5) * (freq * freq))
-            let eddyRadialFactor = eddyBaseFactor / (bAx * bAx * bAx)
-            let eddyAxialFactor = eddyBaseFactor / (bRa * bRa * bRa)
-            
-            let eddyResAtNewFreq = dc * (eddyRadialFactor * eddyPURadial + eddyAxialFactor * eddyPUAxial)
-            
-            // let newResistanceFactor = (jouleResAtNewFreq + eddyResAtNewFreq) / (dc * (1 + eddyPUAxial + eddyPURadial))
-            
-            return jouleResAtNewFreq + eddyResAtNewFreq
+
+            let skin = ConductorImpedance.SkinFactorRatio(thickness: effRadius, frequency: newFreq)
+
+            let eddyRadial = eddyPURadial == 0.0 ? 0.0 : eddyPURadial * ConductorImpedance.EddyFactorRatio(thickness: strandAxial, frequency: newFreq)
+            let eddyAxial = eddyPUAxial == 0.0 ? 0.0 : eddyPUAxial * ConductorImpedance.EddyFactorRatio(thickness: strandRadial, frequency: newFreq)
+
+            return dc * (skin + eddyRadial + eddyAxial)
         }
     }
     
@@ -266,13 +350,14 @@ actor SimulationModel {
     /// - parameter model: A properly set-up phase model, complete with grounding and impulsed nodes
     init?(model:PhaseModel) async {
         
-        guard await !model.nodes.isEmpty, await !model.segments.isEmpty, await model.M != nil, await model.C != nil else {
-            
+        guard await !model.nodes.isEmpty, await !model.segments.isEmpty, await model.M != nil, await model.unfactoredM != nil, await model.C != nil else {
+
             DLog("Model is not complete!")
             return nil
         }
-        
+
         self.M = await model.M!
+        self.unfactoredM = await model.unfactoredM!
         self.baseC = await model.C!
         self.modelC = await model.C!
         
@@ -514,6 +599,107 @@ actor SimulationModel {
 
         let fractionComplete:Double
         let phase:String
+    }
+
+    /// Extract everything the frequency-domain sweep needs, once.
+    ///
+    /// See `NetworkSnapshot` for why this exists rather than the sweep
+    /// reaching back into the actor: the sweep runs thousands of independent
+    /// solves in parallel, and every actor hop inside that loop would
+    /// serialise it.
+    ///
+    /// - returns: The snapshot, or nil if a matrix is not in the layout the
+    ///   snapshot assumes.
+    func Snapshot() async -> NetworkSnapshot? {
+
+        // The buffers are handed over wholesale rather than read entry by
+        // entry, which is only valid for a `.general` matrix: PchMatrix stores
+        // `.symmetric` and `.positiveDefinite` matrices as an upper triangle
+        // with a different index mapping, so taking the raw buffer of one of
+        // those would silently produce a garbled matrix. Checked rather than
+        // assumed.
+        guard await baseC.matrixType == .general else {
+
+            DLog("The capacitance matrix is \(await baseC.matrixType), expected .general")
+            return nil
+        }
+
+        guard await unfactoredM.matrixType == .general else {
+
+            DLog("The inductance matrix is \(await unfactoredM.matrixType), expected .general")
+            return nil
+        }
+
+        guard await unfactoredM.factorizationType == .none else {
+
+            DLog("The inductance matrix is already factorized as \(await unfactoredM.factorizationType) - the solver needs the matrix itself")
+            return nil
+        }
+
+        // finalConnectedNodes maps a kept node to the set of nodes shorted to
+        // it. SimulationModel's init has already guaranteed that no member of
+        // any such group is grounded or impulsed (those groups are absorbed
+        // into groundedNodes/impulsedNodes and removed there), which is the
+        // invariant FrequencyDomainSolver.Assemble relies on when it applies
+        // the merges before the Dirichlet rows.
+        var merged:[(kept:Int, eliminated:Int)] = []
+        let fixed = Set(groundedNodes.map({ $0.number })).union(impulsedNodes.map({ $0.number }))
+
+        for (kept, group) in finalConnectedNodes {
+
+            for eliminated in group {
+
+                guard !fixed.contains(kept.number), !fixed.contains(eliminated.number) else {
+
+                    DLog("A merged node group contains a grounded or impulsed node - assembly order would be wrong")
+                    return nil
+                }
+
+                merged.append((kept: kept.number, eliminated: eliminated.number))
+            }
+        }
+
+        return await NetworkSnapshot(nodeCount: baseC.rows,
+                                     segmentCount: unfactoredM.rows,
+                                     capacitance: baseC.GetDoubleBuffer(),
+                                     inductance: unfactoredM.GetDoubleBuffer(),
+                                     nodeIncidence: iDropInd.map({ (belowSegment: $0.belowSeg, aboveSegment: $0.aboveSeg) }),
+                                     segmentIncidence: vDropInd.map({ (belowNode: $0.belowNode, aboveNode: $0.aboveNode) }),
+                                     impulsedNodes: impulsedNodes.map({ $0.number }),
+                                     groundedNodes: groundedNodes.map({ $0.number }),
+                                     floatingNodes: floatingNodes.map({ $0.number }),
+                                     mergedNodes: merged,
+                                     resistances: R,
+                                     floatingResistance: floatingResistanceToGround)
+    }
+
+    /// Run the simulation in the frequency domain - the current path.
+    ///
+    /// Replaces `DoSimulate`. There is no `epsilon`, no time step, and no
+    /// two-pass frequency estimation: the integration is exact and every
+    /// frequency component sees its own resistance.
+    ///
+    /// - parameter waveForm: The applied impulse.
+    /// - parameter displaySpan: The time span of interest, in seconds. The
+    ///   solver internally computes twice this and returns the first half -
+    ///   see `LaplaceGrid.DefaultGrid`.
+    /// - parameter maximumFrequency: Bandwidth, in Hz. This is a real accuracy
+    ///   knob, not a free parameter - see the discussion in `DefaultGrid`.
+    /// - parameter progress: Optional progress continuation. Not finished by
+    ///   this routine; the caller owns it.
+    /// - returns: Results on a UNIFORM time grid, or an empty array on failure
+    ///   or cancellation. As with `DoSimulate`, check `Task.isCancelled` at
+    ///   the call site to tell the two apart.
+    func SolveFrequencyDomain(waveForm:WaveForm, displaySpan:Double, maximumFrequency:Double, progress:AsyncStream<ProgressUpdate>.Continuation? = nil) async -> [SimulationStepResult] {
+
+        guard let snapshot = await Snapshot() else {
+
+            return []
+        }
+
+        let grid = LaplaceGrid.DefaultGrid(displaySpan: displaySpan, maximumFrequency: maximumFrequency)
+
+        return await FrequencyDomainSolver.Sweep(snapshot: snapshot, waveForm: waveForm, grid: grid, progress: progress) ?? []
     }
 
     /// Run the full simulation (two RK45 passes).

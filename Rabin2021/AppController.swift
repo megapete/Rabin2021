@@ -1244,6 +1244,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 return
             }
             
+            let bandwidth = simDetailsDlog.bandwidthInHz
+
             self.runningSimulationTask = Task {
 
                 let wfIndex = simDetailsDlog.waveFormPopUp.indexOfSelectedItem
@@ -1271,14 +1273,15 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                     }
                 }
 
-                let simResult = await simModel.DoSimulate(waveForm: waveForm, startTime: 0.0, endTime: waveForm.timeToZero, epsilon: 200.0 / 0.05E-6, progress: progressContinuation)
+                // The frequency-domain solver. There is no error tolerance and no time step to pass: the integration is exact, so the only accuracy control is the bandwidth, and the resistance is evaluated at each frequency rather than estimated from a first pass.
+                let simResult = await simModel.SolveFrequencyDomain(waveForm: waveForm, displaySpan: waveForm.timeToZero, maximumFrequency: bandwidth, progress: progressContinuation)
 
                 progressContinuation.finish()
                 await progressTask.value
 
                 self.runningSimulationTask = nil
 
-                // DoSimulate() returns an empty array for both failure and cancellation, so check which one happened before complaining to the user
+                // SolveFrequencyDomain() returns an empty array for both failure and cancellation, so check which one happened before complaining to the user
                 if simResult.isEmpty {
 
                     if !Task.isCancelled {
