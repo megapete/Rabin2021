@@ -656,61 +656,50 @@ actor Segment: Equatable /*, Hashable */ {
                 var result = 0.0
                 
                 if numBasicSections > 1 {
-                    
+
+                    // Each pass handles one "unit" - the thing that gets its own series capacitance, which is a single disc normally but
+                    // a double disc when the winding is interleaved. Unit i therefore occupies basicSections[i * bsStride] through
+                    // [i * bsStride + bsStride - 1], and its neighbours are the sections immediately outside that range. Indexing with i
+                    // itself only coincides with the unit's position when bsStride is 1, so an interleaved Segment of more than one
+                    // double disc used to read the wrong sections (and measure its gaps from the wrong faces).
                     for i in 0..<numBasicSections {
-                        
-                        let thisBasicSection = self.basicSections[i]
-                        
-                        if (i == 0) {
-                            
-                            let nextBasicSection = self.basicSections[i + bsStride]
-                            
-                            let axGaps = (above:nextBasicSection.z1 - thisBasicSection.z2, below:axialGaps!.below)
-                            let endD:(lowest:Bool, highest:Bool)? = endDisc != nil ? (endDisc!.lowest, false) : nil
-                            let staticRing:(above:Bool, below:Bool)? = adjStaticRing != nil ? (false, adjStaticRing!.below) : nil
-                            
-                            let bs:[BasicSection] = self.interleaved ? Array(self.basicSections[i...i+1]) : [self.basicSections[i]]
-                            
-                            let tmpSeg = try Segment(basicSections: bs, interleaved: self.interleaved, isStaticRing: false, isRadialShield: false, realWindowHeight: self.realWindowHeight, useWindowHeight: self.useWindowHeight)
-                            
-                            let serCap = try await tmpSeg.SeriesCapacitance(axialGaps: axGaps, radialGaps: nil, endDisc: endD, adjStaticRing: staticRing)
-                            
-                            result += 1 / serCap
+
+                        let firstIndex = i * bsStride
+                        let lastIndex = firstIndex + bsStride - 1
+
+                        let unitBottom = self.basicSections[firstIndex]
+                        let unitTop = self.basicSections[lastIndex]
+
+                        let bs:[BasicSection] = Array(self.basicSections[firstIndex...lastIndex])
+
+                        // The outermost gaps are the ones handed to us; the interior ones are measured between this unit's outer faces
+                        // and the facing section of the neighbouring unit.
+                        let gapAbove = i == numBasicSections - 1 ? axialGaps!.above : self.basicSections[lastIndex + 1].z1 - unitTop.z2
+                        let gapBelow = i == 0 ? axialGaps!.below : unitBottom.z1 - self.basicSections[firstIndex - 1].z2
+
+                        // Only the units at the two ends of this Segment can be at a coil end or next to a static ring, and each of them
+                        // can only be so on its outward-facing side. Interior units see plain disc-to-disc gaps on both sides.
+                        var endD:(lowest:Bool, highest:Bool)? = nil
+                        var staticRing:(above:Bool, below:Bool)? = nil
+
+                        if i == 0 {
+
+                            endD = endDisc != nil ? (endDisc!.lowest, false) : nil
+                            staticRing = adjStaticRing != nil ? (false, adjStaticRing!.below) : nil
                         }
-                        else if (i == numBasicSections - 1) {
-                            
-                            let prevBasicSection = self.basicSections[i - 1]
-                            
-                            let axGaps = (above:axialGaps!.above, below:thisBasicSection.z1 - prevBasicSection.z2)
-                            let endD:(lowest:Bool, highest:Bool)? = endDisc != nil ? (false, endDisc!.highest) : nil
-                            let staticRing:(above:Bool, below:Bool)? = adjStaticRing != nil ? (adjStaticRing!.above, false) : nil
-                            
-                            let bs:[BasicSection] = self.interleaved ? Array(self.basicSections[0...i+1]) : [self.basicSections[i]]
-                            
-                            let tmpSeg = try Segment(basicSections: bs, interleaved: self.interleaved, isStaticRing: false, isRadialShield: false, realWindowHeight: self.realWindowHeight, useWindowHeight: self.useWindowHeight)
-                            
-                            let serCap = try await tmpSeg.SeriesCapacitance(axialGaps: axGaps, radialGaps: nil, endDisc: endD, adjStaticRing: staticRing)
-                            
-                            result += 1 / serCap
+                        else if i == numBasicSections - 1 {
+
+                            endD = endDisc != nil ? (false, endDisc!.highest) : nil
+                            staticRing = adjStaticRing != nil ? (adjStaticRing!.above, false) : nil
                         }
-                        else {
-                            
-                            let prevBasicSection = self.basicSections[i - 1]
-                            let nextBasicSection = self.basicSections[i + bsStride]
-                            
-                            let axGaps = (above:nextBasicSection.z1 - thisBasicSection.z2, below:thisBasicSection.z1 - prevBasicSection.z2)
-                            
-                            let bs:[BasicSection] = self.interleaved ? Array(self.basicSections[0...i+1]) : [self.basicSections[i]]
-                            
-                            let tmpSeg = try Segment(basicSections: bs, interleaved: self.interleaved, isStaticRing: false, isRadialShield: false, realWindowHeight: self.realWindowHeight, useWindowHeight: self.useWindowHeight)
-                            
-                            let serCap = try await tmpSeg.SeriesCapacitance(axialGaps: axGaps, radialGaps: nil, endDisc: nil, adjStaticRing: nil)
-                            
-                            result += 1 / serCap
-                        }
-                        
+
+                        let tmpSeg = try Segment(basicSections: bs, interleaved: self.interleaved, isStaticRing: false, isRadialShield: false, realWindowHeight: self.realWindowHeight, useWindowHeight: self.useWindowHeight)
+
+                        let serCap = try await tmpSeg.SeriesCapacitance(axialGaps: (above:gapAbove, below:gapBelow), radialGaps: nil, endDisc: endD, adjStaticRing: staticRing)
+
+                        result += 1 / serCap
                     }
-                    
+
                     return 1 / result
                 }
             }
@@ -722,7 +711,12 @@ actor Segment: Equatable /*, Hashable */ {
             }
             
             if self.wdgType == .sheet {
-                
+
+                // No shunt term belongs here, unlike the disc case. A sheet winding is built as a single BasicSection spanning the whole
+                // electrical height, so it behaves like one enormous disc whose turns run radially - it has no second disc of the same
+                // winding facing it. What lies across 'radialGaps' is a different coil, at an unrelated potential, and that path is a
+                // shunt capacitance handled by PhaseModel.CalculateCapacitanceMatrix, not series energy inside this winding. So Cs alone
+                // is the whole story, and radialGaps is deliberately unused.
                 return Cs
             }
             else if self.wdgType == .helical {
@@ -846,18 +840,55 @@ actor Segment: Equatable /*, Hashable */ {
                 }
             }
             else if self.wdgType == .layer {
-                
-                // we'll just consider the layer-oriented capacitances since they will overwhelm the turn-turn capacitance
-                DLog("Layer winding...")
-                
-                do {
-                    
-                    return try BasicSectionSeriesCapacitance()
+
+                // DelVecchio has no layer-winding formula, so this is the "Huber method" noted in BasicSectionSeriesCapacitance: his disc
+                // treatment turned on its side. The series capacitance runs axially, turn to turn within a layer, and the disc-to-disc
+                // capacitance Cdd becomes the layer-to-layer capacitance Cll across the radial gap between layers. With that one
+                // substitution 12.53 (general), 12.63 (end disc) and 12.59 (units in series) all carry over unchanged.
+                //
+                // Cll is a genuine series-energy term, exactly as Cdd is: the layers it connects belong to THIS winding and sit at
+                // different potentials. That distinguishes it from the sheet case above, where the radial neighbours are other coils. It
+                // was previously dropped altogether, which left only the single-layer Cs.
+                let bs = self.basicSections[0]
+                let numLayers = bs.wdgData.layers.numLayers
+
+                guard numLayers > 1 else {
+
+                    // One layer: there is no layer-to-layer path at all, so the turn-turn series capacitance is the whole answer.
+                    return Cs
                 }
-                catch {
-                    
-                    throw error
+
+                let Cll = try self.LayerToLayerCapacitance()
+
+                // The innermost and outermost layers face another coil rather than another layer of this winding, so on that side there is
+                // no same-winding shunt path: 12.7's Ca = 0 applies and the end-disc form 12.63 is used. Every interior layer sees Cll on
+                // both sides, which is Stein's symmetric case (12.35).
+                var endLayerC = 0.0
+                var innerLayerC = 0.0
+
+                if Cs > 0.0 {
+
+                    let endAlpha = sqrt(2 * Cll / Cs)
+                    endLayerC = Cs * endAlpha / tanh(endAlpha)
+
+                    let alpha = sqrt(4 * Cll / Cs)
+                    let firstTerm = 0.5 * alpha / tanh(alpha)
+                    let secondTerm = 0.5 * alpha / sinh(alpha)
+                    let thirdTerm = alpha * alpha / 4
+                    innerLayerC = Cs * (firstTerm + secondTerm + thirdTerm)
                 }
+                else {
+
+                    // A layer of a single turn has Cs = 0 and alpha blows up, the same degeneracy the helical branch hits. Fall back to
+                    // the conventional formula 12.41 in the form derived there, Cs + 2/3*(Cll_inside + Cll_outside).
+                    endLayerC = 2.0 / 3.0 * Cll
+                    innerLayerC = 4.0 / 3.0 * Cll
+                }
+
+                // The layers are traversed one after the other, so their capacitances combine in series - the 12.59 analogue.
+                let result = 2.0 / endLayerC + Double(numLayers - 2) / innerLayerC
+
+                return 1.0 / result
             }
             else {
                 
@@ -871,8 +902,66 @@ actor Segment: Equatable /*, Hashable */ {
         
         // throw SegmentError(info: "", type: .UnknownError)
     }
-    
-    
+
+    /// The capacitance between two adjacent layers of a layer winding - the layer-oriented counterpart of the disc-to-disc capacitance
+    /// Cdd, and the shunt term that DelVecchio's 12.53/12.63 need once his disc treatment is transposed to a layer winding.
+    ///
+    /// The gap between two layers is a radial one holding the inter-layer insulation and, where there is a cooling duct, oil held open by
+    /// axial sticks. That is the same composite as the coil-to-coil gap, so this follows DelVecchio 12.60 rather than 12.52:
+    ///
+    ///     Cll = ε0 · 2π·Rmean · H · [ fs/((tIns/εPaper) + (tDuct/εBoard)) + (1 − fs)/((tIns/εPaper) + (tDuct/εOil)) ]
+    ///
+    /// with fs the stick fraction of the circumference (12.61). Two approximations worth knowing, both forced by what the design file
+    /// carries: the ducts are spread evenly over the (numLayers − 1) inter-layer gaps rather than placed where they actually are, and the
+    /// stick count is borrowed from the section's axial spacer columns - the same substitution CoilInnerShuntCapacitance makes for the
+    /// hilo. Rmean is used for every gap instead of each boundary's own radius, consistent with the rest of this file.
+    func LayerToLayerCapacitance() throws -> Double {
+
+        guard !self.isStaticRing else {
+
+            throw SegmentError(info: "\(self.location)", type: .StaticRing)
+        }
+
+        guard !self.isRadialShield else {
+
+            throw SegmentError(info: "\(self.location)", type: .RadialShield)
+        }
+
+        guard self.wdgType == .layer else {
+
+            throw SegmentError(info: "", type: .IllegalWindingType)
+        }
+
+        let bs = self.basicSections[0]
+        let numLayers = bs.wdgData.layers.numLayers
+
+        guard numLayers > 1 else {
+
+            return 0.0
+        }
+
+        let rMean = (self.r1 + self.r2) / 2.0
+        let H = bs.height
+
+        let tIns = bs.wdgData.layers.interLayerInsulation
+        let tDuct = Double(bs.wdgData.layers.ducts.numDucts) * bs.wdgData.layers.ducts.ductDimn / Double(numLayers - 1)
+
+        let fs = Double(bs.wdgData.discData.numAxialColumns) * bs.wdgData.discData.axialColumnWidth / (2 * π * rMean)
+
+        let solid = tIns / εPaper
+
+        guard solid + tDuct > 0.0 else {
+
+            throw SegmentError(info: "Layer winding has no insulation between layers", type: .IllegalWindingType)
+        }
+
+        let firstTerm = fs / (solid + (tDuct / εBoard))
+        let secondTerm = (1 - fs) / (solid + (tDuct / εOil))
+
+        return ε0 * 2 * π * rMean * H * (firstTerm + secondTerm)
+    }
+
+
     /// Return the Cdd values per DelVecchio equation 12.52 (3rd edition) for the gap above an below the given BasicSection.
     ///
     /// Units: metres and Farads throughout. Cdd = ε0·π·(Rout² − Rin²)·[ fks/Σ(ℓ/ε)_ks + (1 − fks)/Σ(ℓ/ε)_oil ], where Σ(ℓ/ε) is the
