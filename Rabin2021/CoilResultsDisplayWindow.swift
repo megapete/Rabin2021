@@ -43,8 +43,7 @@ class CoilResultsDisplayWindow: NSWindowController {
     let xDimensions:[Double]
     let resultData:AppController.SimulationResults
     let indicesToDisplay:ClosedRange<Int>
-    private var heightMultiplier:Double = 1.0
-    
+
     override var acceptsFirstResponder: Bool {
         
         return true
@@ -85,25 +84,14 @@ class CoilResultsDisplayWindow: NSWindowController {
         // Implement this method to handle any initialization after your window controller's window has been loaded from its nib file.
         
         if let mainScreen = NSScreen.main {
-            
+
             minimumAnimationTimeInterval = mainScreen.minimumRefreshInterval
-            
-            if let mainScreenResolution = mainScreen.deviceDescription[.resolution] as? NSSize {
-                
-                // the resolution is in dots/inch in the two directions (which will probably be different)
-                self.coilResultsView.screenRes = mainScreenResolution
-                // print("Screen resolution: \(mainScreenResolution)")
-            }
-            else {
-                
-                DLog("Couldn't get screen resolution")
-            }
         }
         else {
-            
+
             DLog("Couldn't get main screen")
         }
-        
+
         if let wfWindow = window {
             
             wfWindow.title = windowTitle
@@ -111,61 +99,44 @@ class CoilResultsDisplayWindow: NSWindowController {
         
         coilResultsView.wantsLayer = true
         coilResultsView.layer?.backgroundColor = .black
-        
+
+        // The extrema rectangle is in the data's own units: x is the coil height in mm, y is volts or amps. The view
+        // takes care of scaling it for display.
         var extremaRect = NSRect(x: xDimensions.first!, y: 0, width: xDimensions.last! - xDimensions.first!, height: 800)
         if !resultData.stepResults.isEmpty, !indicesToDisplay.isEmpty {
-            
+
             // simTimeBrackets = ClosedRange(uncheckedBounds: (results.stepResults.first!.time, results.stepResults.last!.time))
-            
+
             animationTimeInterval = totalAnimationTime / Double(resultData.stepResults.count)
             while animationTimeInterval < minimumAnimationTimeInterval {
-                
+
                 animationStride += 1
                 animationTimeInterval = totalAnimationTime / Double(resultData.stepResults.count / animationStride)
             }
-            
-            if showVoltages {
-                
-                guard xDimensions.count == indicesToDisplay.count else {
-                    
-                    DLog("Incompatible dimensions!")
-                    return
-                }
-                
-                
-                let extremeVolts = resultData.ExtremeVoltsInSegmentRange(nodeRange: indicesToDisplay)
-                extremaRect.origin.y = min(0, extremeVolts.min)
-                extremaRect.size.height = extremeVolts.max - extremeVolts.min
+
+            guard xDimensions.count == indicesToDisplay.count else {
+
+                DLog("Incompatible dimensions!")
+                return
             }
-            else {
-                
-                guard xDimensions.count == indicesToDisplay.count else {
-                    
-                    DLog("Incompatible dimensions!")
-                    return
-                }
-                
-                let extremeAmps = resultData.ExtremeAmpsInSegmentRange(range: indicesToDisplay)
-                extremaRect.origin.y = min(0, extremeAmps.min)
-                extremaRect.size.height = extremeAmps.max - extremeAmps.min
-            }
+
+            let extremeValues = showVoltages ? resultData.ExtremeVoltsInSegmentRange(nodeRange: indicesToDisplay) : resultData.ExtremeAmpsInSegmentRange(range: indicesToDisplay)
+
+            // Always show the zero line, so the axis runs from min(0, minimum) to max(0, maximum) - which is not the
+            // same as anchoring the origin at the minimum and using the peak-to-peak value as the height.
+            extremaRect.origin.y = min(0.0, extremeValues.min)
+            extremaRect.size.height = max(0.0, extremeValues.max) - extremaRect.origin.y
         }
         else {
-            
+
             ALog("Cannot set up the display: the simulation produced \(resultData.stepResults.count) time steps for display range \(indicesToDisplay). Both solvers return an empty array for CANCELLATION as well as for failure, so check Task.isCancelled before treating this as an error.")
             return
         }
-        
-        // we want to keep the NSPoints in the "low-integer" (say, 0 to 1000) range:
-        let multiplier:Double = 1000.0 / extremaRect.height
-        // We want to round the multiplier down to the nearest power of 10: 10^(floor(log10(x)))
-        heightMultiplier = pow(10.0, floor(log10(multiplier)))
-        
-        extremaRect.origin.y *= heightMultiplier
-        extremaRect.size.height *= heightMultiplier
-        
+
+        coilResultsView.yQuantity = showVoltages ? .voltage : .current
+        coilResultsView.peakTestVoltage = resultData.peakVoltage
         coilResultsView.UpdateScaleAndZoomWindow(extremaRect: extremaRect)
-        
+
         SetButtonStates()
     }
     
@@ -274,26 +245,17 @@ class CoilResultsDisplayWindow: NSWindowController {
         }
         
         let step = resultData.stepResults[currentSimIndex]
-        let newPath = NSBezierPath()
-        let yMultiplier = heightMultiplier * coilResultsView.scaleMultiplier.y
-        
+
+        // The points are handed over in their natural units (mm and volts or amps); the view scales them at draw time.
         // in the interest of speed, we don't check that xDimensions has the correct count
         let valOffset = indicesToDisplay.lowerBound
+        var newData:[NSPoint] = []
+
         for i in 0..<xDimensions.count {
-            
-            let nextPoint = NSPoint(x: xDimensions[i], y: yMultiplier * (showVoltages ? step.volts[i + valOffset] : step.amps[i + valOffset]))
-            
-            if i == 0 {
-                
-                newPath.move(to: nextPoint)
-            }
-            else {
-                
-                newPath.line(to: nextPoint)
-            }
+
+            newData.append(NSPoint(x: xDimensions[i], y: showVoltages ? step.volts[i + valOffset] : step.amps[i + valOffset]))
         }
-        
-        coilResultsView.currentData = newPath
-        coilResultsView.needsDisplay = true
+
+        coilResultsView.currentData = newData
     }
 }

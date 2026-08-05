@@ -1533,10 +1533,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             
             let waveformWind = WaveFormDisplayWindow(windowNibName: "WaveFormDisplayWindow")
             waveformWind.windowTitle = "Current Waveforms: Segments [\(segments.first!)-\(segments.last!)]"
-            
+            waveformWind.yQuantity = .current
+            waveformWind.peakTestVoltage = simResult.peakVoltage
+
             var maxValue = -Double.greatestFiniteMagnitude
             var minValue = Double.greatestFiniteMagnitude
-            
+
             var wfData:[[NSPoint]] = []
             for nextResultIndex in stride(from: 0, to: simResult.numSteps, by: dataStride) {
                 
@@ -1555,29 +1557,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 
                 wfData.append(stepData)
             }
-            
-            // only calculate and apply a multiplier if the results are not all zeros
-            if abs(minValue) > 0 || abs(maxValue) > 0 {
-                
-                // we want to keep the NSPoints in the "low-integer" (say, 0 to 1000) range:
-                let height = abs(maxValue - minValue)
-                var multiplier = 1000.0 / height
-                // We want to round the multiplier down to the nearest power of 10: 10^(floor(log10(x)))
-                multiplier = pow(10.0, floor(log10(multiplier)))
-                
-                for i in 0..<wfData.count {
-                    
-                    for j in 0..<wfData[i].count {
-                        
-                        wfData[i][j].y *= multiplier
-                    }
-                }
-            }
-            
+
+            DLog("Max / Min Currents: \(maxValue)A / \(minValue)A")
+
             waveformWind.data = wfData
             waveformWind.showWindow(self)
         }
-        
+
         if showFourier {
             
             // only show the Fourier transform for the last segment in the range
@@ -1681,40 +1667,19 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             
             let waveformWind = WaveFormDisplayWindow(windowNibName: "WaveFormDisplayWindow")
             waveformWind.windowTitle = "Fourier transform for segment: \(segments.upperBound - 1)"
-            
-            var maxValue = -Double.greatestFiniteMagnitude
-            var minValue = Double.greatestFiniteMagnitude
-            
+            // the autospectrum is a magnitude in arbitrary units, so the y-axis ticks stay unlabelled
+            waveformWind.yQuantity = .unitless
+
             var wfData:[[NSPoint]] = []
-            
+
             var x = 0.5
             for nextValue in autospectrum {
-                
-                maxValue = max(Double(nextValue), maxValue)
-                minValue = min(Double(nextValue), minValue)
+
                 let newPoint = NSPoint(x: x, y: Double(nextValue))
                 wfData.append([newPoint])
                 x += 1.0
             }
-            
-            // only calculate and apply a multiplier if the results are not all zeros
-            if abs(minValue) > 0 || abs(maxValue) > 0 {
-                
-                // we want to keep the NSPoints in the "low-integer" (say, 0 to 1000) range:
-                let height = abs(maxValue - minValue)
-                var multiplier = 1000.0 / height
-                // We want to round the multiplier down to the nearest power of 10: 10^(floor(log10(x)))
-                multiplier = pow(10.0, floor(log10(multiplier)))
-                
-                for i in 0..<wfData.count {
-                    
-                    for j in 0..<wfData[i].count {
-                        
-                        wfData[i][j].y *= multiplier
-                    }
-                }
-            }
-            
+
             waveformWind.data = wfData
             waveformWind.showWindow(self)
             
@@ -1748,7 +1713,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             
             let waveformWind = WaveFormDisplayWindow(windowNibName: "WaveFormDisplayWindow")
             waveformWind.windowTitle = "Voltage Waveforms: Nodes to segments [\(segments.first!)-\(segments.last!)]"
-            
+            waveformWind.yQuantity = .voltage
+            waveformWind.peakTestVoltage = simResult.peakVoltage
+
             var maxValue = -Double.greatestFiniteMagnitude
             var minValue = Double.greatestFiniteMagnitude
             
@@ -1771,25 +1738,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             }
             
             DLog("Max / Min Voltages: \(maxValue)V / \(minValue)V")
-            
-            // only calculate and apply a multiplier if the results are not all zeros
-            if abs(minValue) > 0 || abs(maxValue) > 0 {
-                
-                // we want to keep the NSPoints in the "low-integer" (say, 0 to 1000) range:
-                let height = abs(maxValue - minValue)
-                var multiplier = 1000.0 / height
-                // We want to round the multiplier down to the nearest power of 10: 10^(floor(log10(x)))
-                multiplier = pow(10.0, floor(log10(multiplier)))
-                
-                for i in 0..<wfData.count {
-                    
-                    for j in 0..<wfData[i].count {
-                        
-                        wfData[i][j].y *= multiplier
-                    }
-                }
-            }
-            
+
             waveformWind.data = wfData
             waveformWind.showWindow(self)
         }

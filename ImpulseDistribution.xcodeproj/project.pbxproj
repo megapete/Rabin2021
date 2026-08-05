@@ -33,6 +33,7 @@
 		F531E27E2B7C0B9F004DE02F /* WaveFormDisplayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F531E27C2B7C0B9F004DE02F /* WaveFormDisplayWindow.swift */; };
 		F531E27F2B7C0B9F004DE02F /* WaveFormDisplayWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = F531E27D2B7C0B9F004DE02F /* WaveFormDisplayWindow.xib */; };
 		F531E2812B7C0BC3004DE02F /* WaveFormDisplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F531E2802B7C0BC3004DE02F /* WaveFormDisplayView.swift */; };
+		F5A15CE02C0A100000000002 /* AxisScale.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE02C0A100000000001 /* AxisScale.swift */; };
 		F53EB3CF2B6938A400299736 /* SimulationModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F53EB3CE2B6938A400299736 /* SimulationModel.swift */; };
 		F561C3C82B4838AF00C9CEDE /* PchBasePackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3C72B4838AF00C9CEDE /* PchBasePackage */; };
 		F561C3CA2B4838AF00C9CEDE /* PchDialogBoxPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3C92B4838AF00C9CEDE /* PchDialogBoxPackage */; };
@@ -75,6 +76,7 @@
 		F531E27C2B7C0B9F004DE02F /* WaveFormDisplayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveFormDisplayWindow.swift; sourceTree = "<group>"; };
 		F531E27D2B7C0B9F004DE02F /* WaveFormDisplayWindow.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = WaveFormDisplayWindow.xib; sourceTree = "<group>"; };
 		F531E2802B7C0BC3004DE02F /* WaveFormDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveFormDisplayView.swift; sourceTree = "<group>"; };
+		F5A15CE02C0A100000000001 /* AxisScale.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AxisScale.swift; sourceTree = "<group>"; };
 		F53EB3CE2B6938A400299736 /* SimulationModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulationModel.swift; sourceTree = "<group>"; };
 		F5C0DE002C50000100AA0001 /* ConductorImpedance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConductorImpedance.swift; sourceTree = "<group>"; };
 		F5C0DE022C50000100AA0002 /* NumericalLaplaceTransform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NumericalLaplaceTransform.swift; sourceTree = "<group>"; };
@@ -139,6 +141,7 @@
 				F531E2762B7BBAAC004DE02F /* GetSimDetailsDialog.swift */,
 				F531E27A2B7BFE03004DE02F /* GetSimDetailsView.xib */,
 				F531E2802B7C0BC3004DE02F /* WaveFormDisplayView.swift */,
+				F5A15CE02C0A100000000001 /* AxisScale.swift */,
 				F531E27C2B7C0B9F004DE02F /* WaveFormDisplayWindow.swift */,
 				F531E27D2B7C0B9F004DE02F /* WaveFormDisplayWindow.xib */,
 				F5EBD03C2B7FABD00043CC4C /* ShowWaveFormsDialog.swift */,
@@ -266,6 +269,7 @@
 				F5ED29EF271709B0003E84CB /* PhaseModel.swift in Sources */,
 				F51D53CC2B90FF2900F92CB8 /* CoilResultsDisplayView.swift in Sources */,
 				F531E2812B7C0BC3004DE02F /* WaveFormDisplayView.swift in Sources */,
+				F5A15CE02C0A100000000002 /* AxisScale.swift in Sources */,
 				D3B7FF22270E320E002537D3 /* BasicSection.swift in Sources */,
 				D3FB7D6A2752B7A3009ACCB4 /* Connector.swift in Sources */,
 				D323F2CF27E14F3900D94DA1 /* Node.swift in Sources */,
