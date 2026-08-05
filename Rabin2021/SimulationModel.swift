@@ -16,10 +16,10 @@ import PchMatrixPackage
 extension PchMatrix {
     
     func ZeroRow(row:Int) {
-        
+
         if row < 0 || row >= self.rows {
-            
-            ALog("Bad row index!")
+
+            ALog("ZeroRow: row \(row) is outside 0..<\(self.rows).")
             return
         }
         
@@ -36,18 +36,18 @@ extension PchMatrix {
                 self.SetComplexValue(value: Complex<Double>.zero, row: row, col: col)
             }
             else {
-                
-                ALog("Unknown type!")
+
+                ALog("ZeroRow: the matrix numType is \(self.numType), which is neither .Double nor .Complex - row \(row) has been left partly zeroed (columns 0..<\(col)).")
                 return
             }
         }
     }
-    
+
     func AddRow(fromIndex:Int, toIndex:Int) {
-        
+
         if fromIndex < 0 || fromIndex >= self.rows || toIndex < 0 || toIndex >= self.rows {
-            
-            ALog("Bad row index!")
+
+            ALog("AddRow: fromIndex \(fromIndex) and/or toIndex \(toIndex) is outside 0..<\(self.rows).")
             return
         }
         
@@ -56,8 +56,8 @@ extension PchMatrix {
             if self.numType == .Double {
                 
                 guard let toValue:Double = self[toIndex, col], let fromValue:Double = self[fromIndex, col] else {
-                    
-                    ALog("Could not get value!")
+
+                    ALog("AddRow: could not read Double values at [\(toIndex), \(col)] and/or [\(fromIndex), \(col)] of a \(self.rows) x \(self.columns) matrix - row \(toIndex) is now partly summed (columns 0..<\(col)).")
                     return
                 }
                 
@@ -68,8 +68,8 @@ extension PchMatrix {
             else if self.numType == .Complex {
                 
                 guard let toValue:Complex<Double> = self[toIndex, col], let fromValue:Complex<Double> = self[fromIndex, col] else {
-                    
-                    ALog("Could not get value!")
+
+                    ALog("AddRow: could not read Complex values at [\(toIndex), \(col)] and/or [\(fromIndex), \(col)] of a \(self.rows) x \(self.columns) matrix - row \(toIndex) is now partly summed (columns 0..<\(col)).")
                     return
                 }
                 
@@ -78,8 +78,8 @@ extension PchMatrix {
                 self.SetComplexValue(value: newValue, row: toIndex, col: col)
             }
             else {
-                
-                ALog("Unknown type!")
+
+                ALog("AddRow: the matrix numType is \(self.numType), which is neither .Double nor .Complex - row \(toIndex) is now partly summed (columns 0..<\(col)).")
                 return
             }
         }
@@ -179,8 +179,8 @@ actor SimulationModel {
                 
                 return v0 * (e(-k1*t) - e(-k2*t))
             }
-            
-            ALog("Undefined waveform")
+
+            ALog("WaveForm.V(t): no closed form for waveform type '\(self.type)' - only .FullWave is implemented. Returning 0, which will look like a dead source.")
             return 0.0
         }
         
@@ -198,7 +198,7 @@ actor SimulationModel {
                 return result
             }
 
-            ALog("Undefined waveform")
+            ALog("WaveForm.dV(t): no closed form for waveform type '\(self.type)' - only .FullWave is implemented. Returning 0, which will look like a dead source.")
             return 0.0
         }
 
@@ -234,7 +234,7 @@ actor SimulationModel {
                 return Complex(v0) * (Complex(1.0) / (s + Complex(k1)) - Complex(1.0) / (s + Complex(k2)))
             }
 
-            ALog("Undefined waveform")
+            ALog("WaveForm.U(s): no Laplace transform for waveform type '\(self.type)' - only .FullWave is implemented. Returning 0, which will make the whole frequency-domain solve return zeros.")
             return Complex(0.0)
         }
     }
@@ -415,10 +415,22 @@ actor SimulationModel {
                     //let destIDtest = nextConnection.segmentID
                     //let destTest = await model.NodeAt(segmentID: destIDtest!, useFrom: false, connector: nextConnection.connector)
                     // get the source and dest nodes of the connection
-                    guard let srcNode = await model.NodeAt(segment: nextSegment, useFrom: true, connector: nextConnection.connector), let destSegmentID = nextConnection.segmentID, let destNode = await model.NodeAt(segmentID: destSegmentID, useFrom: false, connector: nextConnection.connector) else {
-                        
-                        ALog("WTF??")
-                        break
+                    // Reported leg by leg: the guard has three of them and "which one" is the whole diagnosis. A nil srcNode or
+                    // destNode means the node topology SetNodes() built does not match what this connector describes, which in
+                    // practice means a Segment was replaced without its connections being remapped (see UpdateConnectors).
+                    let srcNodeTest = await model.NodeAt(segment: nextSegment, useFrom: true, connector: nextConnection.connector)
+                    let destSegmentIDTest = nextConnection.segmentID
+                    let destNodeTest = destSegmentIDTest == nil ? nil : await model.NodeAt(segmentID: destSegmentIDTest!, useFrom: false, connector: nextConnection.connector)
+
+                    guard let srcNode = srcNodeTest, let destSegmentID = destSegmentIDTest, let destNode = destNodeTest else {
+
+                        let failure = srcNodeTest == nil ? "no node at the FROM end (\(nextConnection.connector.fromLocation))" : (destSegmentIDTest == nil ? "the connection has no target segment" : "no node at the TO end (\(nextConnection.connector.toLocation)) of segment \(destSegmentIDTest!)")
+
+                        ALog("Cannot resolve the connection from segment \(nextSegment.serialNumber) (\(nextConnection.connector.fromLocation) -> \(nextConnection.connector.toLocation), target \(destSegmentIDTest.map({ String($0) }) ?? "none")): \(failure).")
+
+                        // Fail the whole init rather than break. Breaking left the simulation model built around a connection it
+                        // could not resolve - and ALog only traps in DEBUG, so a Release build carried on silently.
+                        return nil
                     }
                     
                     // if the source and/or destination node is in the 'floatingNodes' set, remove it/them

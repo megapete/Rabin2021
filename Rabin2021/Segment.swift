@@ -88,6 +88,179 @@ actor Segment: Equatable /*, Hashable */ {
     /// per-side figure, unlike BasicSectionWindingData.TurnData.turnInsulation, which is a two-sided total.
     static let staticRingInsulationPerSide = 0.003
 
+    // MARK: Wound-in shields (DelVecchio ch. 12, section 12.11)
+
+    /// The bare (over-copper) radial dimension of a wound-in-shield turn. This is fixed by shop practice, not by anything
+    /// electrical: the shield is an open-circuited conductor and carries no current, so the dimension is set by how thin a wire can
+    /// be handled during winding. Note that NOTHING in the capacitance depends on it - DelVecchio 12.98 is a function of the turn's
+    /// AXIAL height and its insulation thickness only - so a shield's radial build is pure cost with zero capacitive benefit.
+    static let woundInShieldBareRadial = 0.070 * meterPerInch
+
+    /// The thinnest paper allowed on a shield turn, per side. Everything else here uses two-sided figures, so this gets doubled
+    /// before it is compared with anything.
+    static let woundInShieldMinInsulationPerSide = 0.006 * meterPerInch
+
+    /// The maximum permitted working (ie: power-frequency) stress between a shield turn and a coil turn beside it, in V/m.
+    /// 2755 V/mm is about 70 V/mil, the usual working figure for kraft in oil.
+    static let woundInShieldMaxWorkingStress = 2755.0 / 0.001
+
+    /// Paper goes onto a wire in whole wraps, so a calculated insulation thickness is rounded UP to a multiple of this. Two-sided,
+    /// ie: 0.001" per side.
+    static let woundInShieldInsulationIncrement = 0.002 * meterPerInch
+
+    /// The shield conductor itself. There is one of these per COIL rather than per disc pair: a coil is wound with a single shield
+    /// wire, so its insulation is sized once, for the largest number of shield turns used anywhere in that coil. That matters for
+    /// the '.attachedToVAtTopEnd' case, where β - and therefore the required insulation - grows with n; sizing per pair would
+    /// demand a different wire for every pair of a graded scheme.
+    struct WoundInShieldWire:Codable, Sendable, Equatable {
+
+        /// How the shield is tied to the winding. DelVecchio 12.97 gives the bias voltage for each case; β below is the
+        /// dimensionless form of the same thing, and it is what 12.96 is actually quadratic in.
+        enum Connection:Int, Codable, Sendable, CaseIterable {
+
+            /// The shield is left floating, so it settles at Vbias = V/2.
+            case floating
+            /// The shield is tied to V at its cross-over, which is at the outermost turn. Vbias = V.
+            case attachedToVAtCrossover
+            /// The shield is tied to V at the end (innermost) shield turn of the upper disc, i = n. Vbias = V + (n − ½)ΔV. This is
+            /// the highest-capacitance option and also the hardest to build - DelVecchio calls it "harder to achieve in practice".
+            case attachedToVAtTopEnd
+
+            var description:String {
+
+                switch self {
+
+                case .floating: return "Floating"
+                case .attachedToVAtCrossover: return "Attached to V at cross-over"
+                case .attachedToVAtTopEnd: return "Attached to V at top end turn"
+                }
+            }
+
+            /// DelVecchio's bias parameter, β ≡ (Vbias − V/2)/V, where V is the voltage across the DISC PAIR. Reading 12.97 with
+            /// ΔV = V/2N (12.84):
+            ///
+            ///     floating          Vbias = V/2                 ->  β = 0
+            ///     at cross-over     Vbias = V                   ->  β = 1/2
+            ///     at top end turn   Vbias = V + (n − ½)ΔV       ->  β = 1/2 + (n − ½)/2N
+            ///
+            /// Checked against Table 12.1: fitting C = A + B·β² to the floating and cross-over entries reproduces the top-end entry
+            /// at every n that was tested (3.076 vs 3.08, 6.05 vs 6.04, 10.10 vs 10.1, 15.47 vs 15.5).
+            func beta(turnsPerDisc n:Int, discTurns N:Double) -> Double {
+
+                switch self {
+
+                case .floating: return 0.0
+                case .attachedToVAtCrossover: return 0.5
+                case .attachedToVAtTopEnd: return 0.5 + (Double(n) - 0.5) / (2.0 * N)
+                }
+            }
+
+            /// The largest voltage that appears between a shield turn and one of the coil turns next to it.
+            ///
+            /// DelVecchio 12.11.4 works this out to (β + ½)·V, where V is the voltage across the disc pair: V/2 floating (p.359,
+            /// "the maximum shield turn-coil turn voltage is V/2 ... regardless of the number of shield turns"), V for the
+            /// cross-over case, and more than V for the top-end case. It is confirmed by his own circuit-model dumps - Table 12.2
+            /// shows a maximum of 12.84 V against V ≈ 24.3, and Table 12.3 shows ≈ 5.3 V against V = 5.13.
+            ///
+            /// Note that only the top-end case depends on n. That is worth knowing when grading a coil: the other two connections
+            /// let the shield count vary along the winding without changing the turn insulation anywhere.
+            func maxTurnToShieldVoltage(turnsPerDisc n:Int, discTurns N:Double, voltsPerTurn:Double) -> Double {
+
+                // the pair spans 2N turns, so this is the working voltage across it
+                let vPair = 2.0 * N * voltsPerTurn
+
+                return (self.beta(turnsPerDisc: n, discTurns: N) + 0.5) * vPair
+            }
+        }
+
+        let connection:Connection
+
+        /// The bare (over-copper) radial dimension of the wire
+        let bareRadial:Double
+
+        /// The TWO-SIDED paper thickness on the wire, following the same convention as
+        /// BasicSectionWindingData.TurnData.turnInsulation. See Segment.CapacitanceTurnToTurn for why that convention matters.
+        let insulation:Double
+
+        /// The radial dimension a shield turn actually occupies inside the disc
+        var overPaperRadial:Double {
+
+            return self.bareRadial + self.insulation
+        }
+
+        /// Build the shield wire for a coil, choosing the paper thickness so that the working stress between a shield turn and the
+        /// coil turns beside it stays under 'woundInShieldMaxWorkingStress'.
+        ///
+        /// The gap between the shield copper and the coil copper is one half-wrap of each. With the two-sided convention used
+        /// throughout this file, that gap is exactly ½(τp + τw) - which is also the quantity DelVecchio substitutes for τp when he
+        /// forms c_w (p.352), so the same number does both jobs. Hence:
+        ///
+        ///     gap = Vmax / Emax    and    gap = ½(τp + τw)    ->    τw = 2·gap − τp
+        ///
+        /// - Parameter maxTurnsPerDisc: The LARGEST number of shield turns per disc anywhere in this coil (see the note on the type)
+        /// - Parameter discTurns: N, the number of turns in one disc
+        /// - Parameter voltsPerTurn: The working volts per turn of the transformer
+        /// - Parameter turnInsulation: τp, the two-sided paper thickness of a COIL turn
+        static func Standard(connection:Connection, maxTurnsPerDisc:Int, discTurns:Double, voltsPerTurn:Double, turnInsulation:Double) -> WoundInShieldWire {
+
+            let vMax = connection.maxTurnToShieldVoltage(turnsPerDisc: maxTurnsPerDisc, discTurns: discTurns, voltsPerTurn: voltsPerTurn)
+            let requiredGap = vMax / Segment.woundInShieldMaxWorkingStress
+
+            var tw = 2.0 * requiredGap - turnInsulation
+            tw = max(tw, 2.0 * Segment.woundInShieldMinInsulationPerSide)
+
+            // Round up to a whole number of wraps. The epsilon keeps a thickness that is already an exact multiple from being
+            // pushed up a whole increment by floating-point noise.
+            let increment = Segment.woundInShieldInsulationIncrement
+            tw = ((tw / increment) - 1.0E-9).rounded(.up) * increment
+
+            return WoundInShieldWire(connection: connection, bareRadial: Segment.woundInShieldBareRadial, insulation: tw)
+        }
+    }
+
+    /// The wound-in shields carried by a single Segment.
+    struct WoundInShield:Codable, Sendable, Equatable {
+
+        /// The wire, which is a property of the whole coil rather than of this Segment
+        let wire:WoundInShieldWire
+
+        /// The number of shield turns per disc, with ONE ENTRY PER DISC PAIR of the owning Segment. A shield spans two discs and
+        /// crosses over at the outermost turn, so the pair is the unit DelVecchio's 12.96 describes and a Segment of 2k
+        /// BasicSections has k entries here.
+        ///
+        /// An entry of 0 means that pair carries no shield. That is deliberate rather than merely tolerated: a graded shielding
+        /// scheme has to be able to say it, and it costs nothing, because 12.96 at n = 0 reduces to c_t·(N−1)/(2N²), which is
+        /// identically two plain discs' Ctt(N−1)/N² in series. The two formulations agree exactly at the boundary, so a graded
+        /// profile has no artificial step in capacitance where the shields stop.
+        let turnsPerDisc:[Int]
+
+        init(wire:WoundInShieldWire, turnsPerDisc:[Int]) {
+
+            self.wire = wire
+            self.turnsPerDisc = turnsPerDisc
+        }
+
+        /// Convenience initializer for the uniform case, which is what the "add shields" dialog produces.
+        init(wire:WoundInShieldWire, turnsPerDisc:Int, pairCount:Int) {
+
+            self.init(wire: wire, turnsPerDisc: Array(repeating: turnsPerDisc, count: pairCount))
+        }
+
+        /// The most shield turns in any one disc of the owning Segment
+        var maxTurnsPerDisc:Int {
+
+            return self.turnsPerDisc.max() ?? 0
+        }
+
+        /// The extra radial build that the widest disc of this Segment needs. Note that this is driven by the MAXIMUM, not by the
+        /// per-pair count: the coil has to stay cylindrical, so the widest disc sets the build for the whole winding and every
+        /// other disc is filled out to match.
+        var radialBuildAdder:Double {
+
+            return Double(self.maxTurnsPerDisc) * self.wire.overPaperRadial
+        }
+    }
+
     /// This segment's serial number
     // private var serialnumberStore:Int
     
@@ -99,12 +272,26 @@ actor Segment: Equatable /*, Hashable */ {
         
     /// A Boolean to indicate whether the segment is interleaved
     var interleaved:Bool
-    
+
     func IsInterleaved() -> Bool {
-        
+
         return interleaved
     }
-    
+
+    /// The wound-in shields on this Segment, or nil if it has none. A Segment cannot be both interleaved and shielded - they are
+    /// two different ways of solving the same problem and the capacitance formulas for them are unrelated.
+    var woundInShield:WoundInShield? = nil
+
+    func SetWoundInShield(_ woundInShield:WoundInShield?) {
+
+        self.woundInShield = woundInShield
+    }
+
+    func HasWoundInShield() -> Bool {
+
+        return self.woundInShield != nil
+    }
+
     /// A  constant used to identify the location of radial shields and static rings whose associated Segment is in position 0
     static let negativeZeroPosition = -2048
     
@@ -234,10 +421,86 @@ actor Segment: Equatable /*, Hashable */ {
     }
     
     func SetSegmentIDforConnectionAt(_ index:Int, newID:Int) {
-        
+
         self.connections[index].segmentID = newID
     }
-    
+
+    /// Rewrite every serial number this Segment's connections refer to, using `map` (old serial -> new serial). A serial with no
+    /// entry in the map is left alone, so the call is safe to make on Segments that were not part of the change.
+    ///
+    /// There are THREE places a serial number hides in a Connection, and a remap that misses any of them leaves the model
+    /// referring to Segments that no longer exist:
+    ///
+    ///   1. `segmentID` - the connection's own target;
+    ///   2. `equivalentConnections[].parent` - the Segment holding the mirror-image connection, which is how RemoveConnection()
+    ///      finds the other end of a jumper to take it out too;
+    ///   3. `equivalentConnections[].connection.segmentID` - that mirror connection's own target, which points back at self.
+    ///
+    /// Only (1) was ever remapped - and even that was written as a no-op, reading the ID and assigning it straight back - so a
+    /// combine or an interleave left dangling serials behind. The visible symptom was in SetNodes(), which decides whether two
+    /// axially adjacent Segments SHARE a node by matching a connection's segmentID against the neighbour's serial: a stale ID
+    /// never matches, so the coil was silently split into disconnected pieces at every boundary, and SimulationModel's init then
+    /// failed to find the nodes its connectors described.
+    ///
+    /// `EquivalentConnection`'s stored properties are `let`, so the set is rebuilt rather than mutated in place.
+    func RemapConnectionSegmentIDs(_ map:[Int:Int]) {
+
+        for i in 0..<self.connections.count {
+
+            if let oldID = self.connections[i].segmentID, let newID = map[oldID] {
+
+                self.connections[i].segmentID = newID
+            }
+
+            guard !self.connections[i].equivalentConnections.isEmpty else {
+
+                continue
+            }
+
+            var remapped:Set<Connection.EquivalentConnection> = []
+
+            for nextEquivalent in self.connections[i].equivalentConnections {
+
+                var mirror = nextEquivalent.connection
+
+                if let oldID = mirror.segmentID, let newID = map[oldID] {
+
+                    mirror.segmentID = newID
+                }
+
+                remapped.insert(Connection.EquivalentConnection(parent: map[nextEquivalent.parent] ?? nextEquivalent.parent, connection: mirror))
+            }
+
+            self.connections[i].equivalentConnections = remapped
+        }
+    }
+
+    /// Move and/or resize the Segment radially.
+    ///
+    /// The Segment's rect is the live radial geometry of the model - it is what TransformerView draws, what CreateFePhase hands to
+    /// the finite-element model, and what every capacitance routine measures from. The BasicSections keep the PRISTINE radii they
+    /// were given when the design file was read, and are deliberately left alone: they are a 'let' (they have to be, because
+    /// validateMenuItem and friends read them synchronously from the main actor), and keeping them pristine makes the built-up
+    /// geometry a pure function of the design file plus the current shield set, so PhaseModel.ApplyRadialBuildUp is idempotent and
+    /// exactly reversible. See that routine.
+    func SetRadialGeometry(r1:Double, width:Double) {
+
+        self.rect.origin.x = r1
+        self.rect.size.width = width
+    }
+
+    /// The pristine (as-read-from-the-design-file) inner radius of the segment. Use r1 for the live geometry.
+    nonisolated var pristineR1:Double {
+
+        return self.basicSections[0].r1
+    }
+
+    /// The pristine (as-read-from-the-design-file) radial build of the segment. Use r2 - r1 for the live geometry.
+    nonisolated var pristineWidth:Double {
+
+        return self.basicSections[0].width
+    }
+
     /// The inner radius of the segment (from the core center)
     var r1:Double {
         get {
@@ -433,6 +696,7 @@ actor Segment: Equatable /*, Hashable */ {
             case AxialAndRadialGapsAreNonNil
             case IllegalWindingType
             case IllegalInterleavedType
+            case IllegalWoundInShield
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -474,10 +738,14 @@ actor Segment: Equatable /*, Hashable */ {
                     return "The winding type does not match the adjacent gaps that are defined!"
                 }
                 else if self.type == .IllegalInterleavedType {
-                    
+
                     return "Only disc windings can be interleaved!"
                 }
-                
+                else if self.type == .IllegalWoundInShield {
+
+                    return "Illegal wound-in shield: \(info)"
+                }
+
                 return "An unknown error occurred."
             }
         }
@@ -628,6 +896,147 @@ actor Segment: Equatable /*, Hashable */ {
         }
     }
     
+    /// One "unit" of a Segment for series-capacitance purposes: the span of BasicSections that gets its own capacitance before the
+    /// units are combined in series.
+    struct SeriesCapacitanceUnit {
+
+        /// The span of BasicSections, as an index range into the Segment's own array
+        let range:Range<Int>
+        /// The number of shield turns per disc for this unit, or 0 if it carries none
+        let shieldTurns:Int
+    }
+
+    /// Split this Segment into the units that SeriesCapacitance combines in series.
+    ///
+    /// A unit is a single disc normally, and a double disc when the two discs are wound as one thing: interleaved, or spanned by a
+    /// wound-in shield (a shield crosses over at the outermost turn of a PAIR, which is why DelVecchio 12.96 is written for a pair).
+    ///
+    /// The spans are deliberately not a fixed stride. A shielded pair whose shield count is zero is emitted as two ordinary single
+    /// discs instead of as a pair, so that it keeps the Stein / end-disc / static-ring treatment of the plain disc path. That costs
+    /// nothing in accuracy - 12.96 at n = 0 is identically two plain discs in series (see WoundInShieldSeriesCapacitance) - and it
+    /// is what lets a graded shielding scheme taper down to zero without a discontinuity.
+    func SeriesCapacitanceUnits() -> [SeriesCapacitanceUnit] {
+
+        var result:[SeriesCapacitanceUnit] = []
+        let count = self.basicSections.count
+
+        if let woundInShield = self.woundInShield {
+
+            var index = 0
+            var pairIndex = 0
+
+            while index + 1 < count {
+
+                let shieldTurns = pairIndex < woundInShield.turnsPerDisc.count ? woundInShield.turnsPerDisc[pairIndex] : 0
+
+                if shieldTurns > 0 {
+
+                    result.append(SeriesCapacitanceUnit(range: index..<(index + 2), shieldTurns: shieldTurns))
+                }
+                else {
+
+                    result.append(SeriesCapacitanceUnit(range: index..<(index + 1), shieldTurns: 0))
+                    result.append(SeriesCapacitanceUnit(range: (index + 1)..<(index + 2), shieldTurns: 0))
+                }
+
+                index += 2
+                pairIndex += 1
+            }
+
+            // A shielded Segment is required to hold an even number of discs, so this cannot currently happen - but if it ever did,
+            // dropping the last disc would silently lose its capacitance, so treat it as an ordinary one.
+            if index < count {
+
+                result.append(SeriesCapacitanceUnit(range: index..<(index + 1), shieldTurns: 0))
+            }
+        }
+        else if self.interleaved {
+
+            var index = 0
+
+            while index + 1 < count {
+
+                result.append(SeriesCapacitanceUnit(range: index..<(index + 2), shieldTurns: 0))
+                index += 2
+            }
+
+            if index < count {
+
+                result.append(SeriesCapacitanceUnit(range: index..<(index + 1), shieldTurns: 0))
+            }
+        }
+        else {
+
+            for index in 0..<count {
+
+                result.append(SeriesCapacitanceUnit(range: index..<(index + 1), shieldTurns: 0))
+            }
+        }
+
+        return result
+    }
+
+    /// The series capacitance of a single wound-in-shield disc PAIR, complete with its disc-disc energy.
+    ///
+    /// This does not go through Stein's formula, and that is deliberate. Stein (12.35, and 12.53/12.54 as the code uses them) solves
+    /// for a voltage that traverses the disc radially ONCE. A shielded unit is a pair, and its voltage traverses radially twice, so
+    /// feeding a pair to the ordinary disc branch would give a small-α limit of (2/3)(Cdd_above + Cdd_below) = (4/3)·c_d for equal
+    /// gaps - twice the right answer, and with the pair's own internal gap missing entirely. DelVecchio's own treatment of the
+    /// shielded pair (12.93) assumes the voltage varies linearly along the pair, and that is what is used here.
+    ///
+    /// Splitting his disc-disc term by gap. Let u be the radial position along a disc, 0 at the outside, 1 at the inside, and let V
+    /// be the voltage across the pair. Inside the pair, the lower disc is at uV/2 and the upper at V − uV/2, so the difference
+    /// across the INTERNAL gap is V(1 − u) and its energy is ½·c_d·V²∫₀¹(1−u)²du = ½·c_d·V²/3 - all of which belongs to this pair.
+    /// Across an EXTERNAL gap the neighbouring pair ramps the same way, the difference is uV, and the energy is again ½·c_d·V²/3 -
+    /// but that is shared with the neighbour, so this pair takes half. Setting the total equal to ½·C·V²:
+    ///
+    ///     C = Cs + (1/3)·Cdd_internal + (1/6)·(Cdd_below + Cdd_above)
+    ///
+    /// which collapses to DelVecchio's "(2/3)·c_d, embedded" when all three gaps are equal, and to his isolated-pair (1/3)·c_d when
+    /// the external gaps are absent. It also generalizes his equal-gap assumption the same way the helical branch generalizes 12.41.
+    ///
+    /// The cost of the linear-voltage assumption, measured by VerifyWoundInShieldCapacitance() on DelVecchio's own coil: +2.96% at
+    /// n = 1 (α = 1.22), +0.96% at n = 2, +0.47% at n = 3. It falls away quickly because every shield turn raises Cs and so lowers
+    /// α = √(2·Cdd/Cs). At n = 0 it would be +117% (α = 6.0), which is why SeriesCapacitanceUnits sends an unshielded pair down the
+    /// plain path instead of through here. Within its own range this is not an oversight - do not "fix" it by reaching for Stein.
+    func WoundInShieldPairCapacitance(turnsPerDisc:Int, wire:WoundInShieldWire, axialGaps:(above:Double, below:Double), endDisc:(lowest:Bool, highest:Bool)?, adjStaticRing:(above:Bool, below:Bool)?) throws -> Double {
+
+        guard self.basicSections.count == 2 else {
+
+            throw SegmentError(info: "a wound-in shield spans exactly two discs", type: .IllegalWoundInShield)
+        }
+
+        let Cs = try self.WoundInShieldSeriesCapacitance(turnsPerDisc: turnsPerDisc, wire: wire)
+
+        let staticRing = adjStaticRing ?? (above:false, below:false)
+
+        // The gap inside the pair. Both discs have the same radii, so either one gives the same area.
+        let internalGap = self.basicSections[1].z1 - self.basicSections[0].z2
+        let CddInternal = Segment.DiscToDiscSeriesCapacitance(belowGap: internalGap, aboveGap: 0.0, basicSection: self.basicSections[0], innerRadius: self.r1, outerRadius: self.r2, staticRing: (above:false, below:false)).below
+
+        let CddExternal = Segment.DiscToDiscSeriesCapacitance(belowGap: axialGaps.below, aboveGap: axialGaps.above, basicSection: self.basicSections[0], innerRadius: self.r1, outerRadius: self.r2, staticRing: staticRing)
+
+        var CddBelow = CddExternal.below
+        var CddAbove = CddExternal.above
+
+        // At a coil end with no static ring the "gap" is the clearance to the yoke. That is a capacitance to ground, not a
+        // turn-to-turn one, so it stores no series energy - DelVecchio 12.7's Ca = 0, and the same rule the helical branch applies.
+        if let endDiscLoc = endDisc {
+
+            if endDiscLoc.lowest && !staticRing.below {
+
+                CddBelow = 0.0
+            }
+
+            if endDiscLoc.highest && !staticRing.above {
+
+                CddAbove = 0.0
+            }
+        }
+
+        return Cs + CddInternal / 3.0 + (CddBelow + CddAbove) / 6.0
+    }
+
     /// The series capacitance of the Segment. For Segments that are made up of more than one (or two, for interleaved windings) axial BasicSections, the routine calls itself for each BasicSection.
     func SeriesCapacitance(axialGaps:(above:Double, below:Double)?, radialGaps:(inside:Double, outside:Double)?, endDisc:(lowest:Bool, highest:Bool)?, adjStaticRing:(above:Bool, below:Bool)?) async throws -> Double {
         
@@ -649,32 +1058,31 @@ actor Segment: Equatable /*, Hashable */ {
         do {
         
             if self.wdgType == .disc || self.wdgType == .helical {
-                
-                let numBasicSections = self.interleaved ? self.basicSections.count / 2 : self.basicSections.count
-                let bsStride = self.interleaved ? 2 : 1
-                
+
+                let units = self.SeriesCapacitanceUnits()
+
                 var result = 0.0
-                
-                if numBasicSections > 1 {
 
-                    // Each pass handles one "unit" - the thing that gets its own series capacitance, which is a single disc normally but
-                    // a double disc when the winding is interleaved. Unit i therefore occupies basicSections[i * bsStride] through
-                    // [i * bsStride + bsStride - 1], and its neighbours are the sections immediately outside that range. Indexing with i
-                    // itself only coincides with the unit's position when bsStride is 1, so an interleaved Segment of more than one
-                    // double disc used to read the wrong sections (and measure its gaps from the wrong faces).
-                    for i in 0..<numBasicSections {
+                if units.count > 1 {
 
-                        let firstIndex = i * bsStride
-                        let lastIndex = firstIndex + bsStride - 1
+                    // Each pass handles one "unit" - the span of BasicSections that gets its own series capacitance before the units
+                    // are combined in series. See SeriesCapacitanceUnits() for what a unit is; the important point here is that the
+                    // spans are NOT a fixed stride, so every index has to come from the unit's own range. Deriving them by arithmetic
+                    // from a loop counter is what previously made an interleaved Segment of more than one double disc read the wrong
+                    // sections (and measure its gaps from the wrong faces).
+                    for (i, unit) in units.enumerated() {
+
+                        let firstIndex = unit.range.lowerBound
+                        let lastIndex = unit.range.upperBound - 1
 
                         let unitBottom = self.basicSections[firstIndex]
                         let unitTop = self.basicSections[lastIndex]
 
-                        let bs:[BasicSection] = Array(self.basicSections[firstIndex...lastIndex])
+                        let bs:[BasicSection] = Array(self.basicSections[unit.range])
 
                         // The outermost gaps are the ones handed to us; the interior ones are measured between this unit's outer faces
                         // and the facing section of the neighbouring unit.
-                        let gapAbove = i == numBasicSections - 1 ? axialGaps!.above : self.basicSections[lastIndex + 1].z1 - unitTop.z2
+                        let gapAbove = i == units.count - 1 ? axialGaps!.above : self.basicSections[lastIndex + 1].z1 - unitTop.z2
                         let gapBelow = i == 0 ? axialGaps!.below : unitBottom.z1 - self.basicSections[firstIndex - 1].z2
 
                         // Only the units at the two ends of this Segment can be at a coil end or next to a static ring, and each of them
@@ -687,13 +1095,25 @@ actor Segment: Equatable /*, Hashable */ {
                             endD = endDisc != nil ? (endDisc!.lowest, false) : nil
                             staticRing = adjStaticRing != nil ? (false, adjStaticRing!.below) : nil
                         }
-                        else if i == numBasicSections - 1 {
+                        else if i == units.count - 1 {
 
                             endD = endDisc != nil ? (false, endDisc!.highest) : nil
                             staticRing = adjStaticRing != nil ? (adjStaticRing!.above, false) : nil
                         }
 
                         let tmpSeg = try Segment(basicSections: bs, interleaved: self.interleaved, isStaticRing: false, isRadialShield: false, realWindowHeight: self.realWindowHeight, useWindowHeight: self.useWindowHeight)
+
+                        // Segment.init builds its rect from the BasicSections, and those hold the PRISTINE radii from the design
+                        // file - so without this, every unit of a coil that has been built up to carry shields would be measured at
+                        // the radius it had before the build-up. All the discs of a Segment share its radii, so handing down our own
+                        // is exactly right.
+                        await tmpSeg.SetRadialGeometry(r1: self.r1, width: self.r2 - self.r1)
+
+                        // carry this unit's share of the shield forward to the leaf
+                        if unit.shieldTurns > 0, let wire = self.woundInShield?.wire {
+
+                            await tmpSeg.SetWoundInShield(WoundInShield(wire: wire, turnsPerDisc: [unit.shieldTurns]))
+                        }
 
                         let serCap = try await tmpSeg.SeriesCapacitance(axialGaps: (above:gapAbove, below:gapBelow), radialGaps: nil, endDisc: endD, adjStaticRing: staticRing)
 
@@ -702,14 +1122,21 @@ actor Segment: Equatable /*, Hashable */ {
 
                     return 1 / result
                 }
+
+                // A single unit that is a shielded disc pair is DelVecchio 12.11's own case and takes a route of its own - see the
+                // routine for why Stein cannot be used on a two-disc unit.
+                if let woundInShield = self.woundInShield, let shieldTurns = woundInShield.turnsPerDisc.first, shieldTurns > 0 {
+
+                    return try self.WoundInShieldPairCapacitance(turnsPerDisc: shieldTurns, wire: woundInShield.wire, axialGaps: axialGaps!, endDisc: endDisc, adjStaticRing: adjStaticRing)
+                }
             }
-            
+
             var Cs = try self.BasicSectionSeriesCapacitance()
             if self.interleaved {
-                
+
                 Cs /= 2
             }
-            
+
             if self.wdgType == .sheet {
 
                 // No shunt term belongs here, unlike the disc case. A sheet winding is built as a single BasicSection spanning the whole
@@ -735,7 +1162,7 @@ actor Segment: Equatable /*, Hashable */ {
                 let belowGap = axialGaps!.below
 
                 let srForCdd = adjStaticRing ?? (above:false, below:false)
-                let Cdd = Segment.DiscToDiscSeriesCapacitance(belowGap: belowGap, aboveGap: aboveGap, basicSection: self.basicSections[0], staticRing: srForCdd)
+                let Cdd = Segment.DiscToDiscSeriesCapacitance(belowGap: belowGap, aboveGap: aboveGap, basicSection: self.basicSections[0], innerRadius: self.r1, outerRadius: self.r2, staticRing: srForCdd)
 
                 // At a coil end with no static ring, the "gap" handed to us is the clearance to the yoke. That is a capacitance to
                 // ground, not a turn-to-turn one, so it stores no series energy and that side contributes nothing - the helical analogue
@@ -765,7 +1192,7 @@ actor Segment: Equatable /*, Hashable */ {
 
                 let bs = self.basicSections[0]
 
-                let Cdd = Segment.DiscToDiscSeriesCapacitance(belowGap: belowGap, aboveGap: aboveGap, basicSection: bs, staticRing: adjStaticRing ?? (above:false, below:false))
+                let Cdd = Segment.DiscToDiscSeriesCapacitance(belowGap: belowGap, aboveGap: aboveGap, basicSection: bs, innerRadius: self.r1, outerRadius: self.r2, staticRing: adjStaticRing ?? (above:false, below:false))
 
                 if let endDiscLoc = endDisc, endDiscLoc != (false, false) {
                     
@@ -970,9 +1397,14 @@ actor Segment: Equatable /*, Hashable */ {
     /// - Parameter staticRing: Which side (if either) of the BasicSection faces a static ring rather than another disc. Per DelVecchio
     /// 12.6 the disc-to-static-ring capacitance Ca plays the role of Cdd on that side, but the insulation in that gap is not the same:
     /// see the note on the solid-insulation term below.
-    static func DiscToDiscSeriesCapacitance(belowGap:Double, aboveGap:Double, basicSection:BasicSection, staticRing:(above:Bool, below:Bool) = (false, false)) -> (below:Double, above:Double) {
+    /// - Parameter innerRadius: The disc's inner radius. This is passed in rather than read from the BasicSection because a
+    /// BasicSection holds the PRISTINE radii from the design file, while the live geometry (which is what this has to measure) is
+    /// carried by the owning Segment's rect - see Segment.SetRadialGeometry. The two differ whenever a coil has been built up to
+    /// carry wound-in shields.
+    /// - Parameter outerRadius: The disc's outer radius, live rather than pristine, as above.
+    static func DiscToDiscSeriesCapacitance(belowGap:Double, aboveGap:Double, basicSection:BasicSection, innerRadius:Double, outerRadius:Double, staticRing:(above:Bool, below:Bool) = (false, false)) -> (below:Double, above:Double) {
 
-        let fks = Double(basicSection.wdgData.discData.numAxialColumns) * basicSection.wdgData.discData.axialColumnWidth / (π * (basicSection.r1 + basicSection.r2))
+        let fks = Double(basicSection.wdgData.discData.numAxialColumns) * basicSection.wdgData.discData.axialColumnWidth / (π * (innerRadius + outerRadius))
 
         // 'turnInsulation' is the TOTAL (two-sided) insulation on a turn, so a turn presents half of it to the gap on each of its two
         // faces. A disc-to-disc gap therefore holds two of those halves - one from each disc - which is exactly why DelVecchio 12.52
@@ -993,7 +1425,7 @@ actor Segment: Equatable /*, Hashable */ {
             return tp / εPaper
         }
 
-        var Cdd_below = ε0 * π * (basicSection.r2 * basicSection.r2 - basicSection.r1 * basicSection.r1)
+        var Cdd_below = ε0 * π * (outerRadius * outerRadius - innerRadius * innerRadius)
         var Cdd_above = Cdd_below
         // calculate Cdd for the gap below the segment
         if belowGap > 0.0 {
@@ -1033,20 +1465,27 @@ actor Segment: Equatable /*, Hashable */ {
         }
         
         guard !self.isRadialShield else {
-            
+
             throw SegmentError(info: "\(self.location)", type: .RadialShield)
         }
-        
+
+        // A wound-in-shield disc pair does not fit the "Ctt times a function of N" shape below - DelVecchio 12.96 has a separate
+        // shield term with its own capacitance c_w - so it gets its own routine.
+        guard self.woundInShield == nil else {
+
+            throw SegmentError(info: "use WoundInShieldSeriesCapacitance() for a shielded segment", type: .IllegalWoundInShield)
+        }
+
         if self.wdgType == .helical {
-            
+
             return 0.0
         }
-        
+
         do {
-            
+
             let Ctt = try self.CapacitanceTurnToTurn()
             let N = self.basicSections[0].N
-            
+
             if self.wdgType == .disc && self.interleaved {
                 
                 // Veverka method (equation 6.4). This should probably be made more precise using the logic given in DelVecchio where they say that the turn-turn capacitances do not see the full disc voltage (it's actually one turn less voltage per disc). Note that as mentioned in the comment for the function, this is actually double the amount of the double-disc.
@@ -1077,43 +1516,176 @@ actor Segment: Equatable /*, Hashable */ {
         
         throw SegmentError(info: "", type: .UnimplementedWdgType)
     }
-    
-    /// The turn-turn capacitance of the mean turn of a single basic section of this Segment,
-    func CapacitanceTurnToTurn() throws -> Double {
-        
+
+    /// The series capacitance of one wound-in-shield DISC PAIR, per DelVecchio 12.96, but WITHOUT its disc-disc term. The caller
+    /// (SeriesCapacitance) supplies the disc-disc energy, because it is the only thing that knows the gaps.
+    ///
+    /// A shield spans two discs and crosses over at the outermost turn, so the pair - not the disc - is the unit that 12.96
+    /// describes. Writing the total capacitative energy of the pair (12.95) as ½·C·V², with V the voltage across the pair,
+    /// N turns per disc, n shield turns per disc and ΔV = V/2N (12.84):
+    ///
+    ///     Cs_pair = n·c_w·[4β² + 1 − 1/N + 1/(2N²)]      shield-to-coil, over both discs
+    ///             + c_t·(N − n − 1)/(2N²)                the turn pairs that have no shield between them
+    ///
+    /// The first bracket comes from summing the two energy terms of 12.90 and 12.91 over the n shield turns of each disc:
+    ///
+    ///     (½−β)² + (½+β)² + (½−β−δ)² + (½+β−δ)²  =  4β² + 1 − 2δ + 2δ²,   δ = ΔV/V = 1/2N
+    ///
+    /// The second is 12.92's 2(N − n − 1) turn-turn pairs, each holding ½·c_t·ΔV². It is NEGATIVE in n: every shield turn that goes
+    /// in destroys one plain turn-to-turn interface. The effect is small (well under 1% of the shield term) but it is real, and it
+    /// is what makes the formula degenerate correctly - see the note on n = 0 below.
+    ///
+    /// - Note: At n = 0 this returns c_t·(N−1)/(2N²), which is identically two plain discs' Ctt·(N−1)/N² in series. So an
+    /// unshielded pair evaluated through here agrees exactly with the ordinary disc path, and a graded shielding scheme has no
+    /// artificial capacitance step where its shields stop. (SeriesCapacitance still routes n = 0 through the ordinary path, because
+    /// that path also has the correct Stein/end-disc/static-ring treatment.)
+    ///
+    /// VERIFICATION. Driven with DelVecchio's own test coil (12.11.3, p.357: N = 10, Rin 249 mm, cable 11.7 × 9.19 mm over 0.76 mm
+    /// 2-sided paper, shield 3.55 mm over 0.51 mm 2-sided paper, 18 key spacers 44.5 × 4.19 mm, εp 1.5, εks 4.0, in air) and using
+    /// the ISOLATED-pair disc-disc term (internal gap only, ie: + c_d/3), this reproduces every entry of his Table 12.1 - all of
+    /// n = 3/5/7/9 across all three connections - high by a flat 4.6% to 6.0%. That residual is his own winding-looseness
+    /// correction, which p.357 states "amounted to about a 5% correction": his test coil was a loose two-disc pair in air, and
+    /// dividing these results by 1.055 lands on the published numbers to better than 1% everywhere. Do NOT build that factor in -
+    /// it is a property of his experimental setup, not of a wound coil. The thing to check after touching this function is that
+    /// the residual stays FLAT across n and across the three connections; a residual that varies is a real error.
+    ///
+    /// - Parameter turnsPerDisc: n, the number of shield turns in ONE disc of the pair. Must be in 0 ... N − 1.
+    /// - Parameter wire: The shield wire, which supplies β through its connection type and c_w through its insulation.
+    func WoundInShieldSeriesCapacitance(turnsPerDisc:Int, wire:WoundInShieldWire) throws -> Double {
+
         guard !self.isStaticRing else {
-            
+
             throw SegmentError(info: "\(self.location)", type: .StaticRing)
         }
-        
+
         guard !self.isRadialShield else {
-            
+
             throw SegmentError(info: "\(self.location)", type: .RadialShield)
         }
-        
+
+        guard self.wdgType == .disc else {
+
+            throw SegmentError(info: "only disc windings can carry wound-in shields", type: .IllegalWoundInShield)
+        }
+
+        guard self.basicSections.count == 2 else {
+
+            throw SegmentError(info: "a wound-in shield spans exactly two discs", type: .IllegalWoundInShield)
+        }
+
+        let N = self.basicSections[0].N
+        let n = Double(turnsPerDisc)
+
+        // There are only N − 1 spaces between the turns of a disc, so that is the hard ceiling on n. It is also exactly where
+        // 12.92's 2(N − n − 1) plain-turn-pair count runs out.
+        guard n >= 0.0, n <= N - 1.0 else {
+
+            throw SegmentError(info: "\(turnsPerDisc) shield turns/disc with only \(N) turns/disc", type: .IllegalWoundInShield)
+        }
+
+        do {
+
+            let tp = self.basicSections[0].wdgData.turn.turnInsulation
+
+            // c_t is the ordinary turn-turn capacitance; c_w is the same expression with the copper-to-copper gap ½(τp + τw) in
+            // place of τp (DelVecchio p.352).
+            let ct = try self.CapacitanceTurnToTurn()
+            let cw = try self.CapacitanceTurnToTurn(effectiveInsulation: 0.5 * (tp + wire.insulation))
+
+            let beta = wire.connection.beta(turnsPerDisc: turnsPerDisc, discTurns: N)
+
+            let shieldTerm = n * cw * (4.0 * beta * beta + 1.0 - 1.0 / N + 1.0 / (2.0 * N * N))
+            let turnTerm = ct * (N - n - 1.0) / (2.0 * N * N)
+
+            return shieldTerm + turnTerm
+        }
+        catch {
+
+            throw error
+        }
+    }
+
+    /// The factor by which n wound-in-shield turns per disc multiply the series capacitance of a disc pair, compared with the same
+    /// pair carrying no shields.
+    ///
+    /// This is a pure function of the turn geometry, with no Segment needed, which is what lets the "add shields" dialog show it
+    /// live while the user steps n. The mean radius cancels: 12.98 is linear in π(r1 + r2) and both c_w and c_t use the same one,
+    /// leaving only
+    ///
+    ///     c_w/c_t = (τp/τ̄)·((h + 2τ̄)/(h + 2τp)),    τ̄ = ½(τp + τw)
+    ///
+    /// Note that this compares the TURN-AND-SHIELD terms alone. The disc-disc energy is common to both cases and is deliberately
+    /// left out, so the figure is an honest measure of what the shields themselves buy rather than one diluted by a term that was
+    /// going to be there anyway.
+    static func WoundInShieldCapacitanceRatio(turnsPerDisc:Int, discTurns:Double, connection:WoundInShieldWire.Connection, turnInsulation:Double, shieldInsulation:Double, bareCopperHeight:Double) -> Double {
+
+        let N = discTurns
+        let tp = turnInsulation
+        let h = bareCopperHeight
+
+        guard N > 1.0, tp > 0.0 else {
+
+            return 1.0
+        }
+
+        let tauBar = 0.5 * (tp + shieldInsulation)
+        let cwOverCt = (tp / tauBar) * ((h + 2.0 * tauBar) / (h + 2.0 * tp))
+
+        let n = Double(turnsPerDisc)
+        let beta = connection.beta(turnsPerDisc: turnsPerDisc, discTurns: N)
+
+        let shielded = n * cwOverCt * (4.0 * beta * beta + 1.0 - 1.0 / N + 1.0 / (2.0 * N * N)) + (N - n - 1.0) / (2.0 * N * N)
+        let plain = (N - 1.0) / (2.0 * N * N)
+
+        return shielded / plain
+    }
+
+    /// The turn-turn capacitance of the mean turn of a single basic section of this Segment,
+    ///
+    /// - Parameter effectiveInsulation: If non-nil, the TWO-SIDED insulation thickness to use in place of the coil turn's own paper.
+    /// The only caller that passes this is the wound-in-shield code, which needs c_w, the capacitance between a coil turn and a
+    /// shield turn beside it. DelVecchio (p.352) forms c_w with "the same expression ... but with τp replaced by 0.5(τp + τw)",
+    /// which is the physical copper-to-copper gap: one half-wrap from the coil turn and one from the shield turn.
+    func CapacitanceTurnToTurn(effectiveInsulation:Double? = nil) throws -> Double {
+
+        guard !self.isStaticRing else {
+
+            throw SegmentError(info: "\(self.location)", type: .StaticRing)
+        }
+
+        guard !self.isRadialShield else {
+
+            throw SegmentError(info: "\(self.location)", type: .RadialShield)
+        }
+
         if self.wdgType == .helical {
-            
+
             return 0.0
         }
-        
+
         // For disc & sheet coils, this corresponds to Ctt in the DelVeccio book. For layer windings, it is the turn-turn capacitance in the axial direction (my own invention).
-        
+
         if self.wdgType == .disc || self.wdgType == .layer {
 
             // DelVecchio 12.47 wants τp to be the TWO-SIDED paper thickness of a turn (his worked example on p.337 states "The 2-sided
             // paper thickness is 1 mm" and then uses τp = 0.001), and the design file's insulation fields are two-sided totals as well,
             // so this is used as-is. Do NOT reintroduce a factor of 2: Ctt goes as 1/τp, so doing so halves every disc capacitance in
-            // the model. The 'height - tau' below is the matching assumption - it only yields the bare copper height h if tau is the
+            // the model. The 'height - tp' below is the matching assumption - it only yields the bare copper height h if tp is the
             // full two-sided figure.
-            let tau = self.basicSections[0].wdgData.turn.turnInsulation
+            let tp = self.basicSections[0].wdgData.turn.turnInsulation
+
+            // 'tau' is the gap between the two conductors; 'tp' is this coil turn's own paper. They are the same thing unless a
+            // wound-in shield is what sits across the gap. Note that h keeps using tp in EITHER case: h is the bare copper height of
+            // a COIL turn, and it does not change because the thing beside it happens to be a shield.
+            let tau = effectiveInsulation ?? tp
 
             // the calculation of the turn thickness of layer windings does not account for ducts in the winding
-            let h = self.wdgType == .disc ? self.basicSections[0].height - tau : self.basicSections[0].width / Double(self.basicSections[0].wdgData.layers.numLayers)
-            
+            let h = self.wdgType == .disc ? self.basicSections[0].height - tp : self.basicSections[0].width / Double(self.basicSections[0].wdgData.layers.numLayers)
+
             var Ctt:Double = ε0 * εPaper
             Ctt *= π * (self.r1 + self.r2)
             Ctt *= (h + 2 * tau) / tau
-            
+
             return Ctt
         }
         else if self.wdgType == .sheet {
@@ -1133,6 +1705,172 @@ actor Segment: Equatable /*, Hashable */ {
         throw SegmentError(info: "", type: .UnimplementedWdgType)
     }
     
+    /// Self-check for the wound-in-shield capacitance path, run by hand because this program has no test target.
+    ///
+    /// It builds DelVecchio's own experimental disc pair (12.11.3, p.357) and pushes it through the real SeriesCapacitance path -
+    /// the unit list, the leaf routing, DiscToDiscSeriesCapacitance and 12.96 - for n = 0/3/5/7/9 across all three connections,
+    /// then checks the two invariants that a transcription error would break:
+    ///
+    ///  1. n = 0 through the shielded formula must equal the plain two-discs-in-series result EXACTLY. 12.96's turn term is
+    ///     c_t(N − n − 1)/(2N²), which at n = 0 is c_t(N − 1)/(2N²), and that is identically two plain discs' c_t(N − 1)/N² in
+    ///     series. Any drift here means the turn-pair count or the pair/disc normalization has gone wrong.
+    ///  2. The capacitance must be linear in n at fixed β, because 12.96 is. The second difference has to vanish.
+    ///
+    /// It cannot reproduce the absolute numbers in Table 12.1: that experiment was run in AIR (εp = 1.5, εks = 4.0) while this
+    /// program's constants are for an oil-filled transformer (εPaper = 3.5, εBoard = 4.5). The comparison against the book was done
+    /// separately and is recorded on WoundInShieldSeriesCapacitance - agreement to a flat 4.6-6.0%, which is DelVecchio's own
+    /// stated winding-looseness correction.
+    ///
+    /// To run it, add this to AppDelegate.applicationDidFinishLaunching, build, launch the app and read the result back with
+    /// `defaults read com.huberistech.Rabin2021 PCH_WIS_SELFCHECK`. The app is sandboxed, so it cannot write a report to /tmp and
+    /// print() does not reach a shell that launched it with `open` - UserDefaults is the path of least resistance.
+    ///
+    ///     Task {
+    ///         UserDefaults.standard.set(await Segment.VerifyWoundInShieldCapacitance().joined(separator: "\n"), forKey: "PCH_WIS_SELFCHECK")
+    ///         NSApp.terminate(nil)
+    ///     }
+    ///
+    /// Results as of 2026-08-03, all passing:
+    ///
+    ///     12.96 at n=0 vs two plain discs in series:  3.527474e-11 vs 3.527474e-11  rel 0.00e+00
+    ///     floating linearity in n at fixed radius:    worst relative 2nd difference 4.41e-16
+    ///     linear-voltage assumption vs Stein:  n=1 +2.96% (α=1.22), n=2 +0.96%, n=3 +0.47%, n=0 +117% (α=6.01)
+    static func VerifyWoundInShieldCapacitance() async -> [String] {
+
+        var report:[String] = ["Wound-in shield self-check (DelVecchio 12.11.3 geometry, this program's permittivities)"]
+
+        // DelVecchio's test coil, p.357
+        let N = 10.0
+        let innerRadius = 0.249
+        let cableRadial = 0.0117
+        let discHeight = 0.00919
+        let turnPaper = 0.00076
+        let shieldPaper = 0.00051
+        let keySpacer = 0.00419
+
+        let wdgData = BasicSectionWindingData(type: .disc, discData: BasicSectionWindingData.DiscData(numAxialColumns: 18, axialColumnWidth: 0.0445), layers: BasicSectionWindingData.LayerData(numLayers: 1, interLayerInsulation: 0, ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: 0, ductDimn: 0)), turn: BasicSectionWindingData.TurnData(radialDimn: cableRadial, axialDimn: discHeight, turnInsulation: turnPaper, resistancePerMeter: 0, strandRadial: 0, strandAxial: 0))
+
+        /// - Parameter connection: nil to build an ordinary unshielded pair, which is how the n = 0 invariant gets its reference
+        /// - Parameter fixedWidth: pass true to keep the coil at its unshielded radial build. That is not what the program does -
+        /// shields widen the coil, and ApplyRadialBuildUp is what makes that happen - but holding the radius still is what isolates
+        /// 12.96's own linearity in n from the growth of c_t, c_w and c_d with the mean radius.
+        func pairCapacitance(shieldTurns:Int, connection:WoundInShieldWire.Connection?, fixedWidth:Bool = false) async -> Double {
+
+            let wire = WoundInShieldWire(connection: connection ?? .floating, bareRadial: Segment.woundInShieldBareRadial, insulation: shieldPaper)
+            let width = cableRadial * N + (fixedWidth ? 0.0 : Double(shieldTurns) * wire.overPaperRadial)
+
+            let lower = BasicSection(location: LocStruct(radial: 0, axial: 0), N: N, I: 0, wdgData: wdgData, rect: NSRect(x: innerRadius, y: 0.0, width: width, height: discHeight))
+            let upper = BasicSection(location: LocStruct(radial: 0, axial: 1), N: N, I: 0, wdgData: wdgData, rect: NSRect(x: innerRadius, y: discHeight + keySpacer, width: width, height: discHeight))
+
+            guard let pair = try? Segment(basicSections: [lower, upper], realWindowHeight: 1.0, useWindowHeight: 1.0) else {
+
+                return Double.nan
+            }
+
+            if connection != nil {
+
+                await pair.SetWoundInShield(WoundInShield(wire: wire, turnsPerDisc: [shieldTurns]))
+            }
+
+            // Zero external gaps make this the ISOLATED pair DelVecchio measured: only the gap inside the pair contributes.
+            guard let result = try? await pair.SeriesCapacitance(axialGaps: (above: 0.0, below: 0.0), radialGaps: nil, endDisc: nil, adjStaticRing: nil) else {
+
+                return Double.nan
+            }
+
+            return result
+        }
+
+        report.append("")
+        report.append("n         floating     crossover       top end")
+
+        for shieldTurns in [0, 3, 5, 7, 9] {
+
+            var line = String(format: "%-2d", shieldTurns)
+
+            for connection in WoundInShieldWire.Connection.allCases {
+
+                let value = await pairCapacitance(shieldTurns: shieldTurns, connection: connection)
+                line += String(format: "  %12.4f", value * 1.0E9)
+            }
+
+            report.append(line + "   nF")
+        }
+
+        // Build a bare pair (no shield set) to use as the reference for the invariants below
+        let refWidth = cableRadial * N
+        let refLower = BasicSection(location: LocStruct(radial: 0, axial: 0), N: N, I: 0, wdgData: wdgData, rect: NSRect(x: innerRadius, y: 0.0, width: refWidth, height: discHeight))
+        let refUpper = BasicSection(location: LocStruct(radial: 0, axial: 1), N: N, I: 0, wdgData: wdgData, rect: NSRect(x: innerRadius, y: discHeight + keySpacer, width: refWidth, height: discHeight))
+
+        report.append("")
+
+        guard let refPair = try? Segment(basicSections: [refLower, refUpper], realWindowHeight: 1.0, useWindowHeight: 1.0) else {
+
+            report.append("could not build the reference pair - FAIL")
+            return report
+        }
+
+        let refWire = WoundInShieldWire(connection: .floating, bareRadial: Segment.woundInShieldBareRadial, insulation: shieldPaper)
+
+        // Invariant 1: 12.96's turn term at n = 0 is c_t(N − 1)/(2N²), and two plain discs' c_t(N − 1)/N² in series is the same
+        // number. This has to be compared against the formulas directly - going through SeriesCapacitance would route BOTH sides
+        // down the plain path (a pair with no shield turns is emitted as two single discs) and prove nothing.
+        let shieldedZero = (try? await refPair.WoundInShieldSeriesCapacitance(turnsPerDisc: 0, wire: refWire)) ?? Double.nan
+        let plainSeries = ((try? await refPair.BasicSectionSeriesCapacitance()) ?? Double.nan) / 2.0
+        let zeroError = abs(shieldedZero - plainSeries) / plainSeries
+
+        report.append(String(format: "12.96 at n=0 vs two plain discs in series:  %.6e vs %.6e  rel %.2e  %@", shieldedZero, plainSeries, zeroError, zeroError < 1.0E-12 ? "PASS" : "FAIL"))
+
+        // How much the linear-voltage assumption costs. The series capacitances agree exactly (above), so the whole difference is
+        // in the DISC-DISC treatment: the shielded pair uses DelVecchio's linear-voltage split (12.93), the plain path uses Stein.
+        // The Stein equivalent is recomputed here from scratch rather than called, so that this is a genuine cross-check.
+        //
+        // The number grows sharply as n falls, because α = √(2·Cdd/Cs) blows up once the shields stop holding Cs high, and the
+        // linear assumption is only good for small α. At n = 0 it is worth well over 100% (α ≈ 6 for this coil) - which is exactly
+        // why SeriesCapacitanceUnits sends an unshielded pair down the plain path instead. Do not read these as a discontinuity in
+        // a graded scheme: a graded profile's shielded side is n ≥ 1, where the two agree to a few percent.
+        let CddInternal = Segment.DiscToDiscSeriesCapacitance(belowGap: keySpacer, aboveGap: 0.0, basicSection: refLower, innerRadius: innerRadius, outerRadius: innerRadius + refWidth).below
+
+        report.append("")
+        report.append("linear-voltage assumption vs Stein, isolated pair, floating:")
+
+        for shieldTurns in [0, 1, 2, 3] {
+
+            let CsPair = (try? await refPair.WoundInShieldSeriesCapacitance(turnsPerDisc: shieldTurns, wire: refWire)) ?? Double.nan
+            let linear = CsPair + CddInternal / 3.0
+
+            // Two discs in series, each seeing Cdd on one face only (Ya = 0, Yb = 1 in 12.53), which is the isolated-pair case
+            let CsDisc = 2.0 * CsPair
+            let alpha = (2.0 * CddInternal / CsDisc).squareRoot()
+            let stein = CsDisc * alpha / tanh(alpha) / 2.0
+
+            report.append(String(format: "  n=%d  alpha=%6.3f   linear %.4e   Stein %.4e   %+7.2f%%", shieldTurns, alpha, linear, stein, (linear - stein) / stein * 100.0))
+        }
+
+        // Invariant 2: at a FIXED radius and fixed beta, 12.96 is exactly linear in n, so the second difference must vanish to
+        // machine precision. The floating case is the one to use - beta is 0 for every n there, whereas the top-end case is
+        // deliberately non-linear because its beta grows with n. The radius has to be held still because a real shielded coil
+        // widens, which makes c_t, c_w and c_d all creep up with n (that is the slight super-linearity in DelVecchio's own
+        // circuit-model column).
+        // n starts at 1: a pair with n = 0 is deliberately evaluated by the plain path instead, so it does not lie on this line.
+        var floatingValues:[Double] = []
+        for shieldTurns in 1...5 {
+
+            floatingValues.append(await pairCapacitance(shieldTurns: shieldTurns, connection: .floating, fixedWidth: true))
+        }
+
+        var worstSecondDifference = 0.0
+        for i in 1..<(floatingValues.count - 1) {
+
+            let secondDifference = floatingValues[i + 1] - 2.0 * floatingValues[i] + floatingValues[i - 1]
+            worstSecondDifference = max(worstSecondDifference, abs(secondDifference) / floatingValues[i])
+        }
+
+        report.append(String(format: "floating linearity in n at fixed radius:  worst relative 2nd difference %.2e  %@", worstSecondDifference, worstSecondDifference < 1.0E-10 ? "PASS" : "FAIL"))
+
+        return report
+    }
+
     /// Class function to create a radial shield. The Segment has its 'isRadialShield' property set to true. The radial location of the shield is equal to the _negative_ of the 'adjacentSegment' argument unless the adjacent segment is in coil '0', in which case the radial location of the shield is Segment.negativeZeroPosition. The adjacent segment must be the FIRST (lowest) Segment in the NEXT coil position from the core.  That is, the radial shield will be placed in the hilo UNDER the adjacent Segment. The thickness of the shield is fixed at 2mm. The radial shield should be set to have  the full electrical height of the coil to which adjacentSegment belongs.
     /// - Parameter adjacentSegment: The segment that is immediately outside the radial shield..
     /// - Parameter hiloToSegment: The radial gap between the shield and the adjacent Segment.

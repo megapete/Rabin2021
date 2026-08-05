@@ -26,22 +26,31 @@ class ShowWaveFormsDialog: PCH_DialogBox {
     var currentCoilSelection = 0
     
     let numCoils:Int
-    let highestSections:[Int]
-    
+
+    /// Each coil's segments as a range of INDICES INTO PhaseModel.CoilSegments(), which is what the caller slices with the range
+    /// this dialog produces.
+    ///
+    /// This used to be `highestSections`, an array of GetHighestSection(coil:) values, and the dialog rebuilt the flat offsets
+    /// itself by summing `highestSections[c - 1] + 1` over the previous coils. Both halves of that were wrong once any Segment held
+    /// more than one BasicSection: GetHighestSection returns an axial COORDINATE - the pristine design-file disc index, never
+    /// renumbered - not a count. Interleaving the first 6 discs of a 20-disc coil leaves 17 Segments whose top one still reports
+    /// axialPos 19, so the pickers offered 20 section numbers for 17 Segments and the range ran off the end of CoilSegments().
+    /// Taking the ranges from PhaseModel.SegmentRange(coil:) removes the duplicated arithmetic entirely.
+    let coilRanges:[ClosedRange<Int>]
+
     var segmentRange:Range<Int> {
-        
+
         let coilSelected = coilPicker.indexOfSelectedItem
-        
-        let coilBase = coilSelected == 0 ? 0 : highestSections[coilSelected - 1] + 1
-        
+        let coilBase = coilRanges[coilSelected].lowerBound
+
         return (coilBase + rangeFromPicker.indexOfSelectedItem)..<(coilBase + rangeToPicker.indexOfSelectedItem + 1)
     }
-    
-    init(numCoils:Int, highestSections:[Int]) {
-        
+
+    init(numCoils:Int, coilRanges:[ClosedRange<Int>]) {
+
         self.numCoils = numCoils
-        self.highestSections = highestSections
-        
+        self.coilRanges = coilRanges
+
         super.init(viewNibFileName: "ShowWaveFormsView", windowTitle: "Show Waveforms", hideCancel: false)
     }
     
@@ -64,7 +73,9 @@ class ShowWaveFormsDialog: PCH_DialogBox {
 
             var segNames:[String] = []
 
-            for i in 1...highestSections[0]+1 {
+            // The pickers offer one entry per SEGMENT of the coil, and their indices are offsets into coilRanges[c] - see
+            // segmentRange. The names are 1-based purely for display.
+            for i in 1...coilRanges[0].count {
 
                 segNames.append("\(i)")
             }
@@ -76,7 +87,7 @@ class ShowWaveFormsDialog: PCH_DialogBox {
             rangeToPicker.addItems(withTitles: segNames)
 
             rangeFromPicker.selectItem(at: 0)
-            rangeToPicker.selectItem(at: highestSections[0])
+            rangeToPicker.selectItem(at: coilRanges[0].count - 1)
 
             rangeFromPicker.isEnabled = false
             rangeToPicker.isEnabled = false
@@ -104,22 +115,22 @@ class ShowWaveFormsDialog: PCH_DialogBox {
         // we only do all this if the user has changed the coil selection
         if coilSelected != currentCoilSelection {
             
-            let newCoilLastSeg = highestSections[coilSelected]
-            
+            let newCoilSegCount = coilRanges[coilSelected].count
+
             var segNames:[String] = []
-            for i in 1...newCoilLastSeg + 1 {
-                
+            for i in 1...newCoilSegCount {
+
                 segNames.append("\(i)")
             }
-            
+
             rangeFromPicker.removeAllItems()
             rangeToPicker.removeAllItems()
-            
+
             rangeFromPicker.addItems(withTitles: segNames)
             rangeToPicker.addItems(withTitles: segNames)
-            
+
             rangeFromPicker.selectItem(at: 0)
-            rangeToPicker.selectItem(at: newCoilLastSeg)
+            rangeToPicker.selectItem(at: newCoilSegCount - 1)
             
             currentCoilSelection = coilSelected
         }

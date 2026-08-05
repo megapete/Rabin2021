@@ -540,8 +540,12 @@ enum FrequencyDomainSolver {
         var spectra = [[Complex<Double>]](repeating: [Complex<Double>](repeating: Complex(0.0), count: points), count: nx)
 
         // Diagnostics gathered during the sweep, checked once at the end so a
-        // warning is emitted once rather than thousands of times.
-        var worstResidual = 0.0
+        // warning is emitted once rather than thousands of times. The residual
+        // is kept together with the contour point that produced it: the whole
+        // point of the measure is that it varies with frequency, so a number
+        // without its index cannot be interpreted.
+        var worstResidual:ResidualReport? = nil
+        var worstResidualIndex = 0
         var bandEdgeMagnitude = 0.0
         var peakMagnitude = 0.0
 
@@ -552,7 +556,9 @@ enum FrequencyDomainSolver {
             let index:Int
             let solution:[Complex<Double>]
             let drive:Complex<Double>
-            let residual:Double
+
+            /// nil at the contour points where the check was not sampled.
+            let residual:ResidualReport?
         }
 
         func solvePoint(_ m:Int) async -> PointResult? {
@@ -570,7 +576,7 @@ enum FrequencyDomainSolver {
             // every one of a few thousand solves. A sparse sample is enough:
             // an assembly bug is present at every frequency, not just some, so
             // checking a handful catches it just as surely as checking all.
-            let residual = (m % 512 == 0) ? Residual(matrix: matrix, rhs: rhs, solution: solution, size: nx) : 0.0
+            let residual = (m % 512 == 0) ? Residual(matrix: matrix, rhs: rhs, solution: solution, size: nx) : nil
 
             return PointResult(index: m, solution: solution, drive: drive, residual: residual)
         }
@@ -617,7 +623,14 @@ enum FrequencyDomainSolver {
                     spectra[nN + segment][result.index] = result.solution[nN + segment]
                 }
 
-                worstResidual = max(worstResidual, result.residual)
+                // Ranked on the backward error, since that is the measure being
+                // tested; the other two numbers are then reported from the same
+                // contour point so the three are mutually consistent.
+                if let report = result.residual, report.backwardError > (worstResidual?.backwardError ?? -1.0) {
+
+                    worstResidual = report
+                    worstResidualIndex = result.index
+                }
 
                 // Track how much amplitude is left at the top of the band. If
                 // this is not small compared with the peak, the bandwidth is
@@ -669,9 +682,50 @@ enum FrequencyDomainSolver {
         // distinguish "the answer is wrong" from "the answer is right", and
         // neither is visible in the output waveform itself.
 
-        if worstResidual > 1.0E-9 {
+        // The residual check is reported unconditionally, not only when it
+        // trips. DLog compiles away outside DEBUG, and the three numbers
+        // together are what make the warning interpretable when it does fire:
+        // a high `relativeToDrive` with a low `backwardError` and a large
+        // `scaleRatio` is a well-solved badly-scaled system, which is the
+        // normal state of affairs for a real winding.
+        if let worstResidual {
 
-            DLog("WARNING: worst relative solve residual is \(worstResidual). This is far above rounding and means the assembled system is not being solved accurately - suspect conditioning or an assembly error.")
+            let frequency = grid.s(at: worstResidualIndex).imaginary / (2.0 * π)
+
+            DLog(String(format: "Residual check: worst normwise backward error %.3e at contour point %d (%.4g Hz); ||Ax-b||/||b|| there is %.3e, with ||A||*||x||/||b|| = %.3e.",
+                        worstResidual.backwardError, worstResidualIndex, frequency, worstResidual.relativeToDrive, worstResidual.scaleRatio))
+
+            // THRESHOLD: 1e-12, about 4500 * DBL_EPSILON.
+            //
+            // For a backward-stable LU the bound is eta <= c(n) * rho * eps,
+            // with c(n) growing like the order and rho the pivot growth factor.
+            // At the few-hundred unknowns this model runs, c(n)*rho of 1e3-1e4
+            // is unremarkable, so 1e-12 sits above every healthy case while
+            // still tripping long before eta approaches 1.
+            //
+            // Be clear about what crossing it does and does not mean. Backward
+            // error is very nearly INDEPENDENT of conditioning - partial
+            // pivoting is backward stable, so even a system with a condition
+            // number of 1e14 solves to eta ~ eps, it just has a correspondingly
+            // large FORWARD error. So this test does not detect ill
+            // conditioning, and nothing here does; the guard against that is
+            // the asymptote subtraction (which keeps the numerically solved
+            // part small) plus agreement with RK45. What a raised eta means is
+            // catastrophic pivot growth, a matrix that reached LAPACK in the
+            // wrong layout, or non-finite entries having crept into the
+            // assembly - all of them outright breakage rather than accuracy
+            // creep.
+            //
+            // The value this replaced was 1e-9 measured against
+            // `relativeToDrive`, calibrated on the synthetic 5-node/4-segment
+            // ladder used for the ngspice validation. That system is tiny,
+            // per-unit and well scaled, and scored 3.1e-16; a real winding
+            // scores ~1e-8 on the same measure purely from `scaleRatio`, so the
+            // old test fired on every production run.
+            if worstResidual.backwardError > 1.0E-12 {
+
+                DLog("WARNING: the normwise backward error is \(worstResidual.backwardError), far above rounding. The system is not being solved accurately - suspect pivot growth, a layout error in the handoff to LAPACK, or non-finite entries in the assembly. Note this does NOT test the physics: run Simulate > Compare Solvers (Debug) to check the assembly against RK45.")
+            }
         }
 
         if peakMagnitude > 0.0, bandEdgeMagnitude / peakMagnitude > 1.0E-3 {
@@ -729,39 +783,114 @@ enum FrequencyDomainSolver {
 
     // MARK: - Residual check
 
-    /// Multiplies the assembled system by a candidate solution and reports the
-    /// relative residual ||A*x - b|| / ||b||.
+    /// What one sampled residual check produces.
     ///
-    /// Left in the code deliberately. This is the check that catches an
-    /// assembly error - a flipped incidence sign, a row-surgery step applied
-    /// in the wrong order, a block written at the wrong offset. Such a bug
-    /// produces a perfectly well-conditioned system with a perfectly clean
-    /// solution to the WRONG equations, so the solve reports success and the
-    /// answer is quietly wrong. The residual cannot detect that (it checks the
-    /// solve, not the physics), but a residual that is NOT at machine
-    /// precision proves something is wrong before any physics is examined.
-    static func Residual(matrix:[Double], rhs:[Double], solution:[Complex<Double>], size:Int) -> Double {
+    /// Three numbers rather than one, because the obvious normalization is the
+    /// wrong one here and reporting all three makes that visible rather than
+    /// merely confusing.
+    struct ResidualReport:Sendable {
 
-        var worst = 0.0
-        var scale = 0.0
+        /// The Rigal-Gaches normwise backward error,
+        ///
+        ///     eta = ||A*x - b||_inf / ( ||A||_inf * ||x||_inf + ||b||_inf )
+        ///
+        /// This is the smallest `eta` for which the computed `x` is the EXACT
+        /// solution of some perturbed system `(A + dA) x = b + db` with
+        /// `||dA|| <= eta*||A||` and `||db|| <= eta*||b||`. It is the quantity
+        /// LU-with-partial-pivoting actually bounds, and being a ratio of like
+        /// to like it is invariant under rescaling of the system - which is why
+        /// it, and not `relativeToDrive`, is what gets tested.
+        let backwardError:Double
+
+        /// `||A*x - b||_inf / ||b||_inf`.
+        ///
+        /// The historical measure, kept because it is informative about SCALING
+        /// even though it says nothing about accuracy. `Assemble` writes a
+        /// nonzero right-hand side only at the impulsed nodes, so `||b||_inf`
+        /// is exactly `|U(s)|` - and `U(s)` falls off as 1/s^2, by ~3e4 across
+        /// a 10 MHz band. Dividing by a collapsing denominator makes this climb
+        /// with frequency no matter how well the solve went.
+        let relativeToDrive:Double
+
+        /// `||A||_inf * ||x||_inf / ||b||_inf`, the factor by which the two
+        /// measures above differ. Large values are the signature of a badly
+        /// scaled (not badly solved) system: the node block carries `s*C` while
+        /// the segment block carries `s*M`, nothing equilibrates the resulting
+        /// row-norm spread, and `||b||` is only the drive.
+        let scaleRatio:Double
+    }
+
+    /// Multiplies the assembled system by a candidate solution and measures how
+    /// well it was solved.
+    ///
+    /// Left in the code deliberately. This is the check that catches a system
+    /// that is not being solved at all - catastrophic pivot growth, a matrix
+    /// that reached LAPACK in the wrong layout, non-finite entries.
+    ///
+    /// Note the two things it does NOT catch. Ill conditioning is the first:
+    /// partial pivoting is backward stable, so a system with a condition number
+    /// of 1e14 still solves to a backward error of ~eps and passes here, while
+    /// carrying a forward error 1e14 times larger. An assembly error - a
+    /// flipped incidence
+    /// sign, a row-surgery step applied in the wrong order, a block written at
+    /// the wrong offset - produces a perfectly well-conditioned system with a
+    /// perfectly clean solution to the WRONG equations. The backward error of
+    /// that solve sits at machine precision and this check passes. Only
+    /// `CompareSolvers` (the independent RK45 route through the same matrices)
+    /// can find that class of bug. What this check buys is the converse: a
+    /// backward error that is NOT at machine precision proves something is
+    /// wrong before any physics is examined.
+    ///
+    /// Cost is O(size^2) - the same as the solve's right-hand side, but far
+    /// cheaper than its O(size^3) factorization - and `Sweep` only samples it
+    /// at every 512th contour point regardless.
+    static func Residual(matrix:[Double], rhs:[Double], solution:[Complex<Double>], size:Int) -> ResidualReport {
+
+        func modulus(_ z:Complex<Double>) -> Double {
+
+            return (z.real * z.real + z.imaginary * z.imaginary).squareRoot()
+        }
+
+        var worst = 0.0         // ||A*x - b||_inf
+        var driveNorm = 0.0     // ||b||_inf
+        var matrixNorm = 0.0    // ||A||_inf, the largest absolute row sum
+        var solutionNorm = 0.0  // ||x||_inf
+
+        for col in 0..<size {
+
+            solutionNorm = max(solutionNorm, modulus(solution[col]))
+        }
 
         for row in 0..<size {
 
             var sum = Complex<Double>(0.0)
+            var rowSum = 0.0
 
             for col in 0..<size {
 
                 let i = 2 * (col * size + row)
-                sum = sum + Complex(matrix[i], matrix[i + 1]) * solution[col]
+                let a = Complex(matrix[i], matrix[i + 1])
+
+                sum = sum + a * solution[col]
+                rowSum += modulus(a)
             }
+
+            matrixNorm = max(matrixNorm, rowSum)
 
             let b = Complex(rhs[2 * row], rhs[2 * row + 1])
             let difference = sum - b
 
-            worst = max(worst, (difference.real * difference.real + difference.imaginary * difference.imaginary).squareRoot())
-            scale = max(scale, (b.real * b.real + b.imaginary * b.imaginary).squareRoot())
+            worst = max(worst, modulus(difference))
+            driveNorm = max(driveNorm, modulus(b))
         }
 
-        return scale > 0.0 ? worst / scale : worst
+        // The denominator cannot vanish for any system that has both a matrix
+        // and a solution, so the guards are only defending against a degenerate
+        // all-zero case rather than anything that happens in practice.
+        let backwardScale = matrixNorm * solutionNorm + driveNorm
+
+        return ResidualReport(backwardError: backwardScale > 0.0 ? worst / backwardScale : worst,
+                              relativeToDrive: driveNorm > 0.0 ? worst / driveNorm : worst,
+                              scaleRatio: driveNorm > 0.0 ? matrixNorm * solutionNorm / driveNorm : 0.0)
     }
 }

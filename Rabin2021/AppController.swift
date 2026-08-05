@@ -97,6 +97,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     @IBOutlet weak var showWdgAsSingleSegmentMenuItem: NSMenuItem!
     @IBOutlet weak var combineSegmentsIntoSingleSegmentMenuItem: NSMenuItem!
     @IBOutlet weak var interleaveSelectionMenuItem: NSMenuItem!
+    @IBOutlet weak var addWoundInShieldsMenuItem: NSMenuItem!
+    @IBOutlet weak var removeWoundInShieldsMenuItem: NSMenuItem!
     @IBOutlet weak var splitSegmentToBasicSectionsMenuItem: NSMenuItem!
     
     /// Static RIngs
@@ -555,15 +557,59 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             }
         }
         
+        await self.recalculateModel(reinitialize: reinitialize)
+    }
+
+    /// Recompute everything that depends on the model's geometry: the radial build-up, the finite-element phase, the eddy losses,
+    /// the inductance matrix and the capacitance matrix - then refresh the views.
+    ///
+    /// This is the tail of updateModel, pulled out so that it can be reached without pretending to change any Segments.
+    /// PhaseModel.UpdateConnectors throws on an empty array, so calling updateModel with two empty arrays is not an option.
+    ///
+    /// - Parameter includeInductance: Pass false to recompute only the capacitance, leaving the existing inductance matrix in
+    /// place. The inductance is the expensive step by orders of magnitude, and it is also the one that anything exploring geometry
+    /// variations (a wound-in-shield grading search, say) does not need on every trial: the geometry moves by millimetres on a coil
+    /// of a hundred, so the sane pattern is to hold the inductance fixed through the search and recompute it once at the end.
+    func recalculateModel(reinitialize:Bool, includeInductance:Bool = true) async {
+
         guard let model = self.currentModel, let excelFile = self.currentXLfile else {
-            
+
             PCH_ErrorAlert(message: "The model and/or Excel file do/does not exist!", info: "Impossible to continue!")
             return
         }
-        
-        inductanceIsValid = false
+
+        // Rebuild the radial geometry from the design file plus whatever wound-in shields are currently set. This is unconditional
+        // on purpose: it is cheap, it is idempotent, and doing it here means no caller has to remember when the geometry might have
+        // gone stale. It also repairs it after a combine/split/interleave, each of which rebuilds Segments from their pristine
+        // BasicSections and would otherwise silently drop the build-up.
+        await model.ApplyRadialBuildUp()
+        self.tankDepth = await model.tankDepth
+
         capacitanceIsValid = false
-        
+
+        if !includeInductance {
+
+            do {
+
+                try await model.CalculateCapacitanceMatrix()
+                capacitanceIsValid = true
+            }
+            catch {
+
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
+            }
+
+            if !reinitialize {
+
+                self.updateViews()
+            }
+
+            return
+        }
+
+        inductanceIsValid = false
+
         guard let fePhase = await CreateFePhase(xlFile: excelFile, model: model) else {
             
             PCH_ErrorAlert(message: "Could not create finite element model!")
@@ -605,11 +651,21 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
         
         guard refKVA > 0 else {
-            
+
             PCH_ErrorAlert(message: "No winding has been assigned to terminal number 2!")
             return
         }
-        
+
+        // Every array from here down - turns, kvas, currents - is SIZED by terms.count but INDEXED by terminalNumber - 1, so the
+        // terminal numbers have to run 1...terms.count with no gaps. A design file carrying terminals {1, 2, 4} would size them 3
+        // and then index them with 3. Checking it once here makes all four of the loops below safe; the alternative is the same
+        // out-of-range crash reachable from any of them. terms.count >= 2 is already guaranteed above, so the range is valid.
+        guard terms == Set(1...terms.count) else {
+
+            PCH_ErrorAlert(message: "The terminal numbers are not contiguous!", info: "Found \(terms.sorted()) - the amp-turn distribution needs 1 to \(terms.count) with no gaps.")
+            return
+        }
+
         // the index into these arrays is the terminal number minus 1
         var term2volts:Double = 0.0
         var turns:[Double] = Array(repeating: 0.0, count: terms.count)
@@ -633,7 +689,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
         
         let voltsPerTurn = term2volts / turns[1]
-        
+
+        // The model needs this for anything that has to know a section's actual operating voltage rather than a per-unit one. At
+        // the moment that is only the paper thickness on a wound-in-shield wire (Segment.WoundInShieldWire.Standard), which is
+        // sized against the working stress between a shield turn and the coil turns beside it.
+        await model.SetVoltsPerTurn(voltsPerTurn)
+
         var kvas:[Double] = Array(repeating: 0.0, count: terms.count)
         kvas[1] = refKVA
         var otherTermskVA = refKVA
@@ -665,28 +726,47 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             currents[nextTerm - 1] = await kvas[nextTerm - 1] * 1000.0 / Double(excelFile.numPhases) / voltage
         }
         
-        var firstSegmentIndex = 0
-        for wdgIndex in await 0..<excelFile.windings.count {
-            
-            do {
-                
-                let lastSegmentIndex = try await model.GetHighestSection(coil: wdgIndex) + firstSegmentIndex
-                for segIndex in firstSegmentIndex...lastSegmentIndex {
-                    
-                    let currentDirection = await excelFile.windings[wdgIndex].terminal.terminalNumber == 2 ? -1.0 : 1.0
-                    // let currentDivider = excelFile.windings[wdgIndex].isDoubleStack ? 2.0 : 1.0
-                    await fePhase.SetSeriesRmsCurrentForSection(segIndex, rmsAmps: Complex(currents[excelFile.windings[wdgIndex].terminal.terminalNumber - 1] * currentDirection))
-                    // fePhase.window.sections[segIndex].seriesRmsCurrent = Complex(currents[excelFile.windings[wdgIndex].terminal.terminalNumber - 1] * currentDirection) // / currentDivider)
-                }
-                
-                firstSegmentIndex = lastSegmentIndex + 1
+        // The FE section index is a Segment's POSITION IN CoilSegments(), because that is the array CreateFePhase walked to build
+        // the sections. It is not derivable from axialPos: that is the pristine design-file disc index of the Segment's lowest
+        // BasicSection (Segment.axialPos) and is never renumbered, so the two agree only while every Segment holds exactly one
+        // BasicSection - which the load path guarantees and a combine, an interleave or a wound-in-shield pairing destroys.
+        //
+        // This loop used to derive its range from GetHighestSection(coil:), which returns that axial COORDINATE rather than a
+        // count. Interleaving 8 discs into 4 Segments left the coordinates at 0/2/4/6, so the range ran 7 wide over 4 sections:
+        // either off the end of window.sections (the crash) or, when the interleaved coil was not the last one, silently over the
+        // NEXT coil's sections, giving a plausible and entirely wrong inductance matrix. Taking the index straight from the array
+        // makes the two sides impossible to disagree.
+        let coilSegments = await model.CoilSegments()
+
+        let feSectionCount = await fePhase.window.sections.count
+
+        guard feSectionCount == coilSegments.count else {
+
+            PCH_ErrorAlert(message: "The finite-element model does not match the phase model!", info: "\(feSectionCount) FE sections for \(coilSegments.count) Segments.")
+            return
+        }
+
+        for (segIndex, nextSegment) in coilSegments.enumerated() {
+
+            // CreateFePhase indexes the design file's windings by radialPos in exactly this way, so a Segment whose radialPos is out
+            // of range would already have failed there.
+            let terminalNumber = await excelFile.windings[nextSegment.radialPos].terminal.terminalNumber
+
+            // Terminal 0 means the winding is not assigned to a terminal, so it takes no part in the amp-turn balance - which is
+            // exactly why the loop that built 'terms' skips it, and therefore why 'currents' has no entry for it. This used to walk
+            // straight into currents[-1].
+            //
+            // Zero rather than leaving whatever CreateFePhase seeded from Winding.I: that getter is legVA/legVolts, so a winding
+            // with neither kVA nor line volts evaluates 0/0 and seeds a NaN that would run silently through the whole FE solve.
+            guard terminalNumber > 0 else {
+
+                await fePhase.SetSeriesRmsCurrentForSection(segIndex, rmsAmps: .zero)
+                continue
             }
-            catch {
-                
-                let alert = NSAlert(error: error)
-                let _ = alert.runModal()
-                return
-            }
+
+            let currentDirection = terminalNumber == 2 ? -1.0 : 1.0
+            // let currentDivider = excelFile.windings[nextSegment.radialPos].isDoubleStack ? 2.0 : 1.0
+            await fePhase.SetSeriesRmsCurrentForSection(segIndex, rmsAmps: Complex(currents[terminalNumber - 1] * currentDirection))
         }
         
         do {
@@ -1169,6 +1249,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return nil
         }
         
+        // The FE sections below are built one per Segment, in this array's order, and everything downstream addresses them by that
+        // ordinal - recalculateModel's current assignment, PhaseModel.SegmentIndex, SimulationModel's incidence arrays. All of that
+        // rests on CoilSegments() coming back sorted by (radialPos, axialPos), which PhaseModel maintains through InsertSegment's
+        // binary insert. Assert it here rather than let a mis-sorted store surface hundreds of lines away as a wrong inductance
+        // matrix. Note the count itself needs no assertion - it is one append per iteration - so ordering is the real invariant.
+        assert(zip(coilSegments, coilSegments.dropFirst()).allSatisfy({ ($0.radialPos, $0.axialPos) < ($1.radialPos, $1.axialPos) }), "CoilSegments() is not sorted by (radialPos, axialPos)!")
+
         // Ok, we'll assume that the two models are compatible. Create the finite element sections & window
         var feSections:[PchFePhase.Section] = []
         for nextSegment in coilSegments {
@@ -1389,21 +1476,25 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         Task {
             
             let numCoils = await phModel.CoilCount()
-            var highestSects:[Int] = []
+
+            // Ranges of INDICES INTO CoilSegments(), which is what doShowWaveforms slices. Not GetHighestSection(coil:), which
+            // returns an axial coordinate rather than a count and overstates the segment count for any coil holding multi-disc
+            // Segments - see the note on ShowWaveFormsDialog.coilRanges.
+            var coilRanges:[ClosedRange<Int>] = []
             for i in 0..<numCoils {
-                
+
                 do {
-                    try await highestSects.append(phModel.GetHighestSection(coil: i))
+                    try await coilRanges.append(phModel.SegmentRange(coil: i))
                 }
                 catch {
-                    
+
                     let alert = NSAlert(error: error)
                     let _ = alert.runModal()
                     return
                 }
             }
-            
-            let showWaveFormDlog = ShowWaveFormsDialog(numCoils: numCoils, highestSections: highestSects)
+
+            let showWaveFormDlog = ShowWaveFormsDialog(numCoils: numCoils, coilRanges: coilRanges)
             
             if showWaveFormDlog.runModal() == .OK {
                 
@@ -1421,7 +1512,18 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     func doShowWaveforms(segments:Range<Int>, showVoltage:Bool, showCurrent:Bool, showFourier:Bool) async {
         
         guard let simResult = latestSimulationResult, let model = currentModel, !segments.isEmpty && (showVoltage || showCurrent || showFourier) else {
-            
+
+            return
+        }
+
+        // 'segments' indexes CoilSegments(), so it has to fit. The dialog derives it from SegmentRange(coil:) and cannot produce an
+        // out-of-range value, but this is cheap and it is the exact subscript that used to trap: the ranges were built from
+        // GetHighestSection(coil:), an axial coordinate that overstates the count once any Segment holds more than one disc.
+        let coilSegmentCount = await model.CoilSegments().count
+
+        guard segments.lowerBound >= 0, segments.upperBound <= coilSegmentCount else {
+
+            PCH_ErrorAlert(message: "The requested segment range is not in the model!", info: "Asked for \(segments) of \(coilSegmentCount) segments.")
             return
         }
         
@@ -2311,9 +2413,19 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         })
         
         Task {
-            
+
+            // Combining rebuilds the Segments from their BasicSections, which would silently throw any shields away
+            for nextSegment in segments {
+
+                if await nextSegment.HasWoundInShield() {
+
+                    PCH_ErrorAlert(message: "The selection contains at least one segment with wound-in shields!", info: "Remove the shields first.")
+                    return
+                }
+            }
+
             if await model.SegmentsAreContiguous(segments: segments) {
-                
+
                 var newBasicSectionArray:[BasicSection] = []
                 
                 
@@ -2330,7 +2442,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                     let bottomStaticRing = try await model.StaticRingBelow(segment: segments.first!, recursiveCheck: false)
                     let topStaticRing = try await model.StaticRingAbove(segment: segments.last!, recursiveCheck: false)
                     
-                    let combinedSegment = try Segment(basicSections: newBasicSectionArray, realWindowHeight: model.core.realWindowHeight, useWindowHeight: model.core.adjustedWindHt)
+                    let core = await model.core
+                    let combinedSegment = try Segment(basicSections: newBasicSectionArray, realWindowHeight: core.realWindowHeight, useWindowHeight: core.adjustedWindHt)
                     
                     await self.updateModel(oldSegments: segments, newSegments: [combinedSegment], xlFile: nil, reinitialize: false)
                     
@@ -2403,6 +2516,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                     PCH_ErrorAlert(message: "The selection contains at least one interleaved segment!", info: "Cannot 'double-interleave'")
                     return
                 }
+                // Interleaving rebuilds the Segments, which would silently throw the shields away
+                if await nextPath.segment.HasWoundInShield() {
+                    PCH_ErrorAlert(message: "The selection contains at least one segment with wound-in shields!", info: "Remove the shields first.")
+                    return
+                }
                 segments.append(nextPath.segment)
             }
             
@@ -2419,15 +2537,23 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             
             
             if await model.SegmentsAreContiguous(segments: segments) {
-                
+
+                // See SelectionSpansTappingGap. Interleaving always regroups, so unlike the wound-in-shield path this is
+                // unconditional.
+                if await self.SelectionSpansTappingGap(model: model, segments: segments) {
+
+                    PCH_ErrorAlert(message: "The selection spans a tapping gap!", info: "Interleaving would regroup the discs across the gap. Select the discs on one side of the gap at a time.")
+                    return
+                }
+
                 var basicSections:[BasicSection] = []
                 for nextSegment in segments {
-                    
+
                     basicSections.append(contentsOf: nextSegment.basicSections)
                 }
-                
+
                 guard basicSections.count % 2 == 0 else {
-                    
+
                     PCH_ErrorAlert(message: "There must be an even number of total discs to create interleaved segments!", info: nil)
                     return
                 }
@@ -2436,10 +2562,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 do {
                     
                     var interleavedSegments:[Segment] = []
-                    
+                    let core = await model.core
+
                     for i in stride(from: 0, to: basicSections.count, by: 2) {
-                        
-                        interleavedSegments.append(try Segment(basicSections: [basicSections[i], basicSections[i+1]], interleaved: true, realWindowHeight: model.core.realWindowHeight, useWindowHeight: model.core.adjustedWindHt))
+
+                        interleavedSegments.append(try Segment(basicSections: [basicSections[i], basicSections[i+1]], interleaved: true, realWindowHeight: core.realWindowHeight, useWindowHeight: core.adjustedWindHt))
                     }
                     
                     await self.updateModel(oldSegments: segments, newSegments: interleavedSegments, xlFile: nil, reinitialize: false)
@@ -2459,6 +2586,231 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
     }
     
+    // MARK: Wound-in shields (DelVecchio ch. 12, section 12.11)
+
+    /// Whether a tapping gap falls between any two axially adjacent Segments of `segments`, which must already be sorted.
+    ///
+    /// Both of the operations that REGROUP a selection - interleaving and wound-in-shield pairing - flatten it into BasicSections
+    /// and rebuild two-disc Segments from the result. A tapping gap inside the selection is a genuine break in the winding, and
+    /// regrouping across it would swallow the break into the middle of a Segment: the two floating center leads that mark the gap
+    /// would survive on a Segment that is now electrically continuous, and SetNodes would have no way to put a node there. Refusing
+    /// is the honest answer - the alternative is a model that looks right and is not.
+    ///
+    /// The test is deliberately over the WHOLE selection rather than only the boundaries that happen to fall between pairs. A gap
+    /// that lands exactly on a pair boundary would in fact regroup safely, but which boundaries those are depends on how the flatten
+    /// happens to divide, and a silently-conditional rule is worse than a conservative one for something this easy to work around
+    /// (select one side of the gap at a time).
+    func SelectionSpansTappingGap(model:PhaseModel, segments:[Segment]) async -> Bool {
+
+        guard segments.count > 1 else {
+
+            return false
+        }
+
+        for i in 0..<(segments.count - 1) {
+
+            if await model.IsTappingGap(segment1: segments[i], segment2: segments[i + 1]) {
+
+                return true
+            }
+        }
+
+        return false
+    }
+
+    @IBAction func handleAddWoundInShields(_ sender: Any) {
+
+        self.doAddWoundInShields(segmentPaths: self.txfoView.currentSegments)
+    }
+
+    /// Put wound-in shields into every disc of the selected Segments.
+    ///
+    /// The shield is an open-circuited conductor - it carries no current in any of DelVecchio's three connections - so it never
+    /// becomes a circuit element. Its whole effect is a much larger series capacitance for the disc pair, plus the geometry change
+    /// from the radial build it takes up. Both of those are picked up by recalculateModel().
+    func doAddWoundInShields(segmentPaths:[SegmentPath]) {
+
+        guard let model = self.currentModel, segmentPaths.count > 0 else {
+
+            return
+        }
+
+        var segments:[Segment] = []
+        for nextPath in segmentPaths {
+
+            segments.append(nextPath.segment)
+        }
+
+        segments.sort(by: { lhs, rhs in
+
+            if lhs.radialPos != rhs.radialPos {
+
+                return lhs.radialPos < rhs.radialPos
+            }
+
+            return lhs.axialPos < rhs.axialPos
+        })
+
+        // A shield spans a disc PAIR and crosses over at the outermost turn, so the discs have to be grouped two to a Segment
+        // before any shield can be set. A Segment that already holds an even number of discs is left exactly as it stands; if any
+        // Segment holds an odd number, the whole selection is rebuilt into two-disc Segments below, the same way
+        // doInterleaveSelection does it. The load path gives every disc its own Segment, so on a freshly loaded model this is
+        // always the rebuild case.
+        let needsRebuild = segments.contains(where: { $0.basicSections.count % 2 != 0 })
+
+        let allSections = segments.flatMap({ $0.basicSections })
+
+        guard let discTurns = allSections.map({ $0.N }).min(), let firstSection = allSections.first else {
+
+            return
+        }
+
+        guard !needsRebuild || allSections.count % 2 == 0 else {
+
+            PCH_ErrorAlert(message: "A wound-in shield spans two discs, so the selection must hold an even number of discs!", info: "There are \(allSections.count).")
+            return
+        }
+
+        let turnInsulation = firstSection.wdgData.turn.turnInsulation
+        let bareCopperHeight = firstSection.height - turnInsulation
+
+        Task {
+
+            // Pairing discs ACROSS Segment boundaries only means anything if the Segments are neighbours to begin with - otherwise
+            // a "pair" could be two discs with a gap between them. Segments that are already even are never re-paired, so this is
+            // only asked on the rebuild path.
+            if needsRebuild, await !model.SegmentsAreContiguous(segments: segments) {
+
+                PCH_ErrorAlert(message: "Segments must be from the same coil and be contiguous to pair them up for wound-in shields!", info: nil)
+                return
+            }
+
+            // See SelectionSpansTappingGap. Only the rebuild path regroups the discs, so only it can swallow a gap; a selection
+            // whose Segments are already even is left structurally alone and needs no such check.
+            if needsRebuild, await self.SelectionSpansTappingGap(model: model, segments: segments) {
+
+                PCH_ErrorAlert(message: "The selection spans a tapping gap!", info: "Pairing the discs for a wound-in shield would regroup them across the gap. Select the discs on one side of the gap at a time.")
+                return
+            }
+
+            // These have to be checked here rather than in validateMenuItem, which is synchronous and so cannot reach an actor's
+            // mutable state. Same reason doInterleaveSelection tests IsInterleaved() here.
+            for nextSegment in segments {
+
+                if await nextSegment.IsInterleaved() {
+
+                    PCH_ErrorAlert(message: "The selection contains at least one interleaved segment!", info: "Interleaving and wound-in shields are two different ways of raising the series capacitance - use one or the other.")
+                    return
+                }
+
+                if await nextSegment.HasWoundInShield() {
+
+                    PCH_ErrorAlert(message: "The selection already contains wound-in shields!", info: "Remove them first if you want to change the shield count or the connection.")
+                    return
+                }
+            }
+
+            let voltsPerTurn = await model.voltsPerTurn
+
+            guard voltsPerTurn > 0.0 else {
+
+                PCH_ErrorAlert(message: "The model has no volts/turn!", info: "The shield insulation is sized from the working voltage, so a design file has to be loaded first.")
+                return
+            }
+
+            guard let shieldDlog = GetWoundInShieldDialog(discTurns: discTurns, voltsPerTurn: voltsPerTurn, turnInsulation: turnInsulation, bareCopperHeight: bareCopperHeight, discCount: allSections.count) else {
+
+                PCH_ErrorAlert(message: "This coil cannot carry wound-in shields!", info: "A shield turn goes between two coil turns, so there have to be at least 2 turns per disc.")
+                return
+            }
+
+            guard let result = shieldDlog.runModal() else {
+
+                return
+            }
+
+            // Nothing above this line has touched the model, so a cancelled dialog leaves the segmentation exactly as it was.
+            if needsRebuild {
+
+                do {
+
+                    let core = await model.core
+                    var pairedSegments:[Segment] = []
+
+                    for i in stride(from: 0, to: allSections.count, by: 2) {
+
+                        let newSegment = try Segment(basicSections: [allSections[i], allSections[i + 1]], realWindowHeight: core.realWindowHeight, useWindowHeight: core.adjustedWindHt)
+
+                        // Two discs to a Segment means exactly one pair per Segment. Set the shield BEFORE the Segment goes into
+                        // the model: updateModel ends in recalculateModel, so doing it in this order costs one pass over the
+                        // geometry and the matrices rather than two.
+                        await newSegment.SetWoundInShield(Segment.WoundInShield(wire: result.wire, turnsPerDisc: result.turnsPerDisc, pairCount: 1))
+                        pairedSegments.append(newSegment)
+                    }
+
+                    // Also does the connector fixup that swapping Segments needs, and ends in recalculateModel.
+                    await self.updateModel(oldSegments: segments, newSegments: pairedSegments, xlFile: nil, reinitialize: false)
+                }
+                catch {
+
+                    let alert = NSAlert(error: error)
+                    let _ = alert.runModal()
+                }
+
+                return
+            }
+
+            for nextSegment in segments {
+
+                let pairCount = nextSegment.basicSections.count / 2
+                await nextSegment.SetWoundInShield(Segment.WoundInShield(wire: result.wire, turnsPerDisc: result.turnsPerDisc, pairCount: pairCount))
+            }
+
+            // Rebuilds the radial geometry of the whole model (this coil widens, everything outside it moves out, the tank and leg
+            // centers grow), then redoes the inductance and the capacitance.
+            await self.recalculateModel(reinitialize: false)
+        }
+    }
+
+    @IBAction func handleRemoveWoundInShields(_ sender: Any) {
+
+        self.doRemoveWoundInShields(segmentPaths: self.txfoView.currentSegments)
+    }
+
+    func doRemoveWoundInShields(segmentPaths:[SegmentPath]) {
+
+        guard self.currentModel != nil, segmentPaths.count > 0 else {
+
+            return
+        }
+
+        let segments = segmentPaths.map({ $0.segment })
+
+        Task {
+
+            var removedAny = false
+
+            for nextSegment in segments {
+
+                if await nextSegment.HasWoundInShield() {
+
+                    await nextSegment.SetWoundInShield(nil)
+                    removedAny = true
+                }
+            }
+
+            guard removedAny else {
+
+                PCH_ErrorAlert(message: "The selection has no wound-in shields!", info: nil)
+                return
+            }
+
+            // ApplyRadialBuildUp recomputes absolute positions from the pristine design-file radii, so this puts the geometry back
+            // exactly where it started rather than approximately.
+            await self.recalculateModel(reinitialize: false)
+        }
+    }
+
     @IBAction func handleSplitSegmentIntoBasicSections(_ sender: Any) {
         
         guard self.currentModel != nil, self.txfoView.currentSegments.count == 1 else {
@@ -2480,12 +2832,21 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         var newSegments:[Segment] = []
         
         Task {
-            
+
+            // Splitting rebuilds the Segments, which would silently throw any shields away
+            if await segment.HasWoundInShield() {
+
+                PCH_ErrorAlert(message: "The segment has wound-in shields!", info: "Remove them first.")
+                return
+            }
+
             do {
-                
+
+                let core = await model.core
+
                 for nextBasicSection in segment.basicSections {
-                    
-                    newSegments.append(try Segment(basicSections: [nextBasicSection], interleaved: false, isStaticRing: false, isRadialShield: false, realWindowHeight: model.core.realWindowHeight, useWindowHeight: model.core.adjustedWindHt))
+
+                    newSegments.append(try Segment(basicSections: [nextBasicSection], interleaved: false, isStaticRing: false, isRadialShield: false, realWindowHeight: core.realWindowHeight, useWindowHeight: core.adjustedWindHt))
                 }
                 
                 await self.updateModel(oldSegments: [segment], newSegments: newSegments, xlFile: nil, reinitialize: false)
@@ -3152,8 +3513,8 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                             // coilIndMatrix[i, i] = oldValue + nextValue
                         }
                         else {
-                            
-                            ALog("Error!")
+
+                            ALog("Summing coil \(i)'s inductance: could not read the segment matrix at [\(nextRow), \(nextCol)] and/or the coil matrix at [\(i), \(i)]. The segment matrix is \(await indMatrix.rows) x \(await indMatrix.columns) and the coil matrix is \(await coilIndMatrix.rows) x \(await coilIndMatrix.columns), so check that SegmentRange is returning indices that fit.")
                         }
                     }
                 }
@@ -3283,6 +3644,48 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return self.currentModel != nil && totalBasicSections > 1 && totalBasicSections % 2 == 0 && !self.txfoView.currentSegmentsContainMoreThanOneWinding && currentSegs[0].segment.basicSections[0].wdgData.type == .disc && !currentSegs.contains(where: {$0.segment.isStaticRing}) && !currentSegs.contains(where: {$0.segment.isRadialShield})
         }
         
+        if menuItem == self.addWoundInShieldsMenuItem || menuItem == self.removeWoundInShieldsMenuItem {
+
+            guard self.currentModel != nil, currentSegsCount > 0, !self.txfoView.currentSegmentsContainMoreThanOneWinding else {
+
+                return false
+            }
+
+            guard !currentSegs.contains(where: { $0.segment.isStaticRing || $0.segment.isRadialShield }) else {
+
+                return false
+            }
+
+            guard currentSegs[0].segment.basicSections[0].wdgData.type == .disc else {
+
+                return false
+            }
+
+            if menuItem == self.removeWoundInShieldsMenuItem {
+
+                // Whether the selection actually HAS shields cannot be tested here - 'woundInShield' is mutable state on an actor
+                // and validateMenuItem is synchronous. doRemoveWoundInShields reports it instead, the same way doInterleaveSelection
+                // handles the equivalent test for 'interleaved'.
+                return true
+            }
+
+            // A shield spans a disc PAIR, so the discs have to divide evenly into pairs. There are two ways of getting there and
+            // both are accepted, because doAddWoundInShields handles both:
+            //
+            //   - an even NUMBER OF SEGMENTS, which it pairs up by rebuilding them into two-disc Segments. This is the case that
+            //     matters in practice: the load path gives every disc its own Segment (see the Segment(basicSections:
+            //     [nextSection]) call there), so a freshly loaded model is always all-odd and testing only the per-Segment disc
+            //     count disabled the item permanently;
+            //   - or every Segment already holding an even number of discs, which needs no rebuild at all. Testing only the
+            //     segment count would in turn have disabled the single already-combined Segment, which works today.
+            //
+            // Two things this deliberately does NOT test, both because they need state validateMenuItem cannot reach - it is
+            // synchronous and cannot await an actor - and both reported by doAddWoundInShields instead: whether the Segments are
+            // contiguous (only relevant on the rebuild path, since pairing across a gap would straddle two discs that are not
+            // neighbours), and whether a disc has the 2 turns a shield turn needs to sit between.
+            return currentSegsCount % 2 == 0 || !currentSegs.contains(where: { $0.segment.basicSections.count % 2 != 0 })
+        }
+
         if menuItem == self.showWdgAsSingleSegmentMenuItem {
             
             return self.currentModel != nil && currentSegsCount > 0 && !self.txfoView.currentSegmentsContainMoreThanOneWinding

@@ -36,9 +36,13 @@ actor PhaseModel /*:Codable */ {
         }
     }
     
-    /// The core for the model
-    let core:Core
-    
+    /// The core for the model. This is a var because the leg centers grow when a coil is built up to carry wound-in shields - see
+    /// ApplyRadialBuildUp. Only that routine writes it.
+    private(set) var core:Core
+
+    /// The core exactly as the design file described it, before any radial build-up was applied
+    private let pristineCore:Core
+
     /// An array of arrays where the first index is the segment number and the second index (i) is J[i] for the segment (used for DelVecchio only)
     // var J:[[Double]] = []
     
@@ -87,9 +91,22 @@ actor PhaseModel /*:Codable */ {
         return self.core.realWindowHeight
     }
     
-    // value needed for calculation of outermost coil shunt capacitances
-    let tankDepth:Double
-    
+    // value needed for calculation of outermost coil shunt capacitances. A var for the same reason as 'core' above.
+    private(set) var tankDepth:Double
+
+    /// The tank depth exactly as the design file described it, before any radial build-up was applied
+    private let pristineTankDepth:Double
+
+    /// The working volts per turn of the transformer, taken from the design file. This is only needed by calculations that have to
+    /// know the actual operating voltage of a section rather than a per-unit one - at the moment, sizing the paper on a wound-in
+    /// shield wire (see Segment.WoundInShieldWire.Standard). It is zero until AppController.updateModel derives it.
+    private(set) var voltsPerTurn:Double = 0.0
+
+    func SetVoltsPerTurn(_ voltsPerTurn:Double) {
+
+        self.voltsPerTurn = voltsPerTurn
+    }
+
     /// Errors that can be thrown by some routines
     struct PhaseModelError:LocalizedError
     {
@@ -120,6 +137,7 @@ actor PhaseModel /*:Codable */ {
             case NodeHasNoSegments
             case SameCoilTwice
             case SegmentIsShieldingElement
+            case UnresolvableConnector
         }
         
         /// Specialized information that can be added to the descritpion String (can be the empty string)
@@ -217,8 +235,12 @@ actor PhaseModel /*:Codable */ {
                     return "The same coil has been used for both parameters (they must be different)."
                 }
                 else if self.type == .SegmentIsShieldingElement {
-                    
+
                     return "The segment specified is a static ring or radial shield."
+                }
+                else if self.type == .UnresolvableConnector {
+
+                    return "The node topology does not match the connectors: \(info)"
                 }
                 
                 let extraInfo = info != "" ? " Added info: \(info)" : ""
@@ -243,8 +265,10 @@ actor PhaseModel /*:Codable */ {
         })
         
         self.core = core
-        
+        self.pristineCore = core
+
         self.tankDepth = tankDepth
+        self.pristineTankDepth = tankDepth
     }
     
     /// Get the array of segments excluding shielding elements
@@ -257,6 +281,126 @@ actor PhaseModel /*:Codable */ {
         return result
     }
     
+    /// The extra radial build that each coil needs in order to carry its wound-in shields, keyed by radial position. Coils with no
+    /// shields do not appear.
+    ///
+    /// A coil's figure is the MAXIMUM over its Segments, not a per-Segment value. A coil has to stay cylindrical so that it can be
+    /// stacked and clamped, so its widest disc sets the radial build for the whole coil and every other disc is built up with
+    /// insulation to match. That is also why the cost of a graded shielding scheme is max(n) rather than sum(n): once the widest
+    /// pair is fixed, putting shields into more pairs costs copper and labour but no further window.
+    func RadialBuildUpByCoil() async -> [Int:Double] {
+
+        var result:[Int:Double] = [:]
+
+        for nextSegment in self.segmentStore {
+
+            guard nextSegment.radialPos >= 0, nextSegment.axialPos >= 0 else {
+
+                continue
+            }
+
+            guard let woundInShield = await nextSegment.woundInShield else {
+
+                continue
+            }
+
+            result[nextSegment.radialPos] = max(result[nextSegment.radialPos] ?? 0.0, woundInShield.radialBuildAdder)
+        }
+
+        return result
+    }
+
+    /// Rebuild the radial geometry of the entire model from the pristine design-file layout plus the current set of wound-in
+    /// shields, and grow the core and tank to suit.
+    ///
+    /// Every coil that carries shields is widened by the amount RadialBuildUpByCoil gives it, and everything outside that coil is
+    /// pushed straight out by the same amount. That preserves the hilos, which is the physically right answer: a hilo is a minimum
+    /// clearance chosen from the coil voltages, not whatever space happens to be left over, so a coil that grows moves the NEXT
+    /// coil's ID rather than eating into the gap. The tank and the leg centers grow by twice the total for the same reason.
+    ///
+    /// The routine is idempotent and exactly reversible because it recomputes absolute positions from the Segments' pristine radii
+    /// (see Segment.SetRadialGeometry) rather than nudging whatever is there now. Remove the shields, call it again, and the model
+    /// is bit-for-bit back to the geometry the design file described. It is cheap, so the sane thing is to call it unconditionally
+    /// at the top of any recalculation instead of trying to track when it is needed - that also repairs the geometry after a
+    /// combine/split/interleave, which rebuilds Segments from their pristine BasicSections.
+    ///
+    /// - Returns: The total radial growth of the model, ie: how much further out the outermost coil's OD now sits.
+    @discardableResult
+    func ApplyRadialBuildUp() async -> Double {
+
+        let buildUp = await self.RadialBuildUpByCoil()
+        let coilCount = self.CoilCount()
+
+        guard coilCount > 0 else {
+
+            return 0.0
+        }
+
+        var shift = 0.0
+
+        for coil in 0..<coilCount {
+
+            let extra = buildUp[coil] ?? 0.0
+
+            // A radial shield sits in the hilo UNDER its coil. Its position is captured as a GAP to that coil rather than
+            // recomputed from a pristine radius, because a shield is created after the model is loaded (possibly after a build-up
+            // has already been applied), so its BasicSection's radii are not necessarily pristine. Holding the gap constant is both
+            // the right physics and what keeps this routine idempotent.
+            let shieldPos = coil == 0 ? Segment.negativeZeroPosition : -coil
+            let radialShield = self.segmentStore.first(where: { $0.radialPos == shieldPos })
+
+            var shieldGap = 0.0
+            var shieldWidth = 0.0
+
+            if let shield = radialShield, let coilBottom = self.segmentStore.first(where: { $0.radialPos == coil }) {
+
+                shieldGap = await coilBottom.r1 - shield.r2
+                shieldWidth = await shield.r2 - shield.r1
+            }
+
+            var newCoilR1 = 0.0
+            var newCoilWidth = 0.0
+
+            // The coil's own discs first. A static ring shares its neighbour's radial extent exactly, but it is created from that
+            // neighbour's LIVE rect (Segment.StaticRing copies adjacentSegment.rect), so its BasicSection radii are only pristine if
+            // it happened to be added before any build-up. Give it the coil's computed geometry rather than deriving it, which is
+            // both simpler and immune to the order the user does things in.
+            for nextSegment in self.segmentStore {
+
+                guard nextSegment.radialPos == coil, nextSegment.axialPos >= 0 else {
+
+                    continue
+                }
+
+                newCoilR1 = nextSegment.pristineR1 + shift
+                newCoilWidth = nextSegment.pristineWidth + extra
+                await nextSegment.SetRadialGeometry(r1: newCoilR1, width: newCoilWidth)
+            }
+
+            for nextSegment in self.segmentStore {
+
+                guard nextSegment.radialPos == coil, nextSegment.axialPos < 0 else {
+
+                    continue
+                }
+
+                await nextSegment.SetRadialGeometry(r1: newCoilR1, width: newCoilWidth)
+            }
+
+            if let shield = radialShield {
+
+                await shield.SetRadialGeometry(r1: newCoilR1 - shieldGap - shieldWidth, width: shieldWidth)
+            }
+
+            shift += extra
+        }
+
+        self.core = Core(diameter: self.pristineCore.diameter, realWindowHeight: self.pristineCore.realWindowHeight, legCenters: self.pristineCore.legCenters + 2.0 * shift)
+        self.tankDepth = self.pristineTankDepth + 2.0 * shift
+
+        return shift
+    }
+
     /// The number of coils in the model
     func CoilCount() -> Int {
         
@@ -277,25 +421,18 @@ actor PhaseModel /*:Codable */ {
             throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
         
-        // let coilSegments = CoilSegments()
-        
-        do {
-            
-            var lowBound = 0
-            for i in 0..<coil {
-                
-                await lowBound += try GetHighestSection(coil: i) + 1
-            }
-            
-            let highestSegment = try await GetHighestSection(coil: coil)
-            let highBound = lowBound + highestSegment
-            
-            return ClosedRange(uncheckedBounds: (lowBound, highBound))
+        // Taken from the ordering of CoilSegments() itself rather than computed from axial positions. GetHighestSection returns an
+        // axial COORDINATE, and coordinate and ordinal only coincide while every Segment holds exactly one BasicSection - see the
+        // note in SegmentIndex. Callers subscript CoilSegments() with this range (doShowCoilResults does), so an ordinal is what it
+        // has to be.
+        let coilSegments = self.CoilSegments()
+
+        guard let lowBound = coilSegments.firstIndex(where: {$0.radialPos == coil}), let highBound = coilSegments.lastIndex(where: {$0.radialPos == coil}) else {
+
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
         }
-        catch {
-            
-            throw error
-        }
+
+        return ClosedRange(uncheckedBounds: (lowBound, highBound))
     }
     
     /// Return the index into the inductance matrix for the given Segment
@@ -311,22 +448,18 @@ actor PhaseModel /*:Codable */ {
             throw PhaseModelError(info: "Illegal Segment!", type: .SegmentIsShieldingElement)
         }
         
-        var result = 0
-        
-        do {
-            for i in 0..<segment.radialPos {
-                
-                await result += try GetHighestSection(coil: i)
-                result += 1
-            }
+        // The Segment's POSITION in CoilSegments(), which is what every consumer of this index means by it: SimulationModel sizes
+        // vDropInd by CoilSegments().count and fills it with these, and the capacitance assembly below indexes the same ordering.
+        //
+        // This used to be summed from GetHighestSection(coil:) plus segment.axialPos. Both of those are axial COORDINATES - the
+        // pristine design-file disc index, never renumbered - and they equal the ordinal only while every Segment holds exactly one
+        // BasicSection. After interleaving 8 discs into 4 Segments the coordinates are 0/2/4/6, so this returned duplicated and
+        // out-of-range indices for the very Segments it was asked about.
+        guard let result = self.CoilSegments().firstIndex(of: segment) else {
+
+            throw PhaseModelError(info: "", type: .SegmentNotInModel)
         }
-        catch {
-            
-            throw error
-        }
-        
-        result += segment.axialPos
-        
+
         return result
     }
     
@@ -355,9 +488,14 @@ actor PhaseModel /*:Codable */ {
             
             if let connSegID = nextConnection.segmentID {
                 
+                // 'continue', not 'return'. A dangling serial number is one bad connection, and returning here silently dropped every
+                // REMAINING connection on the segment as well - turning one inconsistency into an arbitrary number of missing
+                // jumpers, with the simulation model quietly built around the gap. With UpdateConnectors' remap repaired this
+                // should no longer happen at all, so it is worth saying out loud when it does.
                 guard let connSeg = self.segmentStore.first(where: { $0.serialNumber == connSegID }) else {
-                    
-                    return result
+
+                    DLog("Segment \(segment.serialNumber) has a connection to segment \(connSegID), which is not in the model - skipping it. This means a Segment was replaced without its connections being remapped (see UpdateConnectors).")
+                    continue
                 }
                 // If the segments aren't adjacent or they are a tapping gap, add the connection
                 // Note that the 'await'-able call has to go first in an 'or' statement (??)
@@ -569,8 +707,8 @@ actor PhaseModel /*:Codable */ {
     func AdjacentNodes(to:Segment) -> (below:Int, above:Int) {
         
         guard !to.isStaticRing && !to.isRadialShield else {
-            
-            ALog("Shielding elements do not have NODES!")
+
+            ALog("AdjacentNodes was passed segment \(to.serialNumber), which is a \(to.isStaticRing ? "static ring" : "radial shield") at (radial: \(to.radialPos), axial: \(to.axialPos)). Shielding elements are not circuit elements and have no nodes - the caller should have filtered them out (CoilSegments() does).")
             return (-1, -1)
         }
         
@@ -786,9 +924,14 @@ actor PhaseModel /*:Codable */ {
                 
                 let newSeg = newSegments[newIndex]
                 
-                segmentMap[firstOldSeg.serialNumber] = newSeg
-                segmentMap[lastOldSeg.serialNumber] = newSeg
-                
+                // EVERY old Segment folded into this new one gets an entry, not just the two ends. At two-old-per-new (interleave,
+                // wound-in-shield pairing) first and last are the only two and the distinction does not arise, but combining three
+                // or more discs used to leave the middle ones out of the map, so anything that referred to them stayed dangling.
+                for nextOldSegment in currentOldSegments {
+
+                    segmentMap[nextOldSegment.serialNumber] = newSeg
+                }
+
                 await newSeg.SetConnections(connections: firstOldSeg.connections + lastOldSeg.connections)
                 //newSeg.connections.append(contentsOf: lastOldSeg.connections)
                 
@@ -800,62 +943,26 @@ actor PhaseModel /*:Codable */ {
                 }
             }
             
+            // Old serial -> new serial. Segment.serialNumber is a 'let', so reading it needs no await.
+            let serialMap = segmentMap.mapValues({ $0.serialNumber })
+
+            // Both halves of the model have to be rewritten: the new Segments, which inherited connections still naming the old
+            // Segments they replaced, and the Segments already in the store, whose connections name the replaced Segments from the
+            // outside. RemoveSegments() has already run by this point and AddSegments() has not, so between them these two loops
+            // cover every Segment in the model exactly once.
+            //
+            // These loops used to read a connection's segmentID, confirm the map had an entry for it, and then assign the SAME id
+            // back - a no-op that left every reference dangling. See Segment.RemapConnectionSegmentIDs for what that cost and for
+            // the two further places a serial number hides inside a Connection, neither of which was being remapped at all.
             for nextSegment in newSegments {
-                
-                for i in await 0..<nextSegment.connections.count {
-                    
-                    if let refSegID = await nextSegment.connections[i].segmentID {
-                        
-                        if segmentMap[refSegID] != nil {
-                            
-                            await nextSegment.SetSegmentIDforConnectionAt(i, newID: refSegID)
-                        }
-                    }
-                }
+
+                await nextSegment.RemapConnectionSegmentIDs(serialMap)
             }
-            
-            /*
-            for nextSegment in newSegments {
-                
-                for i in 0..<nextSegment.connections.count {
-                    
-                    if let refSeg = nextSegment.connections[i].segment {
-                        
-                        if let mappedSegment = segmentMap[refSeg.serialNumber] {
-                            
-                            nextSegment.connections[i].segment = mappedSegment
-                        }
-                    }
-                }
-            } */
-            
+
             for nextSegment in self.segments {
-                
-                for i in await 0..<nextSegment.connections.count {
-                    
-                    if let refSegID = await nextSegment.connections[i].segmentID {
-                        
-                        if segmentMap[refSegID] != nil {
-                            
-                            await nextSegment.SetSegmentIDforConnectionAt(i, newID: refSegID)
-                        }
-                    }
-                }
+
+                await nextSegment.RemapConnectionSegmentIDs(serialMap)
             }
-            /*
-            for nextSegment in self.segments {
-                
-                for i in 0..<nextSegment.connections.count {
-                    
-                    if let refSeg = nextSegment.connections[i].segment {
-                        
-                        if let mappedSegment = segmentMap[refSeg.serialNumber] {
-                            
-                            nextSegment.connections[i].segment = mappedSegment
-                        }
-                    }
-                }
-            } */
         }
         else if oldSegments.count == 1 {
             
@@ -920,10 +1027,14 @@ actor PhaseModel /*:Codable */ {
                     }
                 }
                 
-                let connectionCountGreaterThanOne:Bool = await firstNewSegment.connections.count > 1
-                if await lastNewSegment.connections.count > 1 || connectionCountGreaterThanOne {
-                    
-                    ALog("Fuckin' shit!")
+                // The logic that follows reads connections[0] as THE incoming/outgoing connector, so it only holds if each end
+                // segment carries at most one. More than that means the old segment had connections this split does not know how
+                // to distribute, and whatever is picked below is arbitrary.
+                let firstNewCount = await firstNewSegment.connections.count
+                let lastNewCount = await lastNewSegment.connections.count
+                if firstNewCount > 1 || lastNewCount > 1 {
+
+                    ALog("Splitting segment \(oldSegments[0].serialNumber) into \(newSegments.count) left the first new segment with \(firstNewCount) connection(s) and the last with \(lastNewCount); the code below assumes at most one each, so it is about to pick one arbitrarily.")
                 }
                 
                 // At this point, there are a few possibilities:
@@ -1293,8 +1404,24 @@ actor PhaseModel /*:Codable */ {
                     
                     let nextAxialSegment = nextCoil[i + 1]
                     
-                    if await thisSegment.connections.first(where: {$0.segmentID == nextAxialSegment.serialNumber}) == nil {
-                        
+                    // Two Segments share a node only when they are genuinely in SERIES. A tapping gap is a break in the winding, so
+                    // it gets a node on each side even when the user has bridged it with a jumper: the jumper is an electrical
+                    // connection, not a series one, and SimulationModel ties the two nodes together explicitly through
+                    // finalConnectedNodes -> mergedNodes -> the V_eliminated - V_kept = 0 row surgery in the solver's Assemble.
+                    //
+                    // This is the same predicate NonAdjacentConnections uses ("these will be adjacent, but for the purposes of the
+                    // simulation they will not be"), so the two routines now agree by construction. They did not before: this test
+                    // matched ANY connection to the next Segment, so a bridged tapping gap was treated as continuous here while
+                    // NodeAt went on insisting that a center connector - which is only ever created at a tapping/DV gap - must land
+                    // on a dangling node. SimulationModel's init then failed to resolve the jumper it had just been handed.
+                    //
+                    // Both operands are hoisted into locals because both need an await, and '||' makes its right-hand side a
+                    // nonisolated autoclosure that cannot carry one.
+                    let gapBetweenSegments = await self.IsTappingGap(segment1: thisSegment, segment2: nextAxialSegment)
+                    let seriesConnection = await thisSegment.connections.first(where: {$0.segmentID == nextAxialSegment.serialNumber})
+
+                    if gapBetweenSegments || seriesConnection == nil {
+
                         let newNode = await Node(number: nextNodeNum, aboveSegment: nil, belowSegment: thisSegment, z: thisSegment.z2)
                         nextNodeNum += 1
                         self.nodeStore.append(newNode)
@@ -1314,8 +1441,58 @@ actor PhaseModel /*:Codable */ {
                 }
             }
         }
-        
+
+        try await self.VerifyNodeTopology()
+
         return result
+    }
+
+    /// Check that every connector in the model lands on a node, and throw if one does not.
+    ///
+    /// # Why this check and not a count
+    ///
+    /// The obvious guard is arithmetic: SetNodes emits one node per Segment, one more per break and one per coil, so
+    /// `nodeStore.count == CoilSegments().count + breaks + coils`. That identity is useless as a check, because `breaks` is
+    /// defined by the very predicate most likely to be wrong. When SetNodes was treating a BRIDGED tapping gap as continuous, the
+    /// count identity held perfectly - the node total was exactly consistent with the (wrong) break decision. A guard derived from
+    /// the same loop can only ever confirm that the loop did what the loop does.
+    ///
+    /// What actually broke was the CONTRACT BETWEEN two routines: SetNodes decides where nodes go, NodeAt decides where a given
+    /// connector expects to find one, and nothing checked that the two agreed. This does, by asking NodeAt to resolve every
+    /// connector the model holds. It is independent of the break predicate, so it catches a wrong break decision - which is
+    /// precisely the class of bug the count cannot see.
+    ///
+    /// Both ends are checked, with the asymmetry that matters: the FROM end is a physical location on the Segment and must always
+    /// resolve, while the TO end is only a location when the connection targets another Segment. A termination's toLocation
+    /// (`floating`, `ground`, `impulse`) is not a place on a coil and is deliberately not looked up.
+    ///
+    /// Cost is O(segments x connections x nodes) with a trivial comparison inside, which at a few hundred Segments is far below the
+    /// capacitance assembly that follows. It throws rather than asserting so that a Release build fails honestly too - the failure
+    /// this replaces surfaced hundreds of lines away in SimulationModel.init, where ALog only traps in DEBUG.
+    func VerifyNodeTopology() async throws {
+
+        for nextSegment in self.CoilSegments() {
+
+            for nextConnection in await nextSegment.connections {
+
+                let connector = nextConnection.connector
+
+                guard self.NodeAt(segment: nextSegment, useFrom: true, connector: connector) != nil else {
+
+                    throw PhaseModelError(info: "segment \(nextSegment.serialNumber) has a connector at \(connector.fromLocation) with no node there (target: \(nextConnection.segmentID.map({ String($0) }) ?? "termination \(connector.toLocation)")).", type: .UnresolvableConnector)
+                }
+
+                guard let destID = nextConnection.segmentID else {
+
+                    continue
+                }
+
+                guard self.NodeAt(segmentID: destID, useFrom: false, connector: connector) != nil else {
+
+                    throw PhaseModelError(info: "segment \(nextSegment.serialNumber) connects \(connector.fromLocation) -> \(connector.toLocation) to segment \(destID), which has no node at \(connector.toLocation).", type: .UnresolvableConnector)
+                }
+            }
+        }
     }
     
     

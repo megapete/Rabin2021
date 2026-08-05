@@ -76,7 +76,7 @@ class CoilResultsDisplayWindow: NSWindowController {
         self.indicesToDisplay = ClosedRange(uncheckedBounds: (0,0))
         
         super.init(coder: coder)
-        ALog("Unimplemented initializer")
+        ALog("CoilResultsDisplayWindow was created from a nib/storyboard via init?(coder:), which leaves it with empty results and a zero display range. It has to be created programmatically with the designated initializer instead.")
     }
     
     override func windowDidLoad() {
@@ -152,7 +152,7 @@ class CoilResultsDisplayWindow: NSWindowController {
         }
         else {
             
-            ALog("No resultData or its step-data is empty!")
+            ALog("Cannot set up the display: the simulation produced \(resultData.stepResults.count) time steps for display range \(indicesToDisplay). Both solvers return an empty array for CANCELLATION as well as for failure, so check Task.isCancelled before treating this as an error.")
             return
         }
         
@@ -264,7 +264,7 @@ class CoilResultsDisplayWindow: NSWindowController {
         
         guard currentSimIndex >= 0, !resultData.stepResults.isEmpty, currentSimIndex < resultData.stepResults.count, !indicesToDisplay.isEmpty else {
             
-            ALog("Bad index or no results!")
+            ALog("Cannot update the animation path: step index \(currentSimIndex) against \(resultData.stepResults.count) time steps, display range \(indicesToDisplay). The index must be within 0..<\(resultData.stepResults.count) and the range must be non-empty.")
             return
         }
         

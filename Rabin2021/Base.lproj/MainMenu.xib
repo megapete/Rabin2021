@@ -22,6 +22,7 @@
         <customObject id="XWq-sU-B2V" customClass="AppController" customModule="ImpulseDistribution" customModuleProvider="target">
             <connections>
                 <outlet property="addConnectionMenuItem" destination="wyt-nn-lsB" id="hUT-dj-hJ4"/>
+                <outlet property="addWoundInShieldsMenuItem" destination="WiS-Ad-100" id="WiS-Ad-102"/>
                 <outlet property="addGroundMenuItem" destination="v78-OQ-6tN" id="ILk-Wy-dG5"/>
                 <outlet property="addImpulseMenuItem" destination="i9N-bc-tbw" id="TJU-Oo-SB8"/>
                 <outlet property="combineSegmentsIntoSingleSegmentMenuItem" destination="bwi-RW-boG" id="dY2-kP-Zy8"/>
@@ -34,6 +35,7 @@
                 <outlet property="rLocationTextField" destination="NTX-as-kOd" id="arL-Ge-79x"/>
                 <outlet property="radialShieldInsideMenuItem" destination="BEG-M4-Kp7" id="3uR-Go-Bnw"/>
                 <outlet property="removeConnectionMenuItem" destination="VZ8-kL-Dja" id="in8-h8-Gl3"/>
+                <outlet property="removeWoundInShieldsMenuItem" destination="WiS-Rm-200" id="WiS-Rm-202"/>
                 <outlet property="removeRadialShieldMenuItem" destination="xXj-L6-RCw" id="PQm-pG-7IL"/>
                 <outlet property="removeStaticRingMenuItem" destination="4HP-v0-HBk" id="Y4d-TJ-nm9"/>
                 <outlet property="saveAsCirFileMenuItem" destination="SJg-48-XWQ" id="GSK-ZP-juG"/>
@@ -256,6 +258,18 @@
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
                                     <action selector="handleInterleaveSelection:" target="XWq-sU-B2V" id="bDJ-Sf-C3d"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Add wound-in shields…" id="WiS-Ad-100">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleAddWoundInShields:" target="XWq-sU-B2V" id="WiS-Ad-101"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Remove wound-in shields" id="WiS-Rm-200">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleRemoveWoundInShields:" target="XWq-sU-B2V" id="WiS-Rm-201"/>
                                 </connections>
                             </menuItem>
                             <menuItem isSeparatorItem="YES" id="9V9-ZD-x3G"/>

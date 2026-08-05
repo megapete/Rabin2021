@@ -25,9 +25,24 @@ term to the C matrix, not just a new branch in `SeriesCapacitance`.
 - Interleaved discs use **Veverka eq. 6.4** (`Cs = Ctt·(N−1)`, halved by the caller), not DelVecchio, who
   covers only wound-in-shields and multi-start in ch. 12. It also drops the (N−1)/N voltage-fraction
   argument that 12.48 applies to plain discs — see the comment in `BasicSectionSeriesCapacitance`.
-- **Wound-in-shields (DV 12.11)** — unimplemented.
+  Note also that an interleaved unit is **two discs** but is still run through the ordinary `.disc`
+  branch, whose Stein machinery assumes a single radial traverse. That over-counts the disc-disc energy
+  by 2× at small α. The wound-in-shield path avoids this by using DelVecchio's linear-voltage form
+  instead (see `Segment.WoundInShieldPairCapacitance`); the interleaved path has not been revisited.
 - **Multi-start (DV 12.12)** — unimplemented. A `.multistart` BasicSection type exists and is produced by
   `AppController` from the design file, but `CapacitanceTurnToTurn` throws `.UnimplementedWdgType` for it.
+
+### 2a. Wound-in shields — implemented, with two known gaps
+
+DV 12.11 is now implemented (`Segment.WoundInShieldSeriesCapacitance` / `.WoundInShieldPairCapacitance`,
+`PhaseModel.ApplyRadialBuildUp`, *Add wound-in shields…* in the Segments menu). Remaining gaps:
+
+- **A shielded pair beside a static ring** keeps its (1/6)·Cdd term with `DiscToDiscSeriesCapacitance`'s
+  static-ring solid term. DelVecchio has nothing for this combination; the treatment is a plausible
+  extension, not something from the book.
+- **Combine / split / interleave refuse to operate on shielded Segments** rather than carrying the
+  shields across. They rebuild Segments from their BasicSections, which would drop the shield silently.
+  Carrying it would mean re-slicing `turnsPerDisc` to the new grouping.
 
 ### 3. Hilo stick count is borrowed from the disc's key spacers
 

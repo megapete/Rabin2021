@@ -1914,16 +1914,18 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                             for nextEndConnection in endConnections {
                                 
                                 guard let nextStartSegment = segmentArray.first(where: {$0.serialNumber == nextStartConnection.segmentID}) else {
-                                    
-                                    ALog("This should not happen!")
+
+                                    ALog("Adding a connector: the start segment \(nextStartConnection.segmentID.map({ String($0) }) ?? "nil") is not in the model. A connection is naming a Segment that no longer exists - see UpdateConnectors' remap.")
                                     return
                                 }
                                 let newConnections = await nextStartSegment.AddConnector(segments: segmentArray, fromLocation: nextStartConnection.location, toLocation: nextEndConnection.location, toSegmentID: nextEndConnection.segmentID)
                                 // let newConnections = nextStartConnection.segment!.AddConnector(fromLocation: nextStartConnection.location, toLocation: nextEndConnection.location, toSegment: nextEndConnection.segmentID)
                                 
                                 guard let newSrcConnection = newConnections.from, let newDestConnection = newConnections.to else {
-                                    
-                                    ALog("FUCK!")
+
+                                    // AddConnector returns (nil, nil) for exactly one reason: it was asked to connect a Segment to
+                                    // itself, which it refuses. That means the two ends resolved to the same serial number.
+                                    ALog("AddConnector returned nothing for \(nextStartConnection.segmentID.map({ String($0) }) ?? "nil") (\(nextStartConnection.location)) -> \(nextEndConnection.segmentID.map({ String($0) }) ?? "nil") (\(nextEndConnection.location)) - the two ends are the same Segment, so no connector was made.")
                                     return
                                 }
                                 
@@ -1935,8 +1937,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                         for nextConnection in equivalentConnections {
                             
                             guard let nextConnParent = segmentArray.first(where: {$0.serialNumber == nextConnection.parent}) else {
-                                
-                                ALog("No, no!")
+
+                                ALog("Registering equivalent connections: parent segment \(nextConnection.parent) is not in the model. An EquivalentConnection is naming a Segment that no longer exists - see UpdateConnectors' remap.")
                                 return
                             }
                             await nextConnParent.AddEquivalentConnections(to: nextConnection.connection, equ: equivalentConnections)
@@ -2035,8 +2037,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                     for nextAffectedSegment in affectedSegments {
                         
                         guard let affSegment = segmentArray.first(where: {$0.serialNumber == nextAffectedSegment}) else {
-                            
-                            ALog("Can't happen!")
+
+                            ALog("Removing a connector: RemoveConnection reported segment \(nextAffectedSegment) as affected, but it is not in the model. An EquivalentConnection is naming a Segment that no longer exists - see UpdateConnectors' remap.")
                             return
                         }
                         if let adjSegs = try? await model.AxiallyAdjacentSegments(to: affSegment) {
@@ -2118,7 +2120,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                         if let nextSegmentID = nextConnection.segmentID {
                             
                             guard let nextSegment = segmentArray.first(where: {$0.serialNumber == nextSegmentID}) else {
-                                ALog("No!")
+
+                                ALog("Adding an impulse connection: segment \(nextSegmentID) is not in the model. A connection is naming a Segment that no longer exists - see UpdateConnectors' remap.")
                                 return
                             }
                             await nextSegment.AddConnector(segments: segmentArray, fromLocation: nextConnection.location, toLocation: .impulse, toSegmentID: nil)
@@ -2173,8 +2176,8 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                             if let nextSegmentID = nextConnection.segmentID {
                                 
                                 guard let nextSegment = segmentArray.first(where: {$0.serialNumber == nextSegmentID}) else {
-                                    
-                                    ALog("More impossiblilities!")
+
+                                    ALog("Adding a ground connection: segment \(nextSegmentID) is not in the model. A connection is naming a Segment that no longer exists - see UpdateConnectors' remap.")
                                     return
                                 }
                                 
