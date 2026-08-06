@@ -2250,11 +2250,152 @@ actor PhaseModel /*:Codable */ {
             return (aboveResult, belowResult)
         }
         catch {
-            
+
             throw error
         }
     }
-    
+
+    // MARK: Geometry for the dielectric stress screen
+
+    /// One point of a coil's voltage-versus-height profile: an axial position and the index into a simulation step's `volts` array
+    /// that gives the potential there.
+    struct CoilProfilePoint:Sendable {
+
+        /// The axial position of the node, measured from the top of the bottom yoke, in metres.
+        let z:Double
+        /// The node's number, which doubles as the index into the voltage vector.
+        let nodeIndex:Int
+    }
+
+    /// The nodes of a coil, in ascending order of height, as a profile that can be interpolated to give V(z).
+    ///
+    /// This is what lets the stress screen compare two coils that are NOT the same height - the case that produces real failures
+    /// when, say, an external tapping winding is shorter than the main winding beside it. Two such coils have no common node
+    /// numbering and their discs do not line up, so the only way to ask "what is the radial voltage difference at height z" is to
+    /// interpolate each coil's own profile at that z and subtract. The caller samples on the UNION of the two coils' node heights so
+    /// that no node of either coil is missed, and treats a z beyond a coil's own extent as outside that coil - which is exactly the
+    /// region where the short coil's end faces the tall coil, and exactly what has to be flagged.
+    ///
+    /// Interpolation between the returned points is piecewise linear, which is the same assumption the lumped model itself makes:
+    /// the voltage within a Segment is not resolved by the network, so linear between its two nodes is all the information there is.
+    ///
+    /// Note that `Node.z` is used directly rather than being recomputed from the Segments. The nodes already carry the heights that
+    /// SetNodes assigned them, including the separate nodes on either side of a tapping gap, so rebuilding the heights here would
+    /// risk disagreeing with the model about where a break is.
+    func CoilVoltageProfile(coil:Int) async throws -> [CoilProfilePoint] {
+
+        guard let _ = await self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
+        }
+
+        let coilSegments = self.CoilSegments().filter { $0.radialPos == coil }
+
+        guard !coilSegments.isEmpty else {
+
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
+        }
+
+        // Collect every node touching this coil. A node is shared by the Segment below it and the Segment above it, so gathering
+        // both ends of every Segment and de-duplicating by node number gives each node exactly once.
+        var seen:Set<Int> = []
+        var result:[CoilProfilePoint] = []
+
+        for nextSegment in coilSegments {
+
+            let adjacent = self.AdjacentNodes(to: nextSegment)
+
+            for nodeNumber in [adjacent.below, adjacent.above] {
+
+                guard nodeNumber >= 0, !seen.contains(nodeNumber) else {
+
+                    continue
+                }
+
+                guard let node = self.nodes.first(where: { $0.number == nodeNumber }) else {
+
+                    continue
+                }
+
+                seen.insert(nodeNumber)
+                result.append(CoilProfilePoint(z: node.z, nodeIndex: nodeNumber))
+            }
+        }
+
+        result.sort { $0.z < $1.z }
+
+        return result
+    }
+
+    /// The dielectric layers filling the hilo under the given coil, for the stick column and the oil column, together with the
+    /// radius the stack starts at and the stick fraction of the circumference.
+    ///
+    /// This mirrors what `CoilInnerShuntCapacitance` measures, deliberately: the barrier count comes from the same shop heuristic
+    /// (`Npress = round(hilo/0.0084 − 0.5)` tubes of 0.08"), the stick count is borrowed from the disc's key-spacer columns in the
+    /// same way, and 3/4" sticks are assumed. Those substitutions are recorded as deviation 3 in TODO.md; the point here is that the
+    /// stress and the capacitance must at least be measuring the SAME hilo, so the heuristic is shared rather than re-invented.
+    ///
+    /// One thing is added that the capacitance model leaves out. A coil's r1/r2 are over-paper, exactly as a disc's z1/z2 are, so
+    /// the hilo returned by `HiloUnder` is the clearance between INSULATED surfaces. The capacitance can ignore the turn paper
+    /// because it barely moves the total; the stress cannot, because the whole question is how much field the oil is carrying and
+    /// the paper takes a share of the volts. So the two half-wraps are put back on, the same way DiscToDiscLayerStack does it.
+    ///
+    /// The barriers and sticks are lumped rather than placed where they actually are. For the laminar reduction that is exact - only
+    /// Σ(ℓ/ε) matters, and it is order-independent - and for the coaxial form it is a small error at hilo radii, where the
+    /// curvature correction is only a few percent to begin with.
+    func HiloLayerStack(coil:Int) async throws -> (stick:[DielectricLayer], oil:[DielectricLayer], innerRadius:Double, stickFraction:Double) {
+
+        guard let bottomCoilSeg = await self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
+
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
+        }
+
+        let hilo = try await HiloUnder(coil: coil)
+
+        guard hilo > 0.0 else {
+
+            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
+        }
+
+        let innerRadius = await bottomCoilSeg.r1 - hilo
+
+        // The same barrier/stick split CoilInnerShuntCapacitance uses.
+        let Npress = round(hilo / 0.0084 - 0.5)
+        let tPress = min(hilo, 0.08 * meterPerInch * Npress)
+        let tStick = hilo - tPress
+
+        let bs = bottomCoilSeg.basicSections[0]
+        let rGap = innerRadius + hilo / 2.0
+        let Ns = Double(bs.wdgData.discData.numAxialColumns)
+        let ws = 0.75 * meterPerInch
+        let stickFraction = min(1.0, Ns * ws / (2 * π * rGap))
+
+        // The half-wrap of the coil on each side of the gap. Whatever is inside may be a core, a shield or a tank rather than a
+        // winding, and none of those carries turn paper, so only this coil's own wrap is certain - the inner one is added by the
+        // caller when the inner object is a coil.
+        let outerPaper = DielectricLayer.Paper(bs.wdgData.turn.turnInsulation / 2.0)
+
+        var stick:[DielectricLayer] = []
+        var oil:[DielectricLayer] = []
+
+        if tPress > 0.0 {
+
+            stick.append(DielectricLayer.Pressboard(tPress))
+            oil.append(DielectricLayer.Pressboard(tPress))
+        }
+
+        if tStick > 0.0 {
+
+            stick.append(DielectricLayer.Pressboard(tStick))
+            oil.append(DielectricLayer.Oil(tStick))
+        }
+
+        stick.append(outerPaper)
+        oil.append(outerPaper)
+
+        return (stick, oil, innerRadius, stickFraction)
+    }
+
     /// Try to add a radial shield inside the given coil and return it as a Segment. If unsuccessful, the function throws an error.
     func AddRadialShieldInside(coil:Int, hiloToShield:Double) async throws -> Segment {
         

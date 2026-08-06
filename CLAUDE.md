@@ -35,7 +35,7 @@ Eight `.swift` files sit in the source folder but are **not in the target's Comp
 | `PCH_GraphingView.swift`, `PCH_GraphingWindow.swift` | Dead; the only reference is inside a commented-out block in `AppController.swift`. |
 | `oldPchMatrixView*.swift` (3 files) | Legacy. |
 
-The compiled target is exactly these 23: `AppController`, `AppDelegate`, `AxisScale`, `BasicSection`, `CoilResultsDisplayView`, `CoilResultsDisplayWindow`, `ConductorImpedance`, `Connector`, `Core`, `FrequencyDomainSolver`, `GetNumberDialog`, `GetSimDetailsDialog`, `GetWoundInShieldDialog`, `Node`, `NumericalLaplaceTransform`, `PhaseModel`, `Segment`, `ShowCoilResultsDialog`, `ShowWaveFormsDialog`, `SimulationModel`, `TransformerView`, `WaveFormDisplayView`, `WaveFormDisplayWindow`.
+The compiled target is exactly these 27: `AppController`, `AppDelegate`, `AxisScale`, `BasicSection`, `CoilResultsDisplayView`, `CoilResultsDisplayWindow`, `ConductorImpedance`, `Connector`, `Core`, `DielectricStress`, `FrequencyDomainSolver`, `GetNumberDialog`, `GetSimDetailsDialog`, `GetWoundInShieldDialog`, `Node`, `NumericalLaplaceTransform`, `PhaseModel`, `Segment`, `ShowCoilResultsDialog`, `ShowWaveFormsDialog`, `SimulationModel`, `StressProfileWindow`, `StressReportWindow`, `TransformerView`, `TurnLadderModel`, `WaveFormDisplayView`, `WaveFormDisplayWindow`.
 
 **When adding a `.swift` file, add it to the Compile Sources phase.** Eight files in this folder are already orphaned, and SourceKit reports a misleading `No such module 'PchBasePackage'` on a file that is not in the target — that diagnostic means "not in Compile Sources", not "package missing".
 
@@ -119,6 +119,107 @@ The physics model is layered from smallest to largest unit. Understanding this h
   The `.ac` result is the important one: it isolates the **assembly** (signs, row surgery, block offsets) from the transform, and 3.3e-7 is the precision of ngspice's own printed output — i.e. exact agreement. The `.tran` residual is entirely the NILT's known wavefront-truncation behaviour, which is why it collapses from 5.2e-3 at the first sample to a flat 2.5e-4 past 1 µs. A future `.tran` regression that does *not* show that shape is a real bug, not transform error.
 
   **Do not calibrate diagnostics on that ladder.** It is tiny, per-unit and well scaled; a real winding is none of those. `Residual` originally tested ‖Ax−b‖/‖b‖ against 1e-9, which the ladder passed at 3.1e-16 and every production run failed at ~1e-8 — a false alarm, not a defect. `Assemble` writes a nonzero RHS **only at the impulsed nodes**, so ‖b‖ is exactly |U(s)|, which falls as 1/s² (~3e4 across a 10 MHz band); meanwhile nothing equilibrates the `s·C` node rows against the `s·M` segment rows. Dividing a residual bounded by ‖A‖‖x‖ by a collapsing ‖b‖ inflates it by `scaleRatio`. The test is now the **Rigal–Gaches normwise backward error** ‖Ax−b‖/(‖A‖‖x‖+‖b‖) against 1e-12, which is scale-invariant; `ResidualReport` carries all three numbers and `Sweep` logs them with the contour point and frequency that produced them. Note this measures neither conditioning (partial pivoting is backward stable — κ=1e14 still gives η≈ε) nor assembly correctness; only *Compare Solvers* tests the latter.
+
+### Dielectric stress screening (`DielectricStress.swift`, `TurnLadderModel.swift`)
+
+Turns a simulation result into **electric stress in V/m**, to locate the places in a design that need redesign or extra care in
+manufacture. It is not a substitute for finite element, and it is explicit about that. Reached from *Simulate → Show Dielectric
+Stress Report / Show Radial Stress Profiles / Turn Ladder for Selected Disc*.
+
+**It needs no new physics, because the capacitance code already contains the field solution.** Every capacitance routine here is a
+series-dielectric reduction; `Segment.DiscToDiscSeriesCapacitance` forms Σ(ℓ/ε) over the layers in a gap, and continuity of normal
+**D** turns that straight into the field: `E_i = V/(ε_i·Σ(ℓⱼ/εⱼ))`. So the screen reuses the same geometry, and a full run is
+milliseconds against hours for an FE solve per time step.
+
+Two extractions exist purely so the stress and the capacitance can never disagree about what is in a gap — the same discipline
+`FrequencyDomainSolver.CapacitiveDistribution` follows for the assembly. **`Segment.DiscToDiscLayerStack`** returns the layers in
+physical order and `DiscToDiscSeriesCapacitance` builds its Σ(ℓ/ε) from it; **`Segment.SteinParameters`** holds α/Ya/Yb and
+collapses what used to be three inline copies in `SeriesCapacitance`'s `.disc` branch. Both refactors were verified exactly
+value-preserving (worst 3.5e-16 over 160 gap cases, 1.8e-16 over all 432 endDisc/staticRing combinations), and the three branches
+are one formula because 12.63's `Cs·α/tanh α` **is** 12.53 at Ya = 1, Yb = 0.
+
+| accuracy vs. FE | |
+|---|---|
+| average field across a laminar gap | **2–5%**; the reduction is analytically exact, the error is the finite disc width |
+| peak field at a conductor corner | **20–30%, biased high** (conservative — do not "fix" it) |
+| end regions with no static ring | genuinely 2-D; weakest case, flagged rather than valued |
+| **ranking gaps worst-first** | **reliable** — this is what the feature is for |
+
+**The allowables are DelVecchio chapter 13**, "Voltage Breakdown Theory and Practice", and they are **functions of distance, not
+constants** — a single number would be wrong by a factor of two across the gaps in one coil. That distance dependence is also what
+makes the screen match the book's own procedure for non-uniform fields (p.371): subdivide the path, average the field over each
+subdivision, compare against the breakdown value *for that subdivision's length*. Each dielectric layer is one such subdivision.
+
+All eight were **read off the printed page** (poppler is installed, so the Read tool renders PDF pages as images) rather than
+decoded from the text layer — the equations are set in a subsetted math font with no `ToUnicode` CMap, so extracted text loses the
+decimal points. Verify any change the same way; do not trust `pdftotext` for the formulas.
+
+| | eq. | kV/mm, d in mm |
+|---|---|---|
+| oil, planar, impulse peak | 13.30 | 50·d^−0.36 |
+| oil, planar, a.c. rms | 13.27 | 17.8·d^−0.36 |
+| kraft, impulse peak (90 °C) | 13.4 | 79.43·d^−0.275 |
+| kraft, a.c. rms | 13.5 | 32.8·d^−0.33 |
+| pressboard, impulse peak (90 °C) | 13.8 | 91.2·d^−0.26 |
+| pressboard, a.c. rms (90 °C) | 13.8 | 27.5·d^−0.26 |
+| **creep**, a.c. rms, by distance | 13.16 | 16.6·d_c^−0.46 |
+| **creep**, a.c. rms, by area | 13.15 | **16.0 − 1.09·ln A_c** |
+
+Two traps in that table. **13.15 is logarithmic in area, not a power law** — 16.0 and 1.09 in a subtraction, not 16.0 and 0.09 in an
+exponent; 13.9 (oil by volume) has the same shape, and both eventually go negative, which the book flags for 13.9 on p.370 and
+which `CreepPowerFrequencyByArea` clamps. And **pressboard uses 13.8 (90 °C), not 13.7 (room temperature)** — 13.8 is the more
+conservative of the two everywhere in range and keeps the temperature assumption consistent with the paper figures, where 13.4 is
+also a 90 °C measurement whose 10% room-temperature bonus is deliberately declined. 13.7 remains available as
+`PressboardImpulseRoomTemperature`.
+
+Four distinctions in there must never be collapsed: **strike vs. creep** (different formulas and much steeper creep exponent — which
+is why a short creep path carrying a large voltage so often governs); **power frequency vs. impulse** (ratio ≈2.8 for oil, 2.7 for
+paper, 3.0 for pressboard); **rms vs. peak** (the a.c. forms are rms, the impulse forms peak, and the simulation gives instantaneous
+volts, so the impulse forms compare like with like); and **50% breakdown vs. design level** (p.368 — the book's data are the former,
+so `StressAllowable.designMargin`, default 0.80 after the book's own Figure 13.5, brings it to the latter).
+
+**`Segment.woundInShieldMaxWorkingStress` (2755 V/mm, 70 V/mil) must never be used here.** It is a *power-frequency working*
+turn-to-turn stress for sizing wound-in-shield paper, not an impulse allowable. An earlier version of this file cited it as the
+model for the allowables and shipped invented numbers alongside; both are gone.
+
+**Only the average field carries a margin.** The corner column reports an *enhancement ratio*, not a percentage of an allowable,
+because chapter 13's data are uniform-gap measurements judged against average fields — there is no sourced criterion for a corner
+peak. That is precisely where the book says (p.16) "there is usually some judgment involved", and where an FE run earns its keep.
+The one figure here that is an extrapolation rather than a citation is `creepImpulseRatio` (the book gives creep only at power
+frequency); it is isolated as a named constant for that reason.
+
+**The corner model is geometry, not a tabulated factor.** `CoaxialField` does double duty: at r ≈ 0.3 m it is the hilo, at
+r = `cornerRadiusOnCopper` (0.81 mm, ≈ 1/32″, a documented editable constant) it *is* the corner. The paper follows the corner, so
+the paper's field is read at the copper radius and the oil's at the paper's outer radius. Anchor to re-check after any edit: a 4 mm
+duct with 0.4 mm paper per face gives **2.12×** over laminar.
+
+Two physics points that decide right from wrong answers:
+
+- **A continuous-disc gap sees twice the disc voltage and spans two node steps.** Disc A winds ID→OD, B winds OD→ID, joined at the
+  OD; B's potential at radial position *x* is (2−x)V against A's xV, so ΔV is 2V(1−x) — zero at the crossover, **2V at the far
+  end**, which alternates ID/OD gap by gap. Reading the adjacent diagonal of `MaximumInternodalVoltages` understates this by ~2×.
+  The rule is applied only to plain continuous discs; interleaved and multi-disc Segments fall back to the single node step and the
+  location string says so.
+- **Max stress is not at max voltage.** Turn-to-turn peaks at t→0⁺ and ground stress peaks late, so every step is scanned and each
+  site keeps its own worst instant. The t = 0+ capacitive distribution is prepended as an extra sample (from
+  `FrequencyDomainSolver.CapacitiveDistribution`) because the uniform grid's first sample has already missed the steepest part.
+  Because the field is linear in the driving voltage, the reduction runs once per site rather than once per site per step — exact,
+  but it assumes time-invariant geometry.
+
+**Turn-to-turn is screened by α and resolved by the ladder.** `SteinParameters.gradientEnhancement` returns
+`1 + (α/tanh α − 1)·|Ya − Yb|`, an interpolation that is *exact* at both ends: an interior disc whose neighbours ramp in step with
+it (Ya = Yb) is exactly linear — the case people get wrong by applying α/tanh α everywhere — and a one-sided disc (Ya = 1) is
+exactly α/tanh α. `TurnLadderModel` then solves the real turn network for **one disc**, with the neighbours as boundary potentials
+from the lumped model. It is one disc and not a group deliberately: with turns as free nodes and no capacitance between two discs
+those discs disconnect, which is right for that network but at odds with the lumped model's series-through-Cs picture, and fixing it
+needs the crossover conductor modelled. Continuous discs only — an interleaved winding's position-to-turn map is scheme-dependent
+and guessing it would give a confidently wrong answer.
+
+**Verification is by hand**, as everywhere else here. `DielectricStress.VerifySelf()` and `TurnLadderModel.VerifySelf()` write to
+`UserDefaults` (the app is sandboxed, so `print` and `/tmp` are dead ends); each doc comment gives the `defaults read` line. Both
+pass as of 2026-08-05. The ladder asserts its **convergence rate** rather than a bare threshold — the scheme is first order, since
+the shunt lands only on interior turns, so doubling N must halve the departure from `sinh(αx)/sinh(α)`; measured ratio 2.0029. That
+distinction matters: a discretisation error shrinks with N, an assembly error does not.
 
 - **`SimulationModel.swift`** (`actor SimulationModel`) — built from a `PhaseModel`. Its `init` does the work that both solvers depend on: resolving jumpers into merged node groups, building the `vDropInd`/`iDropInd` incidence arrays, and applying the boundary-condition row surgery to the capacitance matrix. It owns `M` (Cholesky-factorized, for the RK45 path) and **`unfactoredM`** (the matrix itself, which the frequency-domain solver needs — reading `M` there would assemble the Cholesky factor as though it were the inductance). `Snapshot()` extracts a `Sendable` `NetworkSnapshot` so the frequency sweep can run with no actor hops in its inner loop.
   - `SolveFrequencyDomain(waveForm:displaySpan:maximumFrequency:progress:)` is the **live entry point**. Results come back on a **uniform** time grid.

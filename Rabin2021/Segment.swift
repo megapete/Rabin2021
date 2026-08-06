@@ -1194,77 +1194,10 @@ actor Segment: Equatable /*, Hashable */ {
 
                 let Cdd = Segment.DiscToDiscSeriesCapacitance(belowGap: belowGap, aboveGap: aboveGap, basicSection: bs, innerRadius: self.r1, outerRadius: self.r2, staticRing: adjStaticRing ?? (above:false, below:false))
 
-                if let endDiscLoc = endDisc, endDiscLoc != (false, false) {
-                    
-                    if let staticRing = adjStaticRing, staticRing != (false, false) {
-                        
-                        let useCdd = staticRing.below ? Cdd.above : Cdd.below
-                        let Ca = staticRing.below ? Cdd.below : Cdd.above
-                        
-                        let Csum = Ca + 2 * useCdd
-                        let Ya = Ca / Csum
-                        let Yb = 2 * useCdd / Csum
-                        
-                        let alpha = sqrt(Csum / Cs)
-                        
-                        let firstTerm = (Ya * Ya + Yb * Yb) * alpha / tanh(alpha)
-                        let secondTerm = 2 * Ya * Yb * alpha / sinh(alpha)
-                        let thirdTerm = Ya * Yb * alpha * alpha
-                        
-                        let Cgeneral = Cs * (firstTerm + secondTerm + thirdTerm)
-                        
-                        return Cgeneral
-                    }
-                    else {
-                    
-                        let useCdd = endDiscLoc.lowest ? Cdd.above : Cdd.below
-                        
-                        let alpha = sqrt(2 * useCdd / Cs)
-                        
-                        return Cs * alpha / tanh(alpha)
-                    }
-                }
-                else {
-                    
-                    var Ya:Double = 0.0
-                    var Yb:Double = 0.0
-                    var alpha:Double =  0.0
-                    
-                    // The (false, false) test matters: when this Segment holds several discs, the recursion above hands each end disc a
-                    // NON-nil tuple with the far side cleared - (false, adjStaticRing!.below) for the bottom disc, (adjStaticRing!.above,
-                    // false) for the top - so a disc at the opposite end of the Segment from the ring arrives here with both flags false.
-                    // Without this test it took the DelVecchio 12.6 path anyway and got α = √((Cdd_above + 2·Cdd_below)/Cs) instead of the
-                    // symmetric 12.54 α = √(2(Cdd_above + Cdd_below)/Cs), i.e. √(3/4) of the correct value for equal gaps. The endDisc
-                    // test on the branch above has always had the equivalent guard.
-                    if let staticRing = adjStaticRing, staticRing != (false, false) {
-
-                        let useCdd = staticRing.below ? Cdd.above : Cdd.below
-                        let Ca = staticRing.below ? Cdd.below : Cdd.above
-
-                        let Csum = Ca + 2 * useCdd
-                        Ya = Ca / Csum
-                        Yb = 2 * useCdd / Csum
-
-                        alpha = sqrt(Csum / Cs)
-                    }
-                    else {
-                        
-                        let sumCdd = Cdd.above + Cdd.below
-                        Ya = Cdd.below / sumCdd
-                        Yb = Cdd.above / sumCdd
-                        
-                        alpha = sqrt(2 * sumCdd / Cs)
-                        
-                    }
-                    
-                    let firstTerm = (Ya * Ya + Yb * Yb) * alpha / tanh(alpha)
-                    let secondTerm = 2 * Ya * Yb * alpha / sinh(alpha)
-                    let thirdTerm = Ya * Yb * alpha * alpha
-                    
-                    let Cgeneral = Cs * (firstTerm + secondTerm + thirdTerm)
-                    
-                    return Cgeneral
-                }
+                // All three of the cases that used to be written out here - end disc beside a static ring, end disc without one, and an
+                // interior disc - are the SAME formula (12.53) at different Ya/Yb, so they now come from one place. See
+                // SteinParameters for the equivalence, and for why the static-ring test has to be made before the end-disc one.
+                return Segment.SteinParameters.For(Cs: Cs, Cdd: Cdd, endDisc: endDisc, adjStaticRing: adjStaticRing).capacitance
             }
             else if self.wdgType == .layer {
 
@@ -1406,33 +1339,14 @@ actor Segment: Equatable /*, Hashable */ {
 
         let fks = Double(basicSection.wdgData.discData.numAxialColumns) * basicSection.wdgData.discData.axialColumnWidth / (π * (innerRadius + outerRadius))
 
-        // 'turnInsulation' is the TOTAL (two-sided) insulation on a turn, so a turn presents half of it to the gap on each of its two
-        // faces. A disc-to-disc gap therefore holds two of those halves - one from each disc - which is exactly why DelVecchio 12.52
-        // uses the full tp for that case and not 2·tp. Do not add a factor of 2 here.
-        let tp = basicSection.wdgData.turn.turnInsulation
-
-        // The gaps passed in are measured between the *insulated* surfaces (a disc's z1/z2 are over-paper, and a static ring's rect is
-        // its overall wrapped thickness), so a gap is pure key spacer or oil and every solid layer has to be added in separately.
-        // Against another disc that is tp; against a static ring it is this disc's half-thickness plus the ring's own wrap, which is
-        // substantial (3 mm per side) and dominates the term.
-        func solidTerm(facesStaticRing:Bool) -> Double {
-
-            if facesStaticRing {
-
-                return (tp / 2.0 + Segment.staticRingInsulationPerSide) / εPaper
-            }
-
-            return tp / εPaper
-        }
-
         var Cdd_below = ε0 * π * (outerRadius * outerRadius - innerRadius * innerRadius)
         var Cdd_above = Cdd_below
         // calculate Cdd for the gap below the segment
         if belowGap > 0.0 {
 
-            let solid = solidTerm(facesStaticRing: staticRing.below)
-            let firstTerm = fks / (solid + (belowGap / εBoard))
-            let secondTerm = (1 - fks) / (solid + (belowGap / εOil))
+            let stacks = Segment.DiscToDiscLayerStack(basicSection: basicSection, gap: belowGap, facesStaticRing: staticRing.below)
+            let firstTerm = fks / DielectricStress.ReducedThickness(stacks.keySpacer)
+            let secondTerm = (1 - fks) / DielectricStress.ReducedThickness(stacks.oil)
             Cdd_below *= (firstTerm + secondTerm)
         }
         else {
@@ -1443,9 +1357,9 @@ actor Segment: Equatable /*, Hashable */ {
         // calculate Cdd for the gap above the segment
         if aboveGap > 0.0 {
 
-            let solid = solidTerm(facesStaticRing: staticRing.above)
-            let firstTerm = fks / (solid + (aboveGap / εBoard))
-            let secondTerm = (1 - fks) / (solid + (aboveGap / εOil))
+            let stacks = Segment.DiscToDiscLayerStack(basicSection: basicSection, gap: aboveGap, facesStaticRing: staticRing.above)
+            let firstTerm = fks / DielectricStress.ReducedThickness(stacks.keySpacer)
+            let secondTerm = (1 - fks) / DielectricStress.ReducedThickness(stacks.oil)
             Cdd_above *= (firstTerm + secondTerm)
         }
         else {
@@ -1454,6 +1368,156 @@ actor Segment: Equatable /*, Hashable */ {
         }
 
         return (Cdd_below, Cdd_above)
+    }
+
+    /// The dielectric layers lying in a disc-to-disc gap, in physical order outwards from the copper of the disc that owns the gap,
+    /// for the key-spacer column and for the oil column.
+    ///
+    /// This exists so that DiscToDiscSeriesCapacitance and the stress screen in DielectricStress.swift can never disagree about what
+    /// is actually in a gap. The capacitance needs only the reduced thickness Σ(ℓ/ε) of each column, which is what
+    /// DielectricStress.ReducedThickness makes of this; the stress needs the individual layers, in order, because it has to report
+    /// the field in each one and because the corner model accumulates radii outwards from the copper.
+    ///
+    /// 'turnInsulation' is the TOTAL (two-sided) insulation on a turn, so a turn presents HALF of it to the gap on each of its two
+    /// faces. A disc-to-disc gap therefore holds two of those halves - one from each disc - which sums to the full tp, and that is
+    /// exactly why DelVecchio 12.52 uses tp for that case and not 2·tp. Do not add a factor of 2 anywhere here. The layers are
+    /// emitted as the two separate halves rather than as one combined tp so that the physical order is right for the corner model;
+    /// the two forms give an identical Σ(ℓ/ε), so the capacitance is unchanged.
+    ///
+    /// The gap passed in is measured between the *insulated* surfaces (a disc's z1/z2 are over-paper, and a static ring's rect is its
+    /// overall wrapped thickness), so it is pure key spacer or oil and every solid layer has to be added in separately. Against
+    /// another disc the far solid is that disc's half-wrap; against a static ring it is the ring's own wrap, which at 3 mm per side
+    /// is substantial and dominates the term.
+    static func DiscToDiscLayerStack(basicSection:BasicSection, gap:Double, facesStaticRing:Bool) -> (keySpacer:[DielectricLayer], oil:[DielectricLayer]) {
+
+        let tp = basicSection.wdgData.turn.turnInsulation
+
+        // this disc's own half-wrap, which is where the stack starts
+        let nearSolid = DielectricLayer.Paper(tp / 2.0)
+
+        // whatever solid insulation is on the far face of the gap
+        let farSolid = facesStaticRing ? DielectricLayer.Paper(Segment.staticRingInsulationPerSide) : DielectricLayer.Paper(tp / 2.0)
+
+        return (keySpacer: [nearSolid, DielectricLayer.Pressboard(gap), farSolid],
+                oil: [nearSolid, DielectricLayer.Oil(gap), farSolid])
+    }
+
+    /// Stein's parameters for one disc: the dimensionless α that DelVecchio's series-capacitance formulas are written in, and the
+    /// shunt-division weights Ya/Yb that go with it.
+    ///
+    /// α = √(C_shunt/Cs) is the same quantity that governs the voltage distribution WITHIN the disc, which is why this is pulled out
+    /// as a type of its own rather than left as three sets of local variables: the capacitance path wants `capacitance`, and the
+    /// stress screen in DielectricStress.swift wants `gradientEnhancement` from the very same numbers. Two routines deriving α
+    /// independently could drift, and the disagreement would be invisible.
+    struct SteinParameters:Sendable {
+
+        /// DelVecchio's α = √(C_shunt/Cs).
+        let alpha:Double
+        /// The fraction of the disc's shunt capacitance facing the first side.
+        let Ya:Double
+        /// The fraction facing the other side. Ya + Yb = 1.
+        let Yb:Double
+        /// The disc's own turn-to-turn series capacitance.
+        let Cs:Double
+        /// The disc-to-disc capacitances below and above, as handed to the formula.
+        let CddBelow:Double
+        let CddAbove:Double
+
+        /// The disc's series capacitance, DelVecchio 12.53:
+        ///
+        ///     C = Cs·[ (Ya² + Yb²)·α/tanh α + 2·Ya·Yb·α/sinh α + Ya·Yb·α² ]
+        ///
+        /// The end-disc form 12.63, C = Cs·α/tanh α, is exactly this at Ya = 1, Yb = 0 - the second and third terms both carry a
+        /// factor Yb and vanish. That identity is what let the three branches in SeriesCapacitance collapse into one, and it is worth
+        /// re-checking if this is ever edited.
+        var capacitance:Double {
+
+            let firstTerm = (Ya * Ya + Yb * Yb) * alpha / tanh(alpha)
+            let secondTerm = 2 * Ya * Yb * alpha / sinh(alpha)
+            let thirdTerm = Ya * Yb * alpha * alpha
+
+            return Cs * (firstTerm + secondTerm + thirdTerm)
+        }
+
+        /// The ratio of the PEAK turn-to-turn gradient inside the disc to the linear (mean) one.
+        ///
+        /// Derivation. At the capacitive limit the turn-level ladder inside one disc obeys
+        ///
+        ///     Cs·d²V/dx² = C_shunt·(V − V_env(x))
+        ///
+        /// where x is the normalized radial position across the disc and V_env is the potential of what the disc faces, weighted by
+        /// Ya/Yb. Writing u = V − V_env gives u'' = α²u, whose solution with end mismatches u₀ and u₁ is
+        ///
+        ///     u(x) = [u₀·sinh(α(1−x)) + u₁·sinh(αx)] / sinh(α)
+        ///     u'(x) = α·[u₁·cosh(αx) − u₀·cosh(α(1−x))] / sinh(α)
+        ///
+        /// Two limits follow immediately, and they are the ones that matter:
+        ///
+        ///  - If the disc's neighbours ramp in step with it (an interior disc with equal gaps above and below, Ya = Yb), then
+        ///    u₀ = u₁ = 0 and the distribution is exactly LINEAR - no enhancement at all. This is the case people get wrong by
+        ///    applying α/tanh α everywhere.
+        ///  - If the disc faces something at a fixed or oppositely-ramping potential on one side only (an end disc, or one beside a
+        ///    static ring: Ya = 1, Yb = 0), the mismatch is maximal and the peak gradient is V·α/tanh α - the same α/tanh α that
+        ///    multiplies Cs in 12.63, which is not a coincidence, since the capacitance is the charge at the driven end divided by V
+        ///    and that charge is proportional to the gradient there.
+        ///
+        /// What is returned INTERPOLATES between those two exact endpoints on the asymmetry |Ya − Yb|:
+        ///
+        ///     enhancement = 1 + (α/tanh α − 1)·|Ya − Yb|
+        ///
+        /// This is NOT a solution of the general boundary-value problem - it is exact at Ya = Yb and at (Ya, Yb) = (1, 0) and
+        /// monotone between, which is what a screening pass needs. It is deliberate that the accurate answer for the first discs
+        /// comes from the turn-level ladder instead (DielectricStress.TurnLadderModel); this factor's job is to say WHICH discs are
+        /// worth running the ladder on. Solving the general BVP for the exact intermediate case is noted in TODO.md.
+        var gradientEnhancement:Double {
+
+            guard alpha > 0.0, alpha.isFinite else {
+
+                return 1.0
+            }
+
+            let oneSided = alpha / tanh(alpha)
+
+            return 1.0 + (oneSided - 1.0) * abs(Ya - Yb)
+        }
+
+        /// Build the Stein parameters for a disc from its series and disc-to-disc capacitances.
+        ///
+        /// The order of the tests matters and is the order the original inline code used: a disc that is BOTH an end disc and beside
+        /// a static ring took the static-ring branch, so the static-ring test is made first here. Reordering them would silently
+        /// change the end discs of any coil that has a static ring.
+        ///
+        /// The `!= (false, false)` guards are not redundant. When a Segment holds several discs, SeriesCapacitance's recursion hands
+        /// each end disc a NON-nil tuple with the far side cleared - (false, adjStaticRing!.below) for the bottom disc,
+        /// (adjStaticRing!.above, false) for the top - so a disc at the opposite end of the Segment from the ring arrives with both
+        /// flags false. Without the test it took the DelVecchio 12.6 path anyway and got α = √((Cdd_above + 2·Cdd_below)/Cs) instead
+        /// of the symmetric 12.54 α = √(2(Cdd_above + Cdd_below)/Cs), i.e. √(3/4) of the correct value for equal gaps. That was a
+        /// real bug; keep the guards.
+        static func For(Cs:Double, Cdd:(below:Double, above:Double), endDisc:(lowest:Bool, highest:Bool)?, adjStaticRing:(above:Bool, below:Bool)?) -> SteinParameters {
+
+            if let staticRing = adjStaticRing, staticRing != (false, false) {
+
+                // DelVecchio 12.6: the static ring plays the part of one neighbour, with its own Ca.
+                let useCdd = staticRing.below ? Cdd.above : Cdd.below
+                let Ca = staticRing.below ? Cdd.below : Cdd.above
+
+                let Csum = Ca + 2 * useCdd
+
+                return SteinParameters(alpha: sqrt(Csum / Cs), Ya: Ca / Csum, Yb: 2 * useCdd / Csum, Cs: Cs, CddBelow: Cdd.below, CddAbove: Cdd.above)
+            }
+            else if let endDiscLoc = endDisc, endDiscLoc != (false, false) {
+
+                // DelVecchio 12.63. Ya = 1, Yb = 0 reproduces the old `Cs * alpha / tanh(alpha)` exactly through the general formula.
+                let useCdd = endDiscLoc.lowest ? Cdd.above : Cdd.below
+
+                return SteinParameters(alpha: sqrt(2 * useCdd / Cs), Ya: 1.0, Yb: 0.0, Cs: Cs, CddBelow: Cdd.below, CddAbove: Cdd.above)
+            }
+
+            // DelVecchio 12.53/12.54, the symmetric interior case.
+            let sumCdd = Cdd.above + Cdd.below
+
+            return SteinParameters(alpha: sqrt(2 * sumCdd / Cs), Ya: Cdd.below / sumCdd, Yb: Cdd.above / sumCdd, Cs: Cs, CddBelow: Cdd.below, CddAbove: Cdd.above)
+        }
     }
     
     /// The series capacitance of a single BasicSection, as caused by the turns of the disc (for continuous-disc windings), double-disc (for interleaved segments) or a single layer (for layer windings). For interleaved windings, note that the value returned is the "effective" capacitance of a single disc, which is double the capacitance of the double-disc. It is up to the calling routine to treat the capacitance correctly. The methods come from (respectively) DelVecchio, Veverka, Huber (ie: me)

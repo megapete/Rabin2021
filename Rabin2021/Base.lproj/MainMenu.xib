@@ -421,6 +421,25 @@
                                     <action selector="handleShowCoilResults:" target="XWq-sU-B2V" id="406-kZ-IGI"/>
                                 </connections>
                             </menuItem>
+                            <menuItem isSeparatorItem="YES" id="Str-Rp-Sp1"/>
+                            <menuItem title="Show Dielectric Stress Report…" id="Str-Rp-Mi1">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleShowStressReport:" target="XWq-sU-B2V" id="Str-Rp-Ac1"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Show Radial Stress Profiles…" id="Str-Rp-Mi2">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleShowRadialStressProfiles:" target="XWq-sU-B2V" id="Str-Rp-Ac2"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Turn Ladder for Selected Disc…" id="Str-Rp-Mi3">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleShowTurnLadder:" target="XWq-sU-B2V" id="Str-Rp-Ac3"/>
+                                </connections>
+                            </menuItem>
                         </items>
                     </menu>
                 </menuItem>

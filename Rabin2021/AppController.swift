@@ -351,6 +351,15 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     /// Coil Results windows
     var coilResultsWindow:CoilResultsDisplayWindow? = nil
+
+    /// The dielectric stress report and its companion profile graphs. Held so that they are not deallocated the moment the action
+    /// that created them returns.
+    var stressReportWindow:StressReportWindow? = nil
+    var stressProfileWindow:StressProfileWindow? = nil
+
+    /// The most recent stress screen, kept so that the profile graphs can be built from exactly the findings the table showed
+    /// rather than from a second scan.
+    var latestStressChecks:[DielectricStress.StressCheck] = []
     // var voltageDiffsWindow:PchMatrixViewWindow? = nil
     
     /// The result of the latest simulation run that was executed
@@ -1769,6 +1778,209 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     }
     
     
+    // MARK: Dielectric stress screen
+
+    @IBAction func handleShowStressReport(_ sender: Any) {
+
+        Task {
+
+            await doShowStressReport()
+        }
+    }
+
+    /// Run the dielectric stress screen over the latest simulation result and show the ranked table.
+    ///
+    /// The screen is cheap - the geometry is measured once and the time scan is a linear combination of node voltages per site, so
+    /// a full run is milliseconds - which is why there is no progress bar and no cancel handle here, unlike the inductance and
+    /// simulation paths.
+    func doShowStressReport() async {
+
+        guard let phModel = self.currentModel, let simResult = self.latestSimulationResult else {
+
+            PCH_ErrorAlert(message: "You must run the simulation first!")
+            return
+        }
+
+        // The t = 0+ capacitive distribution. The frequency-domain solver's uniform grid starts some tens of nanoseconds in, by
+        // which time the steepest part of the initial distribution has begun to relax - and that distribution is exactly where the
+        // turn-to-turn gradients peak. FrequencyDomainSolver.CapacitiveDistribution gets it through the same assembly as every
+        // other frequency, so it costs one extra solve and is worth having.
+        var capacitiveDistribution:[Double]? = nil
+
+        if let simModel = self.currentSimModel, let snapshot = await simModel.Snapshot() {
+
+            capacitiveDistribution = await FrequencyDomainSolver.CapacitiveDistribution(snapshot: snapshot)
+        }
+
+        let checks = await DielectricStress.Report(model: phModel,
+                                                   results: simResult.stepResults,
+                                                   capacitiveDistribution: capacitiveDistribution,
+                                                   peakVoltage: simResult.peakVoltage)
+
+        guard !checks.isEmpty else {
+
+            PCH_ErrorAlert(message: "The stress screen produced no findings.", info: "This usually means the model has no disc windings, or the simulation result is empty. Note that both solvers return an empty array for cancellation as well as for failure.")
+            return
+        }
+
+        self.latestStressChecks = checks
+
+        let reportWindow = StressReportWindow(checks: checks, title: "Dielectric Stress Report")
+        self.stressReportWindow = reportWindow
+        reportWindow.showWindow(self)
+    }
+
+    @IBAction func handleShowRadialStressProfiles(_ sender: Any) {
+
+        Task {
+
+            // Reuse the findings from the table if they are already to hand, so the graph and the table can never disagree.
+            if self.latestStressChecks.isEmpty {
+
+                await doShowStressReport()
+            }
+
+            guard !self.latestStressChecks.isEmpty else {
+
+                return
+            }
+
+            guard let simResult = self.latestSimulationResult else {
+
+                return
+            }
+
+            guard let profileWindow = StressProfileWindow(checks: self.latestStressChecks,
+                                                          peakTestVoltage: simResult.peakVoltage,
+                                                          title: "Radial Voltage Difference vs. Height") else {
+
+                PCH_ErrorAlert(message: "There are no radial profiles to show.", info: "Radial profiles are built from the coil-to-coil, coil-to-core and coil-to-tank checks, which need at least one coil with nodes in the model.")
+                return
+            }
+
+            self.stressProfileWindow = profileWindow
+            profileWindow.showWindow(self)
+        }
+    }
+
+    @IBAction func handleShowTurnLadder(_ sender: Any) {
+
+        Task {
+
+            await doShowTurnLadder()
+        }
+    }
+
+    /// Solve the turn-level capacitive distribution for the selected disc and report it.
+    ///
+    /// This is the accurate counterpart to the alpha screen in the stress report: the screen says which discs are worth looking at,
+    /// and this says what is actually happening inside one of them. It is driven from the selection rather than run automatically
+    /// because it is the answer to a question you ask about one or two specific discs.
+    ///
+    /// The neighbouring discs enter as boundary potentials taken from the lumped model, which is what makes the problem well posed
+    /// - see the header of TurnLadderModel for why a whole group cannot be solved this way.
+    func doShowTurnLadder() async {
+
+        guard let phModel = self.currentModel else {
+
+            PCH_ErrorAlert(message: "There is no model!")
+            return
+        }
+
+        guard let simResult = self.latestSimulationResult, let worstStep = simResult.stepResults.max(by: { lhs, rhs in
+
+            let lhsSpan = (lhs.volts.max() ?? 0.0) - (lhs.volts.min() ?? 0.0)
+            let rhsSpan = (rhs.volts.max() ?? 0.0) - (rhs.volts.min() ?? 0.0)
+            return lhsSpan < rhsSpan
+
+        }) else {
+
+            PCH_ErrorAlert(message: "You must run the simulation first!", info: "The turn ladder needs the disc's terminal voltages, which come from the simulation.")
+            return
+        }
+
+        let selected = self.txfoView.currentSegments.map { $0.segment }
+
+        guard let segment = selected.first else {
+
+            PCH_ErrorAlert(message: "Select a disc first.")
+            return
+        }
+
+        do {
+
+            let turnCount = Int((await segment.N).rounded())
+            let Ctt = try await segment.CapacitanceTurnToTurn()
+            let gaps = try await phModel.AxialSpacesAboutSegment(segment: segment)
+
+            guard let bs = await segment.basicSections.first else {
+
+                PCH_ErrorAlert(message: "That segment has no basic sections.")
+                return
+            }
+
+            let Cdd = await Segment.DiscToDiscSeriesCapacitance(belowGap: gaps.below,
+                                                                aboveGap: gaps.above,
+                                                                basicSection: bs,
+                                                                innerRadius: segment.r1,
+                                                                outerRadius: segment.r2)
+
+            let nodes = await phModel.AdjacentNodes(to: segment)
+
+            guard nodes.below >= 0, nodes.above >= 0,
+                  nodes.below < worstStep.volts.count, nodes.above < worstStep.volts.count else {
+
+                PCH_ErrorAlert(message: "That segment's nodes are not in the simulation result.")
+                return
+            }
+
+            let vStart = worstStep.volts[nodes.below]
+            let vEnd = worstStep.volts[nodes.above]
+
+            // A continuous disc winding alternates direction, so a disc at an even axial position winds outward.
+            let windsOutward = (await segment.axialPos) % 2 == 0
+
+            let result = try TurnLadderModel.Solve(turnCount: turnCount,
+                                                   Ctt: Ctt,
+                                                   CddBelow: Cdd.below,
+                                                   CddAbove: Cdd.above,
+                                                   windsOutward: windsOutward,
+                                                   vStart: vStart,
+                                                   vEnd: vEnd,
+                                                   belowProfile: [],
+                                                   aboveProfile: [])
+
+            // Compare against the screening estimate for the same disc. The two are independent routes to the same quantity - the
+            // screen interpolates between Stein's two exact limits, this solves the turn network - so agreement is real evidence
+            // and a large disagreement is worth understanding before trusting either.
+            var screenEstimate = "not available"
+
+            if let Cs = try? await segment.BasicSectionSeriesCapacitance(), Cs > 0.0 {
+
+                let stein = Segment.SteinParameters.For(Cs: Cs, Cdd: Cdd, endDisc: nil, adjStaticRing: nil)
+                screenEstimate = String(format: "%.2fx (alpha = %.2f)", stein.gradientEnhancement, stein.alpha)
+            }
+
+            let alert = NSAlert()
+            alert.messageText = "Turn Ladder: \(turnCount) turns, disc at axial position \(await segment.axialPos)"
+            alert.informativeText = """
+            Disc voltage at the worst step: \(String(format: "%.1f kV", abs(vEnd - vStart) / 1000.0)).
+
+            Worst turn-to-turn voltage: \(String(format: "%.1f V", result.worstTurnToTurn)), between the turns at radial positions \(result.worstPosition) and \(result.worstPosition + 1).
+
+            The linear assumption gives \(String(format: "%.1f V", result.linearTurnToTurn)), so the real distribution is \(String(format: "%.2f", result.enhancementOverLinear))x worse.
+
+            The alpha screen's estimate of the same enhancement: \(screenEstimate)
+            """
+            alert.alertStyle = .informational
+            alert.runModal()
+        }
+        catch {
+
+            PCH_ErrorAlert(message: "The turn ladder could not be solved.", info: error.localizedDescription)
+        }
+    }
+
     @IBAction func handleShowCoilResults(_ sender: Any) {
         
         guard let phModel = self.currentModel, self.currentSimModel != nil else {
@@ -3681,8 +3893,22 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
         
         if menuItem == self.showWaveformsMenuItem || menuItem == self.showCoilResultsMenuItem || menuItem == self.showVoltageDiffsMenuItem {
-            
+
             return self.currentModel != nil && self.currentSimModel != nil && self.latestSimulationResult != nil
+        }
+
+        // The two stress items are matched on their action rather than on an outlet. They need exactly the same state as the three
+        // above, and matching the selector saves adding two more @IBOutlets and two more xib connections for no benefit.
+        if menuItem.action == #selector(handleShowStressReport(_:)) || menuItem.action == #selector(handleShowRadialStressProfiles(_:)) {
+
+            return self.currentModel != nil && self.currentSimModel != nil && self.latestSimulationResult != nil
+        }
+
+        // The turn ladder is a purely electrostatic solve, so unlike the two above it needs no simulation result - only a model and
+        // a selection of at least two discs from one winding.
+        if menuItem.action == #selector(handleShowTurnLadder(_:)) {
+
+            return self.currentModel != nil && self.latestSimulationResult != nil && currentSegsCount == 1 && !currentSegs[0].segment.isStaticRing && !currentSegs[0].segment.isRadialShield
         }
         
         if menuItem == self.saveBaseCmatrixMenuItem {

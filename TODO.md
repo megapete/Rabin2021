@@ -70,6 +70,59 @@ adjacent coils and distributes the total inter-coil capacitance between them. En
 book gives a procedure for this. It does conserve the total by construction. **Parked deliberately**: PCH
 wants to discuss the approach before anything is changed here.
 
+## Dielectric stress screen
+
+Added 2026-08-05 (`DielectricStress.swift`, `TurnLadderModel.swift`). See `CLAUDE.md` for the method and its accuracy. Known gaps:
+
+### 7. Two open questions on the chapter 13 allowables
+
+`DielectricStress.StressAllowable` now uses DelVecchio ch. 13 (see `CLAUDE.md` for the table and citations). Two things in it are
+not straight from the book:
+
+- **`creepImpulseRatio` (2.8)** — the book gives creep breakdown only at power frequency (13.15, 13.16). The impulse creep figure
+  here is 13.16 scaled by the oil impulse ratio, on the grounds that creep along a pressboard surface in oil is an oil-adjacent
+  process. It is isolated as a named constant so it can be replaced if a real impulse creep source turns up.
+- **`designMargin` (0.80)** — ch. 13's data are 50%-breakdown levels (p.368 says explicitly that a margin is needed). 0.80 comes
+  from the book's own Figure 13.5, which is drawn "with a 20% margin". This is the single number that decides how much of the
+  breakdown level a design is allowed to use, and it is the first thing to review against house practice.
+
+Also unused so far: `CreepPowerFrequencyByArea` (13.15) is implemented but nothing calls it, since the screen measures a path
+length rather than a creep area. Some creep paths — a stick surface bridging a hilo, say — are arguably better judged on area.
+
+All eight coefficients were verified against the printed page on 2026-08-05 and the self-check pins each one. Do not re-derive them
+from `pdftotext`: the equations are set in a subsetted math font with no `ToUnicode` CMap, so the text layer drops decimal points
+and cannot distinguish `16.0 − 1.09·ln A` from `16.0·A^−0.09`. That exact confusion produced a wrong 13.15 in the first version.
+Render the page instead (poppler is installed; the Read tool does this).
+
+### 8. The turn ladder covers one disc, and only continuous discs
+
+`TurnLadderModel` solves a single disc with its neighbours as boundary potentials from the lumped model. Two extensions were looked
+at and deliberately not done:
+
+- **A group of discs** cannot be solved with turns as free nodes: absent a capacitance between two discs they become disconnected
+  components, which is correct for that network but disagrees with the lumped model, where discs are in series through Cs. Doing it
+  properly means modelling the crossover conductor explicitly.
+- **Interleaved and wound-in-shield discs** are refused rather than guessed. The map from physical radial position to electrical
+  turn is scheme-dependent, and a wrong map produces a confidently wrong number instead of an error.
+
+### 9. `SteinParameters.gradientEnhancement` interpolates the intermediate case
+
+It is exact at Ya = Yb (linear, an interior disc with equal gaps) and at Ya = 1, Yb = 0 (α/tanh α, a one-sided disc) and
+interpolates on |Ya − Yb| between them. The exact general case needs the boundary-value problem solved for the Ya/Yb-weighted
+environment potential. The turn ladder is the intended escape hatch when the exact answer matters.
+
+### 10. Disc-to-disc uses the two-node span only for plain continuous discs
+
+Interleaved Segments, and Segments holding more than one disc, fall back to the single node step across the gap (the location
+string says which was used). The 2V crossover argument does not carry over unchanged to those winding orders. Gaps *inside* a
+multi-disc Segment are driven at 2·ΔV_segment/n, which is the same argument applied to the Segment's own span.
+
+### 11. Coil-end radial fields are flagged, not valued
+
+Past the end of a shorter adjacent coil the field is genuinely two-dimensional. The screen holds the nearest inner potential, marks
+the finding "beyond end of …, value indicative only", and the profile graph names the height. No Schwaiger-type end enhancement and
+no oblique-spill estimate is attempted — both were considered and declined.
+
 ## Notes
 
 - There is no test target, so numerical changes are verified by hand against the books' worked examples.

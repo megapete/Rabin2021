@@ -20,6 +20,9 @@ enum AxisQuantity {
 
     case voltage
     case current
+    /// Electric stress, in volts per metre. Labelled in kV/mm - see ``UnitScale(maxAbsolute:quantity:)`` for why that
+    /// unit is fixed rather than chosen from the magnitude.
+    case stress
     /// Anything whose units are arbitrary (the Fourier magnitude display, for instance). The ticks are labelled with
     /// the bare numbers, with no unit suffix.
     case unitless
@@ -79,6 +82,11 @@ enum AxisScale {
 
         case .voltage:
             return span >= 20.0E3 ? 1.0E3 : NiceInterval(span: span, divisions: 100)
+
+        case .stress:
+            // 0.1 kV/mm. Insulation allowables are quoted to about that resolution, so rounding an extreme any finer reports a
+            // precision the underlying model does not have.
+            return 1.0E5
 
         case .current, .unitless:
             guard value != 0, value.isFinite else {
@@ -207,6 +215,14 @@ enum AxisScale {
 
         case .voltage: base = "V"
         case .current: base = "A"
+
+        case .stress:
+            // Every transformer designer quotes stress in kV/mm, and so does every allowable in DielectricStress.swift, so this
+            // axis is pinned to that unit rather than sliding through the SI prefixes the way a voltage axis does. Letting it slide
+            // would label a 900 V/mm creep result in "MV/m" and an oil duct in "kV/mm" on two graphs side by side, which is exactly
+            // the sort of thing that gets a number misread by a factor of a thousand. 1 kV/mm = 1e6 V/m.
+            return (1.0E6, " kV/mm")
+
         case .unitless: return (1.0, "")
         }
 
