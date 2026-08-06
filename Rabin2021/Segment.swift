@@ -1030,26 +1030,61 @@ actor Segment: Equatable /*, Hashable */ {
 
         let Cs = try self.WoundInShieldSeriesCapacitance(turnsPerDisc: turnsPerDisc, wire: wire)
 
-        let staticRing = adjStaticRing ?? (above:false, below:false)
-
-        // The gap inside the pair. Both discs have the same radii, so either one gives the same area.
+        // The area of the gap INSIDE the pair excludes the radial depth taken by the shield turns. Kulkarni & Khaparde, p.317:
+        // "there is no contribution to the energy by the capacitances between the shield turns of the two disks at same radial
+        // depth, since their potentials are equal. For a precise calculation, the radial depth in the above equation should
+        // correspond to the radial depth of the winding excluding that of the shield turns." A laminar gap's capacitance is
+        // proportional to its area, so scaling by the coil turns' share of the radial build is exactly that correction.
         //
-        // The area that counts EXCLUDES the radial depth taken by the shield turns. Kulkarni & Khaparde, p.317: "there is no
-        // contribution to the energy by the capacitances between the shield turns of the two disks at same radial depth, since
-        // their potentials are equal. For a precise calculation, the radial depth in the above equation should correspond to the
-        // radial depth of the winding excluding that of the shield turns." A laminar gap's capacitance is proportional to its
-        // area, so scaling by the coil turns' share of the radial build is exactly that correction.
-        //
-        // Two limits on it, both worth knowing. His "potentials are equal" is exact only for the first shield turn - his 7.42 and
-        // 7.46 put the two discs' i-th shield turns 2(i−1)ΔV apart - so this is a good approximation rather than an identity. And
-        // it applies to the gap INSIDE the pair only: across an external gap the shield turns facing each other belong to two
-        // different pairs and are a whole pair-voltage apart, so they store energy just as the coil turns there do.
-        let internalGap = self.basicSections[1].z1 - self.basicSections[0].z2
+        // Two limits on it. His "potentials are equal" is exact only for the first shield turn - his 7.42 and 7.46 put the two
+        // discs' i-th shield turns 2(i−1)ΔV apart - so this is a good approximation rather than an identity. And it applies to the
+        // internal gap only: across an external gap the shield turns facing each other belong to two different pairs and are a
+        // whole pair-voltage apart, so they store energy just as the coil turns there do. Hence internalCddScale and not a scale on
+        // everything.
         let radialBuild = self.r2 - self.r1
         let shieldBuild = Double(turnsPerDisc) * wire.overPaperRadial
         let coilShareOfBuild = radialBuild > 0.0 ? max(0.0, min(1.0, 1.0 - shieldBuild / radialBuild)) : 1.0
 
-        let CddInternal = coilShareOfBuild * Segment.DiscToDiscSeriesCapacitance(belowGap: internalGap, aboveGap: 0.0, basicSection: self.basicSections[0], innerRadius: self.r1, outerRadius: self.r2, staticRing: (above:false, below:false)).below
+        return try self.TwoDiscPairCapacitance(Cs: Cs, axialGaps: axialGaps, endDisc: endDisc, adjStaticRing: adjStaticRing, internalCddScale: coilShareOfBuild)
+    }
+
+    /// The series capacitance of a **two-disc unit** whose turn term is already known: DelVecchio's linear-voltage form
+    ///
+    ///     C = Cs + (1/3)·Cdd_internal + (1/6)·(Cdd_below + Cdd_above)
+    ///
+    /// **Both kinds of two-disc unit come through here - interleaved and wound-in-shield - and that is the point.** They are
+    /// structurally the same object: two discs wound as one thing, with a gap of their own inside and one external gap on each
+    /// face. Letting them get their disc-disc energy from different places is how a comparison between the two methods ends up
+    /// measuring the bookkeeping instead of the physics, which is exactly what happened before 2026-08-06: the shielded pair used
+    /// this form (from DelVecchio) while the interleaved pair dropped the disc-disc term entirely (from Kulkarni & Khaparde 7.3.5,
+    /// "it is sufficient to consider only the interturn capacitances"). On the STME-0999_2 fixture that asymmetry alone was the
+    /// whole 17% by which a half-shielded winding appeared to beat a fully interleaved one - the turn terms were a dead heat.
+    ///
+    /// K&K's licence to drop it is that the interdisk capacitance is "relatively low" against an interleaved winding's interturn
+    /// capacitance. That is true of the designs he has in mind and not true here - it is 16% of the interleaved total on
+    /// STME-0999_2 - and it costs nothing to evaluate, so it is evaluated.
+    ///
+    /// **Why this form and not Stein.** Stein's α/tanh α assumes ONE radial traverse and a pair makes two, which over-counts the
+    /// disc-disc energy about 2× at small α and has no place at all for the pair's internal gap. The coefficients here are the
+    /// per-gap split of DelVecchio's "(2/3)·c_d embedded": the internal gap is crossed by the full linear voltage ramp and takes
+    /// 1/3, while each external gap is shared with the neighbouring unit and takes half of that.
+    ///
+    /// - Parameter Cs: the unit's turn (interturn) capacitance, already computed by whichever method applies
+    /// - Parameter internalCddScale: fraction of the internal gap's area that stores energy. 1.0 for an interleaved pair, whose
+    /// discs are all coil turns; less for a shielded pair - see `WoundInShieldPairCapacitance`.
+    func TwoDiscPairCapacitance(Cs:Double, axialGaps:(above:Double, below:Double), endDisc:(lowest:Bool, highest:Bool)?, adjStaticRing:(above:Bool, below:Bool)?, internalCddScale:Double = 1.0) throws -> Double {
+
+        guard self.basicSections.count == 2 else {
+
+            throw SegmentError(info: "a two-disc unit holds exactly two discs, not \(self.basicSections.count)", type: .IllegalWoundInShield)
+        }
+
+        let staticRing = adjStaticRing ?? (above:false, below:false)
+
+        // The gap inside the pair. Both discs have the same radii, so either one gives the same area.
+        let internalGap = self.basicSections[1].z1 - self.basicSections[0].z2
+
+        let CddInternal = internalCddScale * Segment.DiscToDiscSeriesCapacitance(belowGap: internalGap, aboveGap: 0.0, basicSection: self.basicSections[0], innerRadius: self.r1, outerRadius: self.r2, staticRing: (above:false, below:false)).below
 
         let CddExternal = Segment.DiscToDiscSeriesCapacitance(belowGap: axialGaps.below, aboveGap: axialGaps.above, basicSection: self.basicSections[0], innerRadius: self.r1, outerRadius: self.r2, staticRing: staticRing)
 
@@ -1224,21 +1259,20 @@ actor Segment: Equatable /*, Hashable */ {
             }
             else if self.wdgType == .disc && self.interleaved {
 
-                // An interleaved pair takes the interturn capacitance ALONE - no disc-disc term at all. Kulkarni & Khaparde 7.3.5:
-                // "The capacitances between the disks (interdisk capacitances) have very little effect on the series capacitance of
-                // this type of winding since its value is relatively low. Therefore, it is sufficient to consider only the interturn
-                // capacitances for the calculation of the series capacitance of interleaved windings."
+                // An interleaved pair is a two-disc unit and takes the same route as the other one - see TwoDiscPairCapacitance
+                // for why they must share it, and why neither goes through Stein.
                 //
-                // This used to fall through to the Stein branch below, which was wrong twice over. Stein assumes ONE radial
-                // traverse and an interleaved unit is two discs - the same objection that earned the wound-in-shield pair its own
-                // route (see WoundInShieldPairCapacitance) - and the disc-disc energy it added came to 24% of the interleaved total
-                // on the STME-0999_2 fixture, which is not "very little" by any reading. Both errors inflated interleaving, and
-                // together with the 7.40 approximation they were most of why a half-shielded winding appeared to beat it.
-                //
-                // Dropping Cdd also makes the endDisc and adjStaticRing arguments moot here: both exist only to modify the
-                // disc-disc term. An interleaved unit at a coil end is therefore no longer reduced, which is right - there is
-                // nothing left for the end condition to act on.
-                return Cs
+                // internalCddScale is 1.0 here: every turn in an interleaved disc is a coil turn, so the whole face of the internal
+                // gap stores energy. The shielded pair is the case that reduces it.
+                guard self.basicSections.count == 2 else {
+
+                    // Not a pair after all, so there is no internal gap to speak of. Should be unreachable - an interleaved
+                    // Segment is built two discs at a time and SeriesCapacitanceUnits splits a longer one into pairs - but the
+                    // turn term is the honest answer if it ever happens, rather than a throw from deep inside a capacitance sum.
+                    return Cs
+                }
+
+                return try self.TwoDiscPairCapacitance(Cs: Cs, axialGaps: axialGaps!, endDisc: endDisc, adjStaticRing: adjStaticRing)
             }
             else if self.wdgType == .disc {
 

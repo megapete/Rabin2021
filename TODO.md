@@ -74,15 +74,20 @@ outright, which is worth −30% on interleaving where the shield correction is o
 
 So the fixes restored the expected ranking at a realistic shield fraction and left it inverted at k ≈ N/2.
 
-**A new inconsistency now decides the close case, and it should be looked at.** Turn terms alone are a dead
-heat at k = 5 — 4.487·c_t interleaved against 4.535·c_t shielded, break-even k = 4.97 — so the whole 17% is
-the disc-disc term that the interleaved path now omits (K&K 7.3.5) and the shielded path still keeps (the
-DV 12.96 route's `Cdd_int/3 + Cdd_ext/6`). Two structurally identical two-disc units, two different rules,
-each taken from the book that discusses that winding. Giving the interleaved pair the same linear-voltage
-Cdd treatment as the shielded pair would make it 5.006e-9 against 4.988e-9 — interleaving ahead by 0.4% —
-and is arguably more defensible than either book's asymmetry, since K&K justify dropping Cdd by it being
-"relatively low" and here it is 16% of the interleaved total. Not done: it is a judgment call, not a
-conformance fix.
+**The disc-disc asymmetry that this left has since been closed** (also 2026-08-06). Both two-disc units now
+go through `Segment.TwoDiscPairCapacitance`, so the interleaved pair gets the same linear-voltage
+`Cs + Cdd_int/3 + (Cdd_below + Cdd_above)/6` the shielded pair has always used. K&K's licence to drop the
+interdisk term is that it is "relatively low", which is not true here — 16% of the interleaved total — and it
+costs nothing to evaluate. The extraction was **exactly value-preserving on the shielded path**: 5.516902e-9
+and 4.988040e-9 before and after, to the last digit. Final:
+
+| | N, k | interleaved | shielded | |
+|---|---|---|---|---|
+| STME-0999 | 19.7, 6 (30%) | 8.138e-9 | 5.517e-9 | interleaving **+47%** |
+| STME-0999_2 | 10.75, 5 (47%) | 5.006e-9 | 4.988e-9 | interleaving **+0.4%** |
+
+Interleaving is ahead on both, by a margin that grows as the shield fraction falls — which is the behaviour
+the texts describe.
 
 **Shield fraction is what actually settles the question.** Turn terms only, at c_w ≈ c_t and N = 10.75:
 
