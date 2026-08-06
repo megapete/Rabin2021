@@ -330,7 +330,37 @@ actor PhaseModel /*:Codable */ {
             result[nextSegment.radialPos] = max(result[nextSegment.radialPos] ?? 0.0, woundInShield.radialBuildAdder)
         }
 
+        // A coil can be held wider than its own shields require - see radialBuildUpFloor. A floor rather than an addition, so
+        // that it composes with the shields above it the same way one Segment's requirement composes with another's: the widest
+        // demand wins, and applying it twice changes nothing.
+        for (coil, floor) in self.radialBuildUpFloor {
+
+            result[coil] = max(result[coil] ?? 0.0, floor)
+        }
+
         return result
+    }
+
+    /// A per-coil minimum radial build-up, keyed by radial position, applied by `ApplyRadialBuildUp` exactly as though wound-in
+    /// shields had asked for it.
+    ///
+    /// **This exists to make a comparison honest, and it is the only thing it is for.** Fitting a wound-in shield does two
+    /// separate things to a coil: it adds the shield turns, and it makes the disc radially wider. The second is not a side effect
+    /// to be ignored - a wider disc has more face area, so its disc-to-disc capacitance rises with it (C_dd goes as
+    /// R_out² − R_in²), and on the STME-0999 fixture a 6-turn shield widened the HV by 22%, worth 24% more face area. So a shielded
+    /// coil measured against an unshielded one of the ORIGINAL width is being credited for both effects at once, and there is no
+    /// way to tell from the result how much of the gain was the shield.
+    ///
+    /// Setting this to a shield's `radialBuildAdder` on a coil that carries no shield puts the plain and interleaved cases at the
+    /// shielded case's geometry, so the only thing left different between them is the electrical treatment.
+    ///
+    /// It is deliberately **not** something the UI can set. A design does not get to be wider because someone wanted a fairer
+    /// comparison; this is a research knob, reached from `SelfTest` only.
+    private(set) var radialBuildUpFloor:[Int:Double] = [:]
+
+    func SetRadialBuildUpFloor(_ floor:[Int:Double]) {
+
+        self.radialBuildUpFloor = floor
     }
 
     /// Rebuild the radial geometry of the entire model from the pristine design-file layout plus the current set of wound-in

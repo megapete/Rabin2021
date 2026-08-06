@@ -122,6 +122,37 @@ Three things to know before reading that table:
   shielded pair, taking the HV radial build from 56.767 to 69.264 mm; `ApplyRadialBuildUp` then grows `legCenters`
   760 → 784.994 mm and the tank depth 1343.3 → 1368.3 mm to hold the clearances. C_g rises only 1.7% because of it.
 
+#### The STME-0999_2 variants, and why they invert the answer
+
+The second fixture is the regime intershielding actually exists for: **25 MVA, 120 kV wye / 26.4 kV delta, both coils
+disc-wound in CTC**, 550 kV BIL. CTC is a large stranded conductor, so a disc holds few turns — 688 over 64 discs, 10.75
+each — and interleaving a CTC winding is essentially impossible to manufacture. The interleaved scenario here is a
+**reference**, not a proposal: it says what the shield is measured against.
+
+**All three hold the HV at the same radial build**, the one the 5-turn shield needs (+10.414 mm = 5 × 2.083 mm over
+paper), via `Scenario.matchedBuild` → `PhaseModel.radialBuildUpFloor`. That is not a nicety. Fitting a shield does *two*
+things — it adds shield turns and it widens the disc, and a wider disc has more face area, so C_dd rises on its own
+(C_dd ∝ R_out²−R_in²). On the first fixture the 6-turn shield widened the HV 22%, worth 24% more face area, and there
+was no way to tell from the result how much of the gain was the shield. With the floor set, all three runs come out with
+identical ID/OD/build, identical `legCenters` and tank depth, and **identical C_g to 7 figures** — so the only thing left
+different is the electrical treatment. `SelfTest.SizeShield` sizes the wire for both the fitting and the matching path,
+so a "matched" geometry cannot silently fail to match.
+
+| C_s per pair, identical geometry | | α fitted | line-end gradient | worst section | peak |
+|---|---|---|---|---|---|
+| plain | 6.451e-10 (1.00×) | 8.49 | 23.25× | 74.4 kV / 1 disc | 1.210 p.u. |
+| interleaved | 5.925e-09 (**9.18×**) | 2.69 | 3.18× | 46.7 kV / 2 discs | 1.002 p.u. |
+| 5-turn shield | 7.377e-09 (**11.44×**) | 2.43 | 2.63× | **39.6 kV** / 2 discs | 1.002 p.u. |
+
+**The shield beats full interleaving here**, by 28% of interleaving's own gain — the opposite of the first fixture, where
+interleaving won (22.7× against 19.8×). The crossover is turns per disc: interleaving's benefit grows with N, a shield's
+with n. At N = 19.7 and n = 6 (30% of the turns) interleaving wins; at N = 10.75 and n = 5 (47%) the shield does. That is
+the quantitative form of the shop rule that intershielding is what you use on large-MVA CTC coils — where N is small,
+interleaving is *both* unbuildable and weak.
+
+Note that "plain" in that table is **not the as-designed transformer**: it is the design widened to the shield's build,
+which raises its C_s too. It is the right baseline for isolating the shield and the wrong one for costing the design.
+
 **The interleaved row's low section voltage is the disc-to-disc stress only**, and the report says so at that line.
 Interleaving buys it by winding electrically distant turns side by side, which *raises* the turn-to-turn voltage inside
 each disc — the reason an interleaved winding needs heavier turn paper. Nothing in this harness measures that, and

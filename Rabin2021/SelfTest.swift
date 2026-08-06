@@ -125,12 +125,28 @@ enum SelfTest {
         case woundInShield(coil:Int, turnsPerDisc:Int, connection:Segment.WoundInShieldWire.Connection)
     }
 
+    /// Hold a coil at the radial build a wound-in shield would need, without fitting the shield.
+    ///
+    /// A shield does two things at once - it adds shield turns AND it widens the disc, which raises C_dd on its own because the
+    /// disc has more face area. Measuring a shielded coil against an unshielded one of the original width credits the shield with
+    /// both. Setting this on the plain and interleaved scenarios to the same turn count the shielded scenario uses puts all three
+    /// at one geometry, so the only difference left is the electrical treatment. See `PhaseModel.radialBuildUpFloor`.
+    struct MatchedBuild {
+
+        let coil:Int
+        /// The shield turn count whose radial build is to be matched - the same number the shielded scenario fits.
+        let turnsPerDisc:Int
+        let connection:Segment.WoundInShieldWire.Connection
+    }
+
     /// A complete scripted run.
     struct Scenario {
 
         let name:String
         /// What to do to the winding before terminating it.
         let restructure:Restructure
+        /// Widen a coil to a shield's build without fitting the shield. Nil leaves the geometry as the design file has it.
+        let matchedBuild:MatchedBuild?
         /// The design file's name in the container's Documents folder.
         let fixtureName:String
         /// A sentence about the design, echoed into the report so that a stale report identifies itself.
@@ -162,6 +178,7 @@ enum SelfTest {
 
         return Scenario(name: name,
                         restructure: restructure,
+                        matchedBuild: nil,
                         fixtureName: "STME-0999_AndIn.txt",
                         notes: "4160Y/2400 V LV (48-turn helical), 69 kV delta HV (70-disc continuous), 350 kV full wave on the HV line end. " + notes,
                         terminations: [Termination(coil: 0, end: .bottom, type: .ground),
@@ -193,8 +210,53 @@ enum SelfTest {
         // be graded. Six turns against 19.7 turns per disc. Floating is the dialog's own default connection.
         "STME0999-shield6" : STME0999(name: "STME0999-shield6",
                                       notes: "A 6-turn wound-in shield in every disc pair of the HV.",
-                                      restructure: .woundInShield(coil: 1, turnsPerDisc: 6, connection: .floating))
+                                      restructure: .woundInShield(coil: 1, turnsPerDisc: 6, connection: .floating)),
+
+        // The second fixture, and the one intershielding is actually FOR. STME-0999 is a small unit with 19.7 turns per HV disc,
+        // where interleaving is a perfectly practical option and a 6-turn shield is 30% of the turns; this is a 25 MVA
+        // 120 kV(Y)/26.4 kV(D) unit wound in CTC on BOTH coils, where interleaving is essentially impossible and the HV carries
+        // only 10.75 turns per disc, so a 5-turn shield is about half of them.
+        //
+        // All three variants hold the HV at the SAME radial build - the one the 5-turn shield needs - so that the shielded case is
+        // not quietly credited for the extra disc face area its own wire bought it. See MatchedBuild.
+        "STME0999_2" : STME0999_2(name: "STME0999_2",
+                                  notes: "HV as designed - plain continuous discs, at the 5-turn shield's radial build.",
+                                  restructure: .none,
+                                  matchedBuild: MatchedBuild(coil: 1, turnsPerDisc: 5, connection: .floating)),
+
+        "STME0999_2-interleaved" : STME0999_2(name: "STME0999_2-interleaved",
+                                              notes: "The whole HV winding interleaved, at the 5-turn shield's radial build.",
+                                              restructure: .interleave(coil: 1),
+                                              matchedBuild: MatchedBuild(coil: 1, turnsPerDisc: 5, connection: .floating)),
+
+        "STME0999_2-shield5" : STME0999_2(name: "STME0999_2-shield5",
+                                          notes: "A 5-turn wound-in shield in every disc pair of the HV - about half its turns.",
+                                          restructure: .woundInShield(coil: 1, turnsPerDisc: 5, connection: .floating),
+                                          matchedBuild: nil)
     ]
+
+    /// The STME-0999_2 fixture: 25 MVA, 120 kV wye to 26.4 kV delta, both coils disc-wound in CTC. 550 kV BIL on the HV.
+    ///
+    /// This is the regime wound-in shields exist for. CTC is a large stranded conductor, so a disc holds few turns - 688 turns
+    /// over 64 discs, 10.75 each - and interleaving a CTC winding is essentially impossible to manufacture. The interleaved
+    /// scenario is therefore a REFERENCE rather than a proposal: it says what the shield is being measured against.
+    private static func STME0999_2(name:String, notes:String, restructure:Restructure, matchedBuild:MatchedBuild?) -> Scenario {
+
+        return Scenario(name: name,
+                        restructure: restructure,
+                        matchedBuild: matchedBuild,
+                        fixtureName: "STME-0999_2_AndIn.txt",
+                        notes: "25 MVA. Coil 0 = 26.4 kV delta LV (262 turns, 90 discs), coil 1 = 120 kV wye HV (688 turns, 64 discs). Both coils CTC disc windings. 550 kV full wave on the HV line end. " + notes,
+                        terminations: [Termination(coil: 0, end: .bottom, type: .ground),
+                                       Termination(coil: 0, end: .top, type: .ground),
+                                       Termination(coil: 1, end: .bottom, type: .ground),
+                                       Termination(coil: 1, end: .top, type: .impulse)],
+                        waveFormType: .FullWave,
+                        peakVoltage: 550.0e3,
+                        displaySpan: 100.0e-6,
+                        bandwidth: 10.0e6,
+                        continuumCoil: 1)
+    }
 
     // MARK: Entry point
 
@@ -296,18 +358,47 @@ enum SelfTest {
         // Segments and so rebuilds both the connectors and every matrix in the model.
         Stage("restructuring the winding")
 
-        let restructureOutcome = await ApplyRestructure(scenario.restructure, model: model, controller: controller)
-
-        Stage("reporting the geometry")
-
         text += "RESTRUCTURE\n"
         text += String(repeating: "-", count: 110) + "\n"
-        text += "  \(restructureOutcome)\n\n"
+
+        // The build floor has to be in place before anything recomputes the geometry, so it goes on first. It only
+        // reaches the model when something calls ApplyRadialBuildUp, which every path below ends in.
+        var matchedOutcome:String? = nil
+
+        if let matched = scenario.matchedBuild {
+
+            matchedOutcome = await ApplyMatchedBuild(matched, model: model)
+            text += "  \(matchedOutcome!)\n"
+
+            guard !matchedOutcome!.hasPrefix("FAILED") else {
+
+                return Report(text: text, summary: "FAILED - " + matchedOutcome!)
+            }
+        }
+
+        let restructureOutcome = await ApplyRestructure(scenario.restructure, model: model, controller: controller)
+
+        text += "  \(restructureOutcome)\n"
 
         guard !restructureOutcome.hasPrefix("FAILED") else {
 
             return Report(text: text, summary: "FAILED - " + restructureOutcome)
         }
+
+        // Interleaving and shielding swap Segments, and updateModel ends in recalculateModel, so the floor has already
+        // reached the geometry by now. A scenario that only sets a floor has changed nothing the model has noticed yet,
+        // so it needs the recalculation asked for explicitly - the same reason recalculateModel exists separately from
+        // updateModel, which cannot be called with empty Segment arrays.
+        if matchedOutcome != nil, case .none = scenario.restructure {
+
+            Stage("recomputing the geometry for the matched build")
+            await controller.recalculateModel(reinitialize: false)
+            text += "  (recalculated: nothing was restructured, so the build floor needed its own pass)\n"
+        }
+
+        text += "\n"
+
+        Stage("reporting the geometry")
 
         text += await GeometryReport(model: model)
 
@@ -393,6 +484,89 @@ enum SelfTest {
 
     // MARK: Restructuring
 
+    /// The result of sizing a wound-in shield for a coil.
+    private enum ShieldSizing {
+
+        case ok(wire:Segment.WoundInShieldWire, discTurns:Double, sections:[BasicSection], segments:[Segment])
+        case failed(String)
+    }
+
+    /// Size the shield wire for `turnsPerDisc` turns in every disc of a coil, and gather what fitting it would need.
+    ///
+    /// Both the scenario that actually FITS the shield and the one that merely matches its radial build come through here, for
+    /// the same reason `DielectricStress` and `SeriesCapacitance` share `DiscToDiscLayerStack`: if the two sized the wire
+    /// separately they could disagree about how wide it is, and a "matched" geometry that is not actually matched would silently
+    /// invalidate the comparison it exists to make.
+    private static func SizeShield(coil:Int, turnsPerDisc:Int, connection:Segment.WoundInShieldWire.Connection, model:PhaseModel) async -> ShieldSizing {
+
+        let segments = await model.CoilSegments().filter({ $0.radialPos == coil })
+        let sections = segments.flatMap({ $0.basicSections })
+
+        guard !sections.isEmpty else {
+
+            return .failed("coil \(coil) has no sections")
+        }
+
+        // A shield crosses over at the outermost turn of a PAIR, so the pair is the unit.
+        guard sections.count % 2 == 0 else {
+
+            return .failed("coil \(coil) has \(sections.count) discs - a wound-in shield needs an even number")
+        }
+
+        guard let discTurns = sections.map({ $0.N }).min(), discTurns > 1.0 else {
+
+            return .failed("coil \(coil) has too few turns per disc to carry a shield")
+        }
+
+        // There are only N − 1 spaces between the turns of a disc, which is the ceiling GetWoundInShieldDialog enforces on the
+        // same figure.
+        let maximumTurns = Int(discTurns.rounded(.down)) - 1
+
+        guard turnsPerDisc >= 1, turnsPerDisc <= maximumTurns else {
+
+            return .failed("\(turnsPerDisc) shield turns per disc, but coil \(coil) allows 1 to \(maximumTurns) (N = \(String(format: "%.2f", discTurns)))")
+        }
+
+        // The paper on the shield wire is sized from the working turn-to-shield voltage, so the model has to know its volts per
+        // turn - which recalculateModel has already set from the design file.
+        let voltsPerTurn = await model.voltsPerTurn
+
+        guard voltsPerTurn > 0.0 else {
+
+            return .failed("the model has no volts/turn, so the shield paper cannot be sized")
+        }
+
+        let wire = Segment.WoundInShieldWire.Standard(connection: connection,
+                                                      maxTurnsPerDisc: turnsPerDisc,
+                                                      discTurns: discTurns,
+                                                      voltsPerTurn: voltsPerTurn,
+                                                      turnInsulation: sections[0].wdgData.turn.turnInsulation)
+
+        return .ok(wire: wire, discTurns: discTurns, sections: sections, segments: segments)
+    }
+
+    /// Hold a coil at the radial build a wound-in shield would need, without fitting the shield. See `MatchedBuild`.
+    private static func ApplyMatchedBuild(_ matched:MatchedBuild, model:PhaseModel) async -> String {
+
+        switch await SizeShield(coil: matched.coil, turnsPerDisc: matched.turnsPerDisc, connection: matched.connection, model: model) {
+
+        case .failed(let why):
+
+            return "FAILED: matched build: \(why)"
+
+        case .ok(let wire, _, _, _):
+
+            // The same figure RadialBuildUpByCoil would read off a fitted shield: turns per disc times the over-paper radial
+            // dimension of one shield turn.
+            let adder = Segment.WoundInShield(wire: wire, turnsPerDisc: matched.turnsPerDisc, pairCount: 1).radialBuildAdder
+
+            await model.SetRadialBuildUpFloor([matched.coil : adder])
+
+            return String(format: "coil %d held at the radial build of a %d-turn shield: +%.3f mm (%d turns x %.3f mm over paper)",
+                          matched.coil, matched.turnsPerDisc, adder * 1000.0, matched.turnsPerDisc, wire.overPaperRadial * 1000.0)
+        }
+    }
+
     /// Interleave a coil, or put a wound-in shield into every one of its disc pairs.
     ///
     /// This is the model-level half of `AppController.doInterleaveSelection` and `doAddWoundInShields`, without the
@@ -453,50 +627,17 @@ enum SelfTest {
 
         case .woundInShield(let coil, let turnsPerDisc, let connection):
 
-            let segments = await model.CoilSegments().filter({ $0.radialPos == coil })
-            let sections = segments.flatMap({ $0.basicSections })
+            let sizing = await SizeShield(coil: coil, turnsPerDisc: turnsPerDisc, connection: connection, model: model)
 
-            guard !sections.isEmpty else {
+            guard case .ok(let wire, _, let sections, let segments) = sizing else {
 
-                return "FAILED: coil \(coil) has no sections to shield"
+                if case .failed(let why) = sizing {
+
+                    return "FAILED: \(why)"
+                }
+
+                return "FAILED: the shield could not be sized"
             }
-
-            // A shield crosses over at the outermost turn of a PAIR, so the pair is the unit here too.
-            guard sections.count % 2 == 0 else {
-
-                return "FAILED: coil \(coil) has \(sections.count) discs - a wound-in shield needs an even number"
-            }
-
-            guard let discTurns = sections.map({ $0.N }).min(), discTurns > 1.0 else {
-
-                return "FAILED: coil \(coil) has too few turns per disc to carry a shield"
-            }
-
-            // There are only N − 1 spaces between the turns of a disc, which is the ceiling GetWoundInShieldDialog
-            // enforces on the same figure.
-            let maximumTurns = Int(discTurns.rounded(.down)) - 1
-
-            guard turnsPerDisc >= 1, turnsPerDisc <= maximumTurns else {
-
-                return "FAILED: \(turnsPerDisc) shield turns per disc, but coil \(coil) allows 1 to \(maximumTurns) (N = \(String(format: "%.2f", discTurns)))"
-            }
-
-            // The paper on the shield wire is sized from the working turn-to-shield voltage, so the model has to know
-            // its volts per turn - which recalculateModel has already set from the design file.
-            let voltsPerTurn = await model.voltsPerTurn
-
-            guard voltsPerTurn > 0.0 else {
-
-                return "FAILED: the model has no volts/turn, so the shield paper cannot be sized"
-            }
-
-            let turnInsulation = sections[0].wdgData.turn.turnInsulation
-
-            let wire = Segment.WoundInShieldWire.Standard(connection: connection,
-                                                          maxTurnsPerDisc: turnsPerDisc,
-                                                          discTurns: discTurns,
-                                                          voltsPerTurn: voltsPerTurn,
-                                                          turnInsulation: turnInsulation)
 
             let core = await model.core
             var paired:[Segment] = []
