@@ -1803,8 +1803,10 @@ actor PhaseModel /*:Codable */ {
                 
             }
             
-            // Add the shunt capacitances to ground for the outermost coil
-            let outerCapacitance = try await OuterShuntCapacitance()
+            // Add the shunt capacitances to ground for the outermost coil. The tank and the adjacent phase are both ground here -
+            // see OuterShuntCapacitance for what that assumes - so they are distributed as a single figure.
+            let outerTerms = try await OuterShuntCapacitance()
+            let outerCapacitance = outerTerms.tank + outerTerms.adjacentPhase
             let referenceHt = self.nodeStore[coilTopNodes.last!].z - self.nodeStore[innerFirstNode].z
             referenceZero = self.nodeStore[innerFirstNode].z
             let faradsPerMeter = outerCapacitance / referenceHt
@@ -1875,8 +1877,24 @@ actor PhaseModel /*:Codable */ {
         }
     }
     
-    // Calculate the capacitance to the tank and to the other coils of the outermost coil (per Kulkarni 7.15)
-    func OuterShuntCapacitance() async throws -> Double {
+    /// The outermost coil's shunt capacitance to everything outside it: the tank, and the outermost coil of the adjacent phase
+    /// (per Kulkarni 7.15).
+    ///
+    /// **Returned split rather than summed**, because the two terms are not the same kind of thing and the split is routinely
+    /// surprising. On a design with generous leg centres the tank term dominates, as one would expect; on a tight one the
+    /// phase-to-phase term does, and by a lot. Both go into the same 1/acosh(s/R), but the tank sits half a tank-depth away while
+    /// the adjacent phase sits half a leg-centre away, and acosh is steep near 1 - on the STME-0999 fixture (760 mm leg centres,
+    /// 693.9 mm outermost OD, so 66 mm between phases) acosh(1.0953) = 0.433 against acosh(1.936) = 1.279, and the phase-to-phase
+    /// term comes out **62%** of the total. A hand calculation of "coil to tank" that is checked against the sum will look wrong
+    /// by a factor of 2.6 when nothing is wrong at all.
+    ///
+    /// Both are booked to ground by the caller, which assumes the adjacent phases are at ground potential. That is the standard
+    /// impulse-test condition - the untested phases are grounded - so it is right for what this program computes, but it is an
+    /// assumption and not a geometric fact.
+    ///
+    /// - Note: The phase-to-phase term counts **one** neighbouring phase, which is an OUTER leg of a three-legged core. A centre
+    /// leg has a neighbour on both sides and would take twice this term.
+    func OuterShuntCapacitance() async throws -> (tank:Double, adjacentPhase:Double) {
 
         guard let lastCoilSeg = self.CoilSegments().last else {
 
@@ -1915,7 +1933,7 @@ actor PhaseModel /*:Codable */ {
             // thing directly - the two-cylinder result D.28 is πε0/cosh⁻¹(s/R), exactly half the cylinder-to-plane D.30 used above.
             let Ccoils = 0.5 * firstTermCoils * secondTermCoil
 
-            return Ctank + Ccoils
+            return (tank: Ctank, adjacentPhase: Ccoils)
         }
         catch {
 

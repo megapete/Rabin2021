@@ -87,9 +87,17 @@ nominal 3 mm and 4 mm unshrunk, 1379 turns at 19.7 per disc) and compares the co
 
 **α is reported as a bracket, not a number.** DelVecchio's C_g is capacitance to a grounded surround; a real phase has
 another winding in the way, here grounded at both ends and so *nearly* — not exactly — an equipotential. So the report
-gives `α` from the direct (tank/core) C_g alone and again with the coil-to-coil term folded in, and the answer should
-land between them. As of 2026-08-06 the HV coil gives **5.15 / 12.57 with a fitted 10.36**, and the local d(ln V)/dx
-sits at 9.3 mid-coil rising to 10.8 near the line end.
+gives `α` from the C_g booked straight to ground alone and again with the coil-to-coil term folded in, and the answer
+should land between them. As of 2026-08-06 the HV coil gives **5.15 / 12.57 with a fitted 10.36**, and the local
+d(ln V)/dx sits at 9.3 mid-coil rising to 10.8 near the line end.
+
+**The C_g "booked to ground" of the outermost coil is not the tank.** It is the tank *plus the adjacent phase*, and on
+this fixture the phase-to-phase term is **62%** of it (1.759e-10 against 1.085e-10) — 760 mm leg centres against a
+693.9 mm outermost OD leaves only 66 mm between phases, and `acosh` is steep near 1. `OuterShuntCapacitance` therefore
+returns the two **split**, and both the geometry section and the α line print the split, because a hand calculation of
+coil-to-tank checked against the sum looks wrong by a factor of 2.6 when nothing is wrong. Two assumptions live in that
+sum and neither is geometric: the adjacent phases are taken to be **at ground potential** (true in an impulse test, where
+the untested phases are grounded), and **one** neighbour is counted, i.e. an **outer** leg — a centre leg has two.
 
 Two things learned from the first run, both worth keeping:
 

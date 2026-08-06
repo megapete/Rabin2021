@@ -489,7 +489,20 @@ enum SelfTest {
 
             let ground = await GroundCapacitance(model: model, coil: coil)
 
-            text += "    Ground C direct: \(Farads(ground.direct))   to other coils: \(Farads(ground.toOtherCoils))\n\n"
+            text += "    Ground C direct: \(Farads(ground.direct))   to other coils: \(Farads(ground.toOtherCoils))\n"
+
+            // The outermost coil's direct-to-ground figure is two very different things added together, and the split
+            // is worth printing because it is routinely surprising - see OuterShuntCapacitance. Without it, a hand
+            // calculation of "coil to tank" checked against this line looks wrong when nothing is.
+            if coil == coilCount - 1, let outer = try? await model.OuterShuntCapacitance() {
+
+                let total = outer.tank + outer.adjacentPhase
+                text += "      of which:      to tank \(Farads(outer.tank)), to the adjacent phase \(Farads(outer.adjacentPhase))"
+                text += total > 0.0 ? String(format: "  (%.0f%% phase-to-phase)\n", 100.0 * outer.adjacentPhase / total) : "\n"
+                text += "                     phase-to-phase gap: \(Millimetres(core.legCenters - 2.0 * (await first.r2)))  (one neighbouring phase - an OUTER leg)\n"
+            }
+
+            text += "\n"
         }
 
         return text
@@ -576,7 +589,7 @@ enum SelfTest {
     /// its capacitance from the HV behaves almost like capacitance to ground. Almost, not exactly: it is a winding
     /// with its own series capacitance, not an equipotential surface. Rather than pick one, both are reported:
     ///
-    ///     alphaDirect = sqrt(Cg_direct / Cs)                    - lower bound, tank and core only
+    ///     alphaDirect = sqrt(Cg_direct / Cs)                    - lower bound, tank and adjacent phase only
     ///     alphaTotal  = sqrt((Cg_direct + Cg_toOtherCoils) / Cs) - upper bound, the LV counted as ground
     ///
     /// The computed distribution should land BETWEEN the two curves, nearer the alphaTotal one. If it lands outside
@@ -651,7 +664,11 @@ enum SelfTest {
         text += "  Driven end:            \(drivenAtTop ? "top" : "bottom")\n"
         text += "  Nodes compared:        \(points.count)\n"
         text += "  Cs (whole winding):    \(Farads(seriesCapacitance))\n"
-        text += "  Cg direct (tank/core): \(Farads(ground.direct))\n"
+
+        // NOT "to the tank". For the outermost coil this is the tank AND the adjacent phase, and on a design with tight
+        // leg centres the second is the larger of the two - see OuterShuntCapacitance and the split printed in the
+        // geometry section above. Labelling it "tank" here once cost an afternoon.
+        text += "  Cg booked to ground:   \(Farads(ground.direct))   (tank + adjacent phase - see the split above)\n"
         text += "  Cg to other coils:     \(Farads(ground.toOtherCoils))\n"
 
         if ground.withinCoil > 0.0 {
@@ -660,7 +677,7 @@ enum SelfTest {
         }
 
         text += "\n"
-        text += "  alpha (direct Cg only):    \(String(format: "%8.4f", alphaDirect))\n"
+        text += "  alpha (Cg to ground only): \(String(format: "%8.4f", alphaDirect))\n"
         text += "  alpha (Cg incl. LV):       \(String(format: "%8.4f", alphaTotal))\n"
         text += "  alpha (fitted to model):   \(String(format: "%8.4f", alphaFitted))\n"
 
@@ -670,7 +687,7 @@ enum SelfTest {
         // How far the computed distribution is from each continuum curve. Both errors are absolute in per-unit of the
         // applied crest, which is the natural unit here: a 0.01 departure means one per cent of the crest, wherever on
         // the winding it happens.
-        for (name, value) in [("direct Cg", alphaDirect), ("Cg incl. LV", alphaTotal), ("fitted", alphaFitted)] {
+        for (name, value) in [("Cg to ground", alphaDirect), ("Cg incl. LV", alphaTotal), ("fitted", alphaFitted)] {
 
             let deviation = Deviation(points: points, alpha: value)
             text += "  vs. alpha = \(String(format: "%7.4f", value)) (\(name)):  max \(String(format: "%.5f", deviation.max)) p.u. at x = \(String(format: "%.3f", deviation.atX)),  rms \(String(format: "%.5f", deviation.rms)) p.u.\n"
@@ -692,7 +709,7 @@ enum SelfTest {
         text += "  Line-end gradient over the end section, as a multiple of the average gradient:\n"
         text += "    model:                        \(String(format: "%8.4f", modelEnhancement))\n"
 
-        for (name, value) in [("direct Cg", alphaDirect), ("Cg incl. LV", alphaTotal), ("fitted", alphaFitted)] {
+        for (name, value) in [("Cg to ground", alphaDirect), ("Cg incl. LV", alphaTotal), ("fitted", alphaFitted)] {
 
             let continuumDrop = 1.0 - ContinuumShape(alpha: value, x: points[points.count - 2].x)
             text += "    continuum, \(name):\(String(repeating: " ", count: max(1, 18 - name.count)))\(String(format: "%8.4f", lastSpan > 0.0 ? continuumDrop / lastSpan : 0.0))"
