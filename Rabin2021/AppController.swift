@@ -707,6 +707,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         // sized against the working stress between a shield turn and the coil turns beside it.
         await model.SetVoltsPerTurn(voltsPerTurn)
 
+        // How many neighbouring phases the outermost coil is charged for. A polyphase unit is modelled as its CENTRE leg, which
+        // has a neighbour on both sides and is therefore the worst case for C_g and so for alpha - see PhaseModel's
+        // adjacentPhaseCount. A single-phase unit has no neighbour, and used to be charged for one anyway.
+        await model.SetAdjacentPhaseCount(excelFile.numPhases > 1 ? 2 : 0)
+
         var kvas:[Double] = Array(repeating: 0.0, count: terms.count)
         kvas[1] = refKVA
         var otherTermskVA = refKVA

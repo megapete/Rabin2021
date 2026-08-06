@@ -499,7 +499,9 @@ enum SelfTest {
                 let total = outer.tank + outer.adjacentPhase
                 text += "      of which:      to tank \(Farads(outer.tank)), to the adjacent phase \(Farads(outer.adjacentPhase))"
                 text += total > 0.0 ? String(format: "  (%.0f%% phase-to-phase)\n", 100.0 * outer.adjacentPhase / total) : "\n"
-                text += "                     phase-to-phase gap: \(Millimetres(core.legCenters - 2.0 * (await first.r2)))  (one neighbouring phase - an OUTER leg)\n"
+                let neighbours = await model.adjacentPhaseCount
+                let legDescription = neighbours == 0 ? "single phase - no neighbour" : (neighbours == 2 ? "a CENTRE leg" : "\(neighbours) neighbour(s)")
+                text += "                     phase-to-phase gap: \(Millimetres(core.legCenters - 2.0 * (await first.r2)))  (\(neighbours) neighbouring phase(s) - \(legDescription))\n"
             }
 
             text += "\n"

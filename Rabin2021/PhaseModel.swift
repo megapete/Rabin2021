@@ -107,6 +107,29 @@ actor PhaseModel /*:Codable */ {
         self.voltsPerTurn = voltsPerTurn
     }
 
+    /// How many neighbouring phases the outermost coil sees, for the phase-to-phase term of `OuterShuntCapacitance`.
+    ///
+    /// **Two by default, which is the CENTRE leg of a three-legged core, and that is deliberate**: it is the highest C_g the
+    /// geometry can produce, so the highest alpha = sqrt(C_g/C_s), so the steepest initial distribution and the largest departure
+    /// from the final linear one. Both of the things this program exists to find - the line-end turn-to-turn gradient and the
+    /// mid-winding oscillation envelope - get worse with alpha, so modelling the centre leg is the conservative choice, and a
+    /// design tool should be conservative by default rather than by remembering to be.
+    ///
+    /// One qualification, so that "worst case" is not overclaimed. The tank term of `OuterShuntCapacitance` uses `tankDepth/2`,
+    /// which is the distance to the FRONT AND BACK walls and is the same for every leg; the tank's END walls, which only an outer
+    /// leg is near, are not modelled at all. So an outer leg is missing a term that the centre leg genuinely does not have. That
+    /// term is much smaller than a whole phase-to-phase gap - an end wall is a few hundred millimetres away where the adjacent
+    /// phase is tens - so the centre leg still comes out worst, but it is worst by less than the arithmetic here suggests.
+    ///
+    /// Set to 0 for a single-phase unit, which has no neighbour at all. `AppController.recalculateModel` derives this from the
+    /// design file's phase count; before it does, the default stands.
+    private(set) var adjacentPhaseCount:Int = 2
+
+    func SetAdjacentPhaseCount(_ count:Int) {
+
+        self.adjacentPhaseCount = max(0, count)
+    }
+
     /// Errors that can be thrown by some routines
     struct PhaseModelError:LocalizedError
     {
@@ -1892,8 +1915,8 @@ actor PhaseModel /*:Codable */ {
     /// impulse-test condition - the untested phases are grounded - so it is right for what this program computes, but it is an
     /// assumption and not a geometric fact.
     ///
-    /// - Note: The phase-to-phase term counts **one** neighbouring phase, which is an OUTER leg of a three-legged core. A centre
-    /// leg has a neighbour on both sides and would take twice this term.
+    /// - Note: The phase-to-phase term is for **`adjacentPhaseCount`** neighbours - 2 by default, the centre leg of a three-legged
+    /// core, which is the worst case. See that property for why, and for what "worst case" does and does not cover.
     func OuterShuntCapacitance() async throws -> (tank:Double, adjacentPhase:Double) {
 
         guard let lastCoilSeg = self.CoilSegments().last else {
@@ -1931,7 +1954,10 @@ actor PhaseModel /*:Codable */ {
             // Kulkarni, immediately below 7.15: the capacitance between the outermost windings of two phases is HALF the value given by
             // 7.15, with s equal to half the distance between the two winding axes (which is what sCoils is). Appendix D says the same
             // thing directly - the two-cylinder result D.28 is πε0/cosh⁻¹(s/R), exactly half the cylinder-to-plane D.30 used above.
-            let Ccoils = 0.5 * firstTermCoils * secondTermCoil
+            //
+            // Once per neighbouring phase. Each side is its own gap between its own pair of cylinders, so the two sides of a centre
+            // leg add rather than sharing anything - and a single-phase unit, with adjacentPhaseCount 0, gets no such term at all.
+            let Ccoils = Double(self.adjacentPhaseCount) * 0.5 * firstTermCoils * secondTermCoil
 
             return (tank: Ctank, adjacentPhase: Ccoils)
         }

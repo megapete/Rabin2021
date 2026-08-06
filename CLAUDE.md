@@ -88,16 +88,12 @@ nominal 3 mm and 4 mm unshrunk, 1379 turns at 19.7 per disc) and compares the co
 **α is reported as a bracket, not a number.** DelVecchio's C_g is capacitance to a grounded surround; a real phase has
 another winding in the way, here grounded at both ends and so *nearly* — not exactly — an equipotential. So the report
 gives `α` from the C_g booked straight to ground alone and again with the coil-to-coil term folded in, and the answer
-should land between them. As of 2026-08-06 the HV coil gives **5.15 / 12.57 with a fitted 10.36**, and the local
-d(ln V)/dx sits at 9.3 mid-coil rising to 10.8 near the line end.
+should land between them. As of 2026-08-06 the HV coil gives **6.56 / 13.21 with a fitted 11.17**, and the local
+d(ln V)/dx sits at 9.8 mid-coil rising to 11.5 near the line end.
 
-**The C_g "booked to ground" of the outermost coil is not the tank.** It is the tank *plus the adjacent phase*, and on
-this fixture the phase-to-phase term is **62%** of it (1.759e-10 against 1.085e-10) — 760 mm leg centres against a
-693.9 mm outermost OD leaves only 66 mm between phases, and `acosh` is steep near 1. `OuterShuntCapacitance` therefore
-returns the two **split**, and both the geometry section and the α line print the split, because a hand calculation of
-coil-to-tank checked against the sum looks wrong by a factor of 2.6 when nothing is wrong. Two assumptions live in that
-sum and neither is geometric: the adjacent phases are taken to be **at ground potential** (true in an impulse test, where
-the untested phases are grounded), and **one** neighbour is counted, i.e. an **outer** leg — a centre leg has two.
+**The C_g "booked to ground" of the outermost coil is not the tank** — it is the tank *plus the adjacent phases*, which
+are **76%** of it here. The report prints the split for exactly that reason; see `OuterShuntCapacitance` and
+`adjacentPhaseCount` under the capacitance section above.
 
 Two things learned from the first run, both worth keeping:
 
@@ -164,6 +160,30 @@ The physics model is layered from smallest to largest unit. Understanding this h
   **The τ_p convention is the landmine in this code.** DelVecchio's τ_p is the **two-sided** paper thickness of a turn (his worked example: "The 2-sided paper thickness is 1 mm", then τ_p = 0.001), and the Excel design file's insulation fields are two-sided totals as well. Three places depend on that silently: `tp` in `DiscToDiscSeriesCapacitance`, `tau` in `CapacitanceTurnToTurn`, and the `height - tp` that turns disc height into bare copper height in the same function. C_tt goes as 1/τ_p, so a stray factor of 2 moves **every** disc capacitance in the model by 2×. Both sites carried a commented-out `2.0 *` for years; do not put it back. Two exceptions, each deliberate and noted at its declaration: `Segment.staticRingInsulationPerSide` is a **per-side** figure (3 mm), and `woundInShieldMinInsulationPerSide` likewise (0.006") — everything downstream of it doubles it. `WoundInShieldWire.insulation` is two-sided like the rest.
 
   Note the interaction with `CapacitanceTurnToTurn(effectiveInsulation:)`: that parameter overrides the **gap** (τ_avg = ½(τ_p + τ_w), for a coil turn facing a shield turn) but `h` keeps using the coil turn's own τ_p, because h is the coil turn's bare copper height and does not change because a shield sits beside it. With the default `nil` the two are the same number and the behaviour is byte-identical to before.
+
+  **`OuterShuntCapacitance` is two terms, and on a tight design the one nobody expects is the larger.** It returns the tank and
+  phase-to-phase capacitances **split**, because they are routinely mistaken for each other: on the STME-0999 fixture *each*
+  neighbouring phase contributes 1.759e-10 against the tank's 1.085e-10, so at the default two neighbours the phase-to-phase term is
+  **76%** of the total. 760 mm leg centres against a 693.9 mm outermost OD leave 66 mm between phases, and `acosh` is steep near 1 —
+  `acosh(1.0953) = 0.433` against `acosh(1.936) = 1.279`. A hand calculation of coil-to-tank checked against the sum looks wrong by
+  4× when nothing is. The caller adds them straight back together and books both to ground, which assumes **the adjacent phases are
+  at ground potential** — true in an impulse test, where the untested phases are grounded, but an assumption and not a geometric fact.
+
+  **`PhaseModel.adjacentPhaseCount` is 2, i.e. the CENTRE leg, on purpose.** That is the highest C_g the geometry can give, so the
+  highest α = √(C_g/C_s), so the steepest initial distribution. `AppController.recalculateModel` sets it from the design file: 2 for
+  a polyphase unit, **0 for a single-phase one**, which has no neighbour and used to be charged for one anyway.
+
+  Two things not to overclaim about that "worst case", both measured on the fixture when the default changed from 1 neighbour to 2:
+
+  - **It is worst for the dielectric numbers, not for everything.** The line-end gradient went 29.05 → 30.31 × average and the worst
+    section voltage 63.0 → 65.4 kV, which is the point. But the mid-winding envelope went *down*, 1.247 → 1.236 p.u.: more shunt C
+    diverts more of the surge to ground, and the classical "envelope grows with α" is a result for a lossless uniform line, not for
+    this network. The move is under 1% either way, so the honest summary is **conservative for turn-to-turn stress, neutral for the
+    envelope**.
+  - **The tank term does not distinguish the legs at all.** It uses `tankDepth/2`, the distance to the **front and back** walls,
+    which is the same for every leg; the tank's **end** walls, which only an outer leg is near, are not modelled. So an outer leg is
+    missing a term the centre leg genuinely does not have. It is much smaller than a whole phase-to-phase gap, so the centre leg is
+    still worst — by less than the arithmetic suggests.
 
   Other structural facts worth knowing before editing:
   - **`DiscToDiscSeriesCapacitance` gaps are measured between *insulated* surfaces.** A disc's `z1`/`z2` are over-paper and a static ring's rect is its overall wrapped thickness (`stdStaticRingThickness`, 5/8"), so the gap handed in is pure key-spacer/oil and every solid layer is added separately. That is exactly why 12.52 uses τ_p and not 2τ_p for a disc-disc gap: each disc contributes half of its two-sided paper. It takes `innerRadius`/`outerRadius` as **explicit parameters** rather than reading them off the `BasicSection`, because a BasicSection carries the pristine design-file radii while the live geometry lives on the Segment — pass `self.r1`/`self.r2`.
