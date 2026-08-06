@@ -140,15 +140,19 @@ so a "matched" geometry cannot silently fail to match.
 
 | C_s per pair, identical geometry | | α fitted | line-end gradient | worst section | peak |
 |---|---|---|---|---|---|
-| plain | 6.451e-10 (1.00×) | 8.49 | 23.25× | 74.4 kV / 1 disc | 1.210 p.u. |
-| interleaved | 5.925e-09 (**9.18×**) | 2.69 | 3.18× | 46.7 kV / 2 discs | 1.002 p.u. |
-| 5-turn shield | 7.377e-09 (**11.44×**) | 2.43 | 2.63× | **39.6 kV** / 2 discs | 1.002 p.u. |
+| plain | 7.063e-10 (1.00×) | 8.22 | 23.09× | 73.1 kV / 1 disc | 1.195 p.u. |
+| 5-turn shield | 5.051e-09 (**7.15×**) | 2.94 | 3.17× | 47.0 kV / 2 discs | 1.002 p.u. |
+| interleaved | 6.111e-09 (**8.65×**) | 2.69 | 3.17× | 46.5 kV / 2 discs | 1.002 p.u. |
 
-**The shield beats full interleaving here**, by 28% of interleaving's own gain — the opposite of the first fixture, where
-interleaving won (22.7× against 19.8×). The crossover is turns per disc: interleaving's benefit grows with N, a shield's
-with n. At N = 19.7 and n = 6 (30% of the turns) interleaving wins; at N = 10.75 and n = 5 (47%) the shield does. That is
-the quantitative form of the shop rule that intershielding is what you use on large-MVA CTC coils — where N is small,
-interleaving is *both* unbuildable and weak.
+**Interleaving is the higher-capacitance method, by 21% here** — as the literature says it should be. Getting that right
+took fixing the shield paper rule (see `WoundInShieldWire.Standard`); with the old shop-minimum rule the shield came out
+*ahead*, and the whole difference was `c_w/c_t`.
+
+Note what the last two columns say, though: a 21% edge in C_s buys **nothing measurable** on this design. Line-end
+gradient 3.17 for both, worst section 46.5 against 47.0 kV, envelope 1.002 p.u. for both. At α ≈ 2.7–2.9 the initial
+distribution is already close enough to linear that more C_s has nothing left to flatten, so the choice between the two
+methods here is a manufacturing decision, not a dielectric one — which is the answer a designer actually wants, and it is
+the opposite of what the C_s column alone suggests.
 
 Note that "plain" in that table is **not the as-designed transformer**: it is the design widened to the shield's build,
 which raises its C_s too. It is the right baseline for isolating the shield and the wrong one for costing the design.
@@ -220,6 +224,7 @@ The physics model is layered from smallest to largest unit. Understanding this h
   | general / Stein / static ring / end disc | DV 12.53-54, 12.35, 12.62, 12.63-64 | `Segment.SeriesCapacitance`, `.disc` branch |
   | helical (C_s = 0) | DV 12.41, generalized to unequal gaps | same, `.helical` branch |
   | wound-in shields | DV 12.96-99 | `Segment.WoundInShieldSeriesCapacitance`, `.WoundInShieldPairCapacitance` |
+  | shield wire paper | τ_w = τ_p (see below) | `Segment.WoundInShieldWire.Standard` |
   | C_ll layer-layer | DV 12.60-61, transposed | `Segment.LayerToLayerCapacitance` |
   | coil-to-coil ground capacitance | DV 12.60-61 | `PhaseModel.CoilInnerShuntCapacitance` |
   | coil-to-tank, phase-to-phase | K&K 7.15 (+ App. D.28/D.30) | `PhaseModel.OuterShuntCapacitance` |
@@ -251,6 +256,36 @@ The physics model is layered from smallest to largest unit. Understanding this h
     which is the same for every leg; the tank's **end** walls, which only an outer leg is near, are not modelled. So an outer leg is
     missing a term the centre leg genuinely does not have. It is much smaller than a whole phase-to-phase gap, so the centre leg is
     still worst — by less than the arithmetic suggests.
+
+  **A shield turn is papered like the coil turn it sits against** — `WoundInShieldWire.Standard` takes the largest of the coil
+  turn's own covering, what the working stress needs, and the shop minimum, then rounds up to a whole wrap. This is not cosmetic:
+  **c_w/c_t is exactly τ_p/½(τ_p + τ_w)**, so τ_w = τ_p gives c_w = c_t and a shield-to-turn interface identical to a turn-to-turn
+  one, while a thin-papered shield sits *closer* to the coil copper than another coil turn would and drives c_w/c_t towards 2.
+
+  That single ratio decides whether shields or interleaving win, because at n ≈ N/2 the two methods are within 7% on interface
+  count alone — interleaving's `c_t(N−1)/2` against a shield's `n·c_w·[4β²+1−1/N+1/2N²]`, i.e. 4.875 against 4.557 at N = 10.75,
+  n = 5. Until 2026-08-06 `Standard` clamped τ_w to `woundInShieldMinInsulationPerSide` (0.006″/side) whenever the coil's own paper
+  already satisfied the stress check, which on a CTC coil with τ_p = 1.638 mm gave τ_w = 0.305 mm, c_w/c_t = 1.55, and a 5-turn
+  shield *beating a fully interleaved winding*. Interleaving is the higher-capacitance method; the model now says so. The minimum
+  is still there as a floor and now only bites on a coil whose own covering is under 0.012″ two-sided.
+
+  The fix costs radial build, which is the honest trade: the shield wire goes from 2.083 mm over-paper to 3.454 mm, so five turns
+  take 17.272 mm instead of 10.414 mm.
+
+  The implementation of 12.96-99 itself was checked against the printed page during this and is **exact**: 12.84-12.91 give four
+  voltage differences per shield turn — (V−V_bias), (V−V_bias−ΔV), V_bias, (V_bias−ΔV) — whose squares sum to precisely the code's
+  `4β²+1−2δ+2δ²`. Note 12.90's "This does not depend on i": the shield crosses over at the *outermost* turn while the coil crosses
+  at the innermost, so the shield ramps opposite to the coil and every shield turn holds ~V/2 whatever its radial position. That is
+  structurally the same trick as interleaving, which is why the two land so close at n ≈ N/2 and why c_w/c_t is decisive. Table 12.1
+  is measured on two disks of **10 turns/disk at n = 0, 3, 5, 7, 9**, so n/N up to 0.9 is inside his validated range, not an
+  extrapolation.
+
+  **The interleaved pair is treated inconsistently with the shielded pair, and this is not yet fixed.** An interleaved Segment goes
+  through `SteinParameters.For` — but Stein assumes one radial traverse and a two-disc unit makes two, which is exactly the argument
+  for giving the shielded pair its own route. The interleaved pair also drops the gap *inside* the pair, which the shielded path
+  counts as `Cdd_internal/3`. Direction matters here: on STME-0999_2, Stein gives the interleaved pair 5.969e-09 where the
+  shielded-pair form would give 5.286e-09, so switching it would **lower** interleaving ~13%, not raise it. It was investigated as a
+  possible cause of the shield-versus-interleaving inversion and is *not* one — the cause was the paper rule above.
 
   Other structural facts worth knowing before editing:
   - **`DiscToDiscSeriesCapacitance` gaps are measured between *insulated* surfaces.** A disc's `z1`/`z2` are over-paper and a static ring's rect is its overall wrapped thickness (`stdStaticRingThickness`, 5/8"), so the gap handed in is pure key-spacer/oil and every solid layer is added separately. That is exactly why 12.52 uses τ_p and not 2τ_p for a disc-disc gap: each disc contributes half of its two-sided paper. It takes `innerRadius`/`outerRadius` as **explicit parameters** rather than reading them off the `BasicSection`, because a BasicSection carries the pristine design-file radii while the live geometry lives on the Segment — pass `self.r1`/`self.r2`.

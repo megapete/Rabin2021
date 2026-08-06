@@ -104,7 +104,7 @@ class GetWoundInShieldDialog: NSObject {
 
         let alert = NSAlert()
         alert.messageText = "Add Wound-In Shields"
-        alert.informativeText = "\(self.discCount) disc\(self.discCount == 1 ? "" : "s") selected, \(self.discTurns.rounded(.down) == self.discTurns ? String(Int(self.discTurns)) : String(format: "%.1f", self.discTurns)) turns per disc. The insulation is chosen automatically to keep the working stress between a shield turn and the coil turns beside it under \(Int(Segment.woundInShieldMaxWorkingStress / 1000.0)) V/mm."
+        alert.informativeText = "\(self.discCount) disc\(self.discCount == 1 ? "" : "s") selected, \(self.discTurns.rounded(.down) == self.discTurns ? String(Int(self.discTurns)) : String(format: "%.1f", self.discTurns)) turns per disc. A shield turn is papered like the coil turn it sits against, and thickened further if that would leave the working stress between them above \(Int(Segment.woundInShieldMaxWorkingStress / 1000.0)) V/mm."
         alert.addButton(withTitle: "OK")
         alert.addButton(withTitle: "Cancel")
         alert.accessoryView = self.BuildAccessoryView()

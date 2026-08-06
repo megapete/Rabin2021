@@ -98,6 +98,11 @@ actor Segment: Equatable /*, Hashable */ {
 
     /// The thinnest paper allowed on a shield turn, per side. Everything else here uses two-sided figures, so this gets doubled
     /// before it is compared with anything.
+    ///
+    /// This is a shop floor and nothing more. It does **not** normally set the shield's paper - `WoundInShieldWire.Standard`
+    /// papers a shield turn like the coil turn it sits against, and this only bites on a coil whose own turn covering is thinner
+    /// than 0.012" two-sided. It used to be the governing rule, which put the shield closer to the coil copper than another coil
+    /// turn and inflated c_w; see `Standard` for what that did to the shield-versus-interleaving comparison.
     static let woundInShieldMinInsulationPerSide = 0.006 * meterPerInch
 
     /// The maximum permitted working (ie: power-frequency) stress between a shield turn and a coil turn beside it, in V/m.
@@ -188,14 +193,28 @@ actor Segment: Equatable /*, Hashable */ {
             return self.bareRadial + self.insulation
         }
 
-        /// Build the shield wire for a coil, choosing the paper thickness so that the working stress between a shield turn and the
-        /// coil turns beside it stays under 'woundInShieldMaxWorkingStress'.
+        /// Build the shield wire for a coil.
+        ///
+        /// **A shield turn is papered like the coil turn it sits against, and never less.** That is the governing rule, and the
+        /// withstand calculation below is a check on top of it rather than the thing that sets the thickness. A wound-in shield is
+        /// an open-circuited wire buried in the middle of a disc, at up to half the pair voltage against the turns either side of
+        /// it; nobody wraps that in less paper than the conductor it is shielding, whatever a stress calculation permits.
         ///
         /// The gap between the shield copper and the coil copper is one half-wrap of each. With the two-sided convention used
         /// throughout this file, that gap is exactly ½(τp + τw) - which is also the quantity DelVecchio substitutes for τp when he
         /// forms c_w (p.352), so the same number does both jobs. Hence:
         ///
         ///     gap = Vmax / Emax    and    gap = ½(τp + τw)    ->    τw = 2·gap − τp
+        ///
+        /// and the answer is the largest of that, the coil turn's own covering, and the shop minimum.
+        ///
+        /// **This is not a cosmetic choice - it decides whether shields or interleaving come out ahead.** c_w/c_t is exactly
+        /// τp/½(τp + τw), so τw = τp makes a shield-to-turn interface identical to a turn-to-turn one and c_w = c_t. Setting τw to
+        /// the shop minimum instead makes the shield sit CLOSER to the coil copper than another coil turn would, and c_w/c_t rises
+        /// towards 2. On the STME-0999_2 fixture (τp = 1.638 mm, CTC) the old minimum-paper rule gave τw = 0.305 mm and
+        /// c_w/c_t = 1.55, which was enough to put a 5-turn shield *ahead* of a fully interleaved winding - because at n ≈ N/2 the
+        /// two methods are within 7% on interface count alone (4.557 against 4.875 at N = 10.75), so c_w/c_t decides the ranking
+        /// outright. Interleaving is the higher-capacitance method, and with τw = τp the model says so again.
         ///
         /// - Parameter maxTurnsPerDisc: The LARGEST number of shield turns per disc anywhere in this coil (see the note on the type)
         /// - Parameter discTurns: N, the number of turns in one disc
@@ -206,11 +225,14 @@ actor Segment: Equatable /*, Hashable */ {
             let vMax = connection.maxTurnToShieldVoltage(turnsPerDisc: maxTurnsPerDisc, discTurns: discTurns, voltsPerTurn: voltsPerTurn)
             let requiredGap = vMax / Segment.woundInShieldMaxWorkingStress
 
-            var tw = 2.0 * requiredGap - turnInsulation
+            // The three demands, in order of how often they govern: match the conductor, satisfy the working stress, clear the
+            // shop minimum. The stress term only bites on a coil whose own turn paper is already thin for its volts per turn.
+            var tw = max(turnInsulation, 2.0 * requiredGap - turnInsulation)
             tw = max(tw, 2.0 * Segment.woundInShieldMinInsulationPerSide)
 
             // Round up to a whole number of wraps. The epsilon keeps a thickness that is already an exact multiple from being
-            // pushed up a whole increment by floating-point noise.
+            // pushed up a whole increment by floating-point noise - which matters more now than it did, because the common case is
+            // now tw == τp exactly, and a coil turn's covering is itself a whole number of wraps.
             let increment = Segment.woundInShieldInsulationIncrement
             tw = ((tw / increment) - 1.0E-9).rounded(.up) * increment
 
