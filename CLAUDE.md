@@ -35,9 +35,80 @@ Eight `.swift` files sit in the source folder but are **not in the target's Comp
 | `PCH_GraphingView.swift`, `PCH_GraphingWindow.swift` | Dead; the only reference is inside a commented-out block in `AppController.swift`. |
 | `oldPchMatrixView*.swift` (3 files) | Legacy. |
 
-The compiled target is exactly these 28: `AppController`, `AppDelegate`, `AxisScale`, `BasicSection`, `CoilResultsDisplayView`, `CoilResultsDisplayWindow`, `ConductorImpedance`, `Connector`, `Core`, `DielectricStress`, `FrequencyDomainSolver`, `GetNumberDialog`, `GetSimDetailsDialog`, `GetWoundInShieldDialog`, `InitialDistributionWindow`, `Node`, `NumericalLaplaceTransform`, `PhaseModel`, `Segment`, `ShowCoilResultsDialog`, `ShowWaveFormsDialog`, `SimulationModel`, `StressProfileWindow`, `StressReportWindow`, `TransformerView`, `TurnLadderModel`, `WaveFormDisplayView`, `WaveFormDisplayWindow`.
+The compiled target is exactly these 29: `AppController`, `AppDelegate`, `AxisScale`, `BasicSection`, `CoilResultsDisplayView`, `CoilResultsDisplayWindow`, `ConductorImpedance`, `Connector`, `Core`, `DielectricStress`, `FrequencyDomainSolver`, `GetNumberDialog`, `GetSimDetailsDialog`, `GetWoundInShieldDialog`, `InitialDistributionWindow`, `Node`, `NumericalLaplaceTransform`, `PhaseModel`, `Segment`, `SelfTest`, `ShowCoilResultsDialog`, `ShowWaveFormsDialog`, `SimulationModel`, `StressProfileWindow`, `StressReportWindow`, `TransformerView`, `TurnLadderModel`, `WaveFormDisplayView`, `WaveFormDisplayWindow`.
 
 **When adding a `.swift` file, add it to the Compile Sources phase.** Eight files in this folder are already orphaned, and SourceKit reports a misleading `No such module 'PchBasePackage'` on a file that is not in the target — that diagnostic means "not in Compile Sources", not "package missing".
+
+### Scripted end-to-end runs (`SelfTest.swift`)
+
+There is still no test target, but the whole pipeline can now be driven **without a human at the keyboard**, from a launch
+argument. This is the thing to reach for when a change needs exercising rather than merely reasoned about; the older
+`VerifySelf()` routines (`DielectricStress`, `TurnLadderModel`, `Segment.VerifyWoundInShieldCapacitance`) still cover
+single formulas, but they do not load a design file, build a model or solve anything.
+
+```bash
+cp <design file>.txt ~/Library/Containers/com.huberistech.Rabin2021/Data/Documents/
+.../Debug/ImpulseDistribution.app/Contents/MacOS/ImpulseDistribution -PCH_SelfTest STME0999
+cat ~/Library/Containers/com.huberistech.Rabin2021/Data/Documents/SelfTestReport-STME0999.txt
+```
+
+Add `-PCH_SelfTestTransient YES` for the frequency-domain sweep as well. A full run of the STME-0999 fixture — parse,
+radial build-up, FE phase, eddy losses, inductance, capacitance, terminations, initial distribution and a 2048-step
+transient — is **37 seconds**, so there is no reason not to run it.
+
+Four mechanical points, each forced by something:
+
+- **`NSUserDefaults` parses `-key value` launch arguments itself**, so there is no argument plumbing and the test path
+  cannot be reached from a normal launch (`applicationDidFinishLaunching` checks for the key and returns immediately
+  when it is absent).
+- **The fixture is read from the app's own container**, because the entitlements grant only
+  `user-selected.read-write` — a design file anywhere else needs the `NSOpenPanel` that granted access to it. Do *not*
+  "fix" this with a `temporary-exception` entitlement: that changes what the shipped app may read in order to run a test.
+- **The report is a file, in that same container folder**; only a one-line summary goes to `UserDefaults`
+  (`defaults read com.huberistech.Rabin2021 PCH_SelfTestSummary`). A page of report through `defaults read` is one
+  enormous escaped line.
+- **`PCH_SelfTestStage` is written and flushed before each step.** The pipeline raises `NSAlert`s on failure and a modal
+  alert with nobody watching hangs the run forever, so that key is the only evidence of where a hung run stopped.
+
+Terminations are applied by finding the **floating lead already at the coil end** and handing its location to
+`AddConnector` (which replaces a floating lead rather than appending to it) — exactly what `TransformerView`'s
+`mouseDownWithAddGround` / `mouseDownWithAddImpulse` do, minus the hit testing. Do not compute the location instead: a
+coil end sits at `.inside_lower`, `.outside_lower` or `.center_lower` depending on winding type and disc count, and a
+guessed one produces a connector `NodeAt` cannot resolve.
+
+#### What the STME-0999 fixture is for
+
+A real 4160Y/2400 V — 69 kV delta unit: 48-turn helical LV, 70-disc continuous HV, no taps and no axial gaps, both LV
+leads and the HV neutral grounded and 350 kV full wave on the HV line end. The uniform geometry is the point — it is the
+case **DelVecchio 13.5.1, "Uniform Capacitance Model"** (p.389) is written for, so a disagreement is more likely to be
+this program's than the book's. The report checks the parse against the design (2.940 mm and 3.925 mm axial gaps for
+nominal 3 mm and 4 mm unshrunk, 1379 turns at 19.7 per disc) and compares the computed initial distribution against
+`sinh(αx)/sinh(α)`, α = √(C_g/C_s).
+
+**α is reported as a bracket, not a number.** DelVecchio's C_g is capacitance to a grounded surround; a real phase has
+another winding in the way, here grounded at both ends and so *nearly* — not exactly — an equipotential. So the report
+gives `α` from the direct (tank/core) C_g alone and again with the coil-to-coil term folded in, and the answer should
+land between them. As of 2026-08-06 the HV coil gives **5.15 / 12.57 with a fitted 10.36**, and the local d(ln V)/dx
+sits at 9.3 mid-coil rising to 10.8 near the line end.
+
+Two things learned from the first run, both worth keeping:
+
+- **Fit α on ln(V), never on V.** The distribution spans four decades, so a least-squares fit in V sees only the top two
+  or three discs — precisely the least representative ones, since the end disc has its own series capacitance. The
+  linear fit returned **14.75** against a winding whose local α is 9.3–10.8, put the answer outside the C_g bracket, and
+  so reported a disagreement with DelVecchio that was entirely an artefact of the estimator. This is the same shape of
+  error as the `Residual` 1e-9 story under *Calculation & simulation layers*: a diagnostic that fails on a correct model
+  is worse than no diagnostic. The table's **local-α column** asks the same question with no fitting at all and should
+  be read first.
+- **The end disc is not on the curve, and that is real.** `Section Cs` shows the two end discs of the HV at **0.294 of
+  the mean** (the helical LV's at 0.511), which is `SeriesCapacitance`'s end-disc branch (DV 12.63-64) doing its job —
+  an end disc has a neighbour on one side only. It takes 0.366 p.u. across it at t = 0+, a local α of 36 against the
+  winding's 10.8. A **uniform** continuum model cannot represent that, so the departure at x → 1 is expected; what
+  would be a real finding is that departure appearing anywhere else, or the end-disc Cs ratio moving.
+
+The line-end gradient is divided by the end section's **own** span in x, not by 1/N: the end nodes sit at the outer face
+of the end disc while interior nodes sit at gap midpoints, so end sections are ~12% shorter and 1/N charges them for
+length they do not have.
 
 ## Dependencies (Swift Package Manager)
 

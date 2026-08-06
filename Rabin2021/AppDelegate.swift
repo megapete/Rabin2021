@@ -15,6 +15,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         // Insert code here to initialize your application
+
+        // A scripted test run, if one was asked for on the command line. This does nothing at all on a normal launch -
+        // it needs the -PCH_SelfTest launch argument - and when it does run it terminates the app itself. See
+        // SelfTest.swift for how to invoke it and where the report comes out.
+        SelfTest.RunIfRequested(controller: appController)
     }
 
     func applicationWillTerminate(_ aNotification: Notification) {
