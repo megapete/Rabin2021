@@ -401,6 +401,7 @@ enum SelfTest {
         Stage("reporting the geometry")
 
         text += await GeometryReport(model: model)
+        text += await CapacitanceBreakdown(model: model, coil: scenario.continuumCoil)
 
         Stage("applying the terminations")
 
@@ -861,6 +862,106 @@ enum SelfTest {
         case .multistart: return "multistart"
         case .sheet:      return "sheet"
         }
+    }
+
+    // MARK: Series-capacitance breakdown
+
+    /// Take one interior unit of a coil apart into the quantities its series capacitance is built from.
+    ///
+    /// This exists because the three treatments - plain disc, interleaved pair, shielded pair - reach their answer by three
+    /// different routes, and comparing only the totals cannot say which route is responsible for a difference. All three reduce
+    /// to a turn-to-turn capacitance times a function of the turn count, plus some fraction of the disc-to-disc capacitance, so
+    /// printing those pieces lets the arithmetic be checked by hand:
+    ///
+    ///     plain disc     Cs_turn = c_t·(N−1)/N²                      then Stein: Cs·α/tanh α
+    ///     interleaved    Cs_turn = c_t·(N−1)/2   per PAIR             then Stein, on the pair
+    ///     shielded pair  Cs_turn = n·c_w·[4β²+1−1/N+1/2N²] + c_t·(N−n−1)/2N²    then Cdd/3 + (Cdd_ext)/6
+    ///
+    /// An interior unit is chosen deliberately: the two end units of a coil get the end-disc treatment (DV 12.63-64) and are
+    /// several times smaller, so they say nothing about the bulk of the winding.
+    private static func CapacitanceBreakdown(model:PhaseModel, coil:Int) async -> String {
+
+        var text = "SERIES CAPACITANCE OF ONE INTERIOR UNIT, coil \(coil)\n"
+        text += String(repeating: "-", count: 110) + "\n"
+
+        let segments = await model.CoilSegments().filter({ $0.radialPos == coil })
+
+        guard segments.count > 2 else {
+
+            return text + "  (too few segments to pick an interior one)\n\n"
+        }
+
+        let segment = segments[segments.count / 2]
+        let sections = segment.basicSections
+
+        guard let bs = sections.first else {
+
+            return text + "  (the segment has no BasicSections)\n\n"
+        }
+
+        let N = bs.N
+        let tp = bs.wdgData.turn.turnInsulation
+        let interleaved = await segment.IsInterleaved()
+        let shield = await segment.woundInShield
+
+        guard let ct = try? await segment.CapacitanceTurnToTurn() else {
+
+            return text + "  (the turn-to-turn capacitance could not be computed)\n\n"
+        }
+
+        text += "  Segment:              \(sections.count) disc(s), \(String(format: "%.3f", N)) turns each"
+        text += interleaved ? ", INTERLEAVED\n" : (shield != nil ? ", SHIELDED\n" : ", plain\n")
+        text += "  Turn insulation tp:   \(Millimetres(tp))  (two-sided)\n"
+        text += "  c_t (turn to turn):   \(Farads(ct))\n"
+
+        // The disc-to-disc capacitances this unit sees. The internal one only exists for a two-disc unit, and whether it is
+        // counted at all is precisely where the interleaved and shielded paths differ.
+        let gapAbove = 0.004
+        let externals = Segment.DiscToDiscSeriesCapacitance(belowGap: gapAbove, aboveGap: gapAbove, basicSection: bs, innerRadius: await segment.r1, outerRadius: await segment.r2)
+
+        text += "  C_dd (per 4 mm gap):  \(Farads(externals.above))   [reference value at a nominal 4 mm gap]\n"
+
+        if sections.count == 2 {
+
+            let internalGap = sections[1].z1 - sections[0].z2
+            let internal2 = Segment.DiscToDiscSeriesCapacitance(belowGap: internalGap, aboveGap: 0.0, basicSection: bs, innerRadius: await segment.r1, outerRadius: await segment.r2).below
+            text += "  C_dd inside the pair: \(Farads(internal2))  across \(Millimetres(internalGap))\n"
+        }
+
+        if let shield {
+
+            let n = Double(shield.turnsPerDisc.first ?? 0)
+            let tw = shield.wire.insulation
+
+            guard let cw = try? await segment.CapacitanceTurnToTurn(effectiveInsulation: 0.5 * (tp + tw)) else {
+
+                return text + "  (the shield-to-turn capacitance could not be computed)\n\n"
+            }
+
+            let beta = shield.wire.connection.beta(turnsPerDisc: Int(n), discTurns: N)
+            let bracket = 4.0 * beta * beta + 1.0 - 1.0 / N + 1.0 / (2.0 * N * N)
+
+            text += "  Shield insulation tw: \(Millimetres(tw))  (two-sided)\n"
+            text += "  tau_avg = (tp+tw)/2:  \(Millimetres(0.5 * (tp + tw)))\n"
+            text += "  c_w (shield to turn): \(Farads(cw))"
+            text += String(format: "   c_w/c_t = %.4f\n", cw / ct)
+            text += "  Shield turns n:       \(String(format: "%.0f", n))   beta = \(String(format: "%.4f", beta))   bracket = \(String(format: "%.4f", bracket))\n"
+            text += "  Shield term:          \(Farads(n * cw * bracket))\n"
+            text += "  Plain turn term:      \(Farads(ct * (N - n - 1.0) / (2.0 * N * N)))\n"
+        }
+        else if interleaved {
+
+            text += "  Cs_turn of the pair:  \(Farads(ct * (N - 1.0) / 2.0))   = c_t(N-1)/2, Veverka 6.4\n"
+        }
+        else {
+
+            text += "  Cs_turn of the disc:  \(Farads(ct * (N - 1.0) / (N * N)))   = c_t(N-1)/N^2, DelVecchio 12.49\n"
+        }
+
+        // The number the rest of the report uses, so that the pieces above can be checked against it.
+        text += "  Unit Cs as modelled:  \(Farads(await segment.seriesCapacitance))\n\n"
+
+        return text
     }
 
     // MARK: Capacitance to ground
