@@ -104,10 +104,33 @@ enum SelfTest {
         let type:Connector.Location
     }
 
+    /// A structural change made to the model after it is loaded and before the terminations go on.
+    ///
+    /// These are the two things a designer does when the initial distribution is too steep, and the whole reason for
+    /// wanting more than one scenario: the fixture's line-end gradient can be measured with neither, with interleaving
+    /// and with an intershield, on identical geometry.
+    ///
+    /// Both rebuild the coil into TWO-DISC Segments, which is what makes them comparable to each other and what makes
+    /// the per-section numbers in the transient report mean something different from the plain case - see
+    /// TransientReport. Terminations are applied afterwards for the same reason `doInterleaveSelection` leaves them to
+    /// the user: `UpdateConnectors` rebuilds the connectors when Segments are swapped, and a ground applied first would
+    /// not survive it.
+    enum Restructure {
+
+        /// Leave the winding as the design file describes it.
+        case none
+        /// Interleave the whole coil: every two adjacent discs become one interleaved Segment.
+        case interleave(coil:Int)
+        /// Put a wound-in shield of `turnsPerDisc` turns into every disc pair of the coil (DelVecchio 12.11).
+        case woundInShield(coil:Int, turnsPerDisc:Int, connection:Segment.WoundInShieldWire.Connection)
+    }
+
     /// A complete scripted run.
     struct Scenario {
 
         let name:String
+        /// What to do to the winding before terminating it.
+        let restructure:Restructure
         /// The design file's name in the container's Documents folder.
         let fixtureName:String
         /// A sentence about the design, echoed into the report so that a stale report identifies itself.
@@ -124,29 +147,53 @@ enum SelfTest {
         let continuumCoil:Int
     }
 
+    /// The STME-0999 fixture: a real two-winding core-form design, 4160Y/2400 V LV and 69 kV delta HV, 350 kV BIL on
+    /// the HV. Both LV leads and the HV neutral are grounded and the HV line end is impulsed - the standard impulse
+    /// test connection, and the reason the LV appears in the model at all (a winding shorted to ground is not a
+    /// winding that can be left out of the capacitance picture).
+    ///
+    /// It was the first fixture because its geometry is uniform: no taps, no axial gaps, a plain 70-disc continuous
+    /// HV and a plain 48-turn helical LV. That is precisely the case DelVecchio 13.5.1 is written for, so a
+    /// disagreement is much more likely to be this program's than the continuum model's.
+    ///
+    /// The three variants differ ONLY in `restructure`, which is the point: same core, same conductor, same gaps, same
+    /// impulse, so the line-end gradient can be read off three times and compared without anything else having moved.
+    private static func STME0999(name:String, notes:String, restructure:Restructure) -> Scenario {
+
+        return Scenario(name: name,
+                        restructure: restructure,
+                        fixtureName: "STME-0999_AndIn.txt",
+                        notes: "4160Y/2400 V LV (48-turn helical), 69 kV delta HV (70-disc continuous), 350 kV full wave on the HV line end. " + notes,
+                        terminations: [Termination(coil: 0, end: .bottom, type: .ground),
+                                       Termination(coil: 0, end: .top, type: .ground),
+                                       Termination(coil: 1, end: .bottom, type: .ground),
+                                       Termination(coil: 1, end: .top, type: .impulse)],
+                        waveFormType: .FullWave,
+                        peakVoltage: 350.0e3,
+                        displaySpan: 100.0e-6,
+                        bandwidth: 10.0e6,
+                        continuumCoil: 1)
+    }
+
     /// The scenarios this build knows about, keyed by the string passed to -PCH_SelfTest.
     static let scenarios:[String:Scenario] = [
 
-        // A real two-winding core-form design: 4160Y/2400 V LV, 69 kV delta HV, 350 kV BIL on the HV. Both LV leads
-        // and the HV neutral are grounded and the HV line end is impulsed - the standard impulse test connection, and
-        // the reason the LV appears in the model at all (a winding shorted to ground is not a winding that can be left
-        // out of the capacitance picture).
-        //
-        // It was chosen as the first fixture because its geometry is uniform: no taps, no axial gaps, a plain 70-disc
-        // continuous HV and a plain 48-turn helical LV. That is precisely the case DelVecchio 13.5.1 is written for,
-        // so a disagreement is much more likely to be this program's than the continuum model's.
-        "STME0999" : Scenario(name: "STME0999",
-                              fixtureName: "STME-0999_AndIn.txt",
-                              notes: "4160Y/2400 V LV (48-turn helical), 69 kV delta HV (70-disc continuous), 350 kV full wave on the HV line end.",
-                              terminations: [Termination(coil: 0, end: .bottom, type: .ground),
-                                             Termination(coil: 0, end: .top, type: .ground),
-                                             Termination(coil: 1, end: .bottom, type: .ground),
-                                             Termination(coil: 1, end: .top, type: .impulse)],
-                              waveFormType: .FullWave,
-                              peakVoltage: 350.0e3,
-                              displaySpan: 100.0e-6,
-                              bandwidth: 10.0e6,
-                              continuumCoil: 1)
+        "STME0999" : STME0999(name: "STME0999",
+                              notes: "HV as designed - plain continuous discs, no interleaving and no shields.",
+                              restructure: .none),
+
+        // Interleaving is the big hammer: it raises the series capacitance of a disc pair by an order of magnitude, so
+        // alpha falls and the initial distribution flattens. The 70 discs become 35 interleaved Segments.
+        "STME0999-interleaved" : STME0999(name: "STME0999-interleaved",
+                                          notes: "The whole HV winding interleaved.",
+                                          restructure: .interleave(coil: 1)),
+
+        // A wound-in shield is the adjustable version of the same idea (DelVecchio 12.11): it raises the pair's series
+        // capacitance by an amount that goes with the shield turn count, so it lands between the two extremes and can
+        // be graded. Six turns against 19.7 turns per disc. Floating is the dialog's own default connection.
+        "STME0999-shield6" : STME0999(name: "STME0999-shield6",
+                                      notes: "A 6-turn wound-in shield in every disc pair of the HV.",
+                                      restructure: .woundInShield(coil: 1, turnsPerDisc: 6, connection: .floating))
     ]
 
     // MARK: Entry point
@@ -245,7 +292,22 @@ enum SelfTest {
             return Report(text: text + "FAILED: no model was built.\n", summary: "FAILED - no model")
         }
 
+        // The structural change goes in BEFORE the geometry is reported and before the terminations, because it swaps
+        // Segments and so rebuilds both the connectors and every matrix in the model.
+        Stage("restructuring the winding")
+
+        let restructureOutcome = await ApplyRestructure(scenario.restructure, model: model, controller: controller)
+
         Stage("reporting the geometry")
+
+        text += "RESTRUCTURE\n"
+        text += String(repeating: "-", count: 110) + "\n"
+        text += "  \(restructureOutcome)\n\n"
+
+        guard !restructureOutcome.hasPrefix("FAILED") else {
+
+            return Report(text: text, summary: "FAILED - " + restructureOutcome)
+        }
 
         text += await GeometryReport(model: model)
 
@@ -314,9 +376,10 @@ enum SelfTest {
                                                              displaySpan: scenario.displaySpan,
                                                              maximumFrequency: scenario.bandwidth)
 
-            text += await TransientReport(model: model, results: results, scenario: scenario)
+            let transient = await TransientReport(model: model, results: results, scenario: scenario)
+            text += transient.text
 
-            summary += results.isEmpty ? "; transient FAILED" : "; transient ran (\(results.count) steps)"
+            summary += "; " + transient.summary
         }
         else {
 
@@ -326,6 +389,143 @@ enum SelfTest {
         }
 
         return Report(text: text, summary: summary)
+    }
+
+    // MARK: Restructuring
+
+    /// Interleave a coil, or put a wound-in shield into every one of its disc pairs.
+    ///
+    /// This is the model-level half of `AppController.doInterleaveSelection` and `doAddWoundInShields`, without the
+    /// `SegmentPath` selection or the dialogs. It deliberately does NOT re-implement the guards those two carry -
+    /// already-interleaved, already-shielded, non-contiguous, spans a tapping gap - because it always operates on a
+    /// whole coil of a freshly loaded model, where every one of them is answered by construction. If a scenario ever
+    /// restructures twice or works on part of a coil, route it through the AppController versions instead.
+    ///
+    /// Both paths end in `updateModel(oldSegments:newSegments:xlFile:nil, reinitialize:false)`, which does the
+    /// connector fixup and then the whole recalculation - radial build-up, FE phase, eddy losses, inductance,
+    /// capacitance. That is why a shield is set on each new Segment BEFORE it is handed over: it costs one pass over
+    /// the geometry and the matrices rather than two.
+    private static func ApplyRestructure(_ restructure:Restructure, model:PhaseModel, controller:AppController) async -> String {
+
+        switch restructure {
+
+        case .none:
+
+            return "none - the winding is as the design file describes it"
+
+        case .interleave(let coil):
+
+            let segments = await model.CoilSegments().filter({ $0.radialPos == coil })
+            let sections = segments.flatMap({ $0.basicSections })
+
+            guard !sections.isEmpty else {
+
+                return "FAILED: coil \(coil) has no sections to interleave"
+            }
+
+            // A pair is the unit, so an odd disc count has nowhere to put the last one.
+            guard sections.count % 2 == 0 else {
+
+                return "FAILED: coil \(coil) has \(sections.count) discs - interleaving needs an even number"
+            }
+
+            let core = await model.core
+            var interleaved:[Segment] = []
+
+            do {
+
+                for i in stride(from: 0, to: sections.count, by: 2) {
+
+                    interleaved.append(try Segment(basicSections: [sections[i], sections[i + 1]],
+                                                   interleaved: true,
+                                                   realWindowHeight: core.realWindowHeight,
+                                                   useWindowHeight: core.adjustedWindHt))
+                }
+            }
+            catch {
+
+                return "FAILED: could not build the interleaved segments: \(error)"
+            }
+
+            await controller.updateModel(oldSegments: segments, newSegments: interleaved, xlFile: nil, reinitialize: false)
+
+            return "interleaved coil \(coil): \(sections.count) discs -> \(interleaved.count) interleaved Segments"
+
+        case .woundInShield(let coil, let turnsPerDisc, let connection):
+
+            let segments = await model.CoilSegments().filter({ $0.radialPos == coil })
+            let sections = segments.flatMap({ $0.basicSections })
+
+            guard !sections.isEmpty else {
+
+                return "FAILED: coil \(coil) has no sections to shield"
+            }
+
+            // A shield crosses over at the outermost turn of a PAIR, so the pair is the unit here too.
+            guard sections.count % 2 == 0 else {
+
+                return "FAILED: coil \(coil) has \(sections.count) discs - a wound-in shield needs an even number"
+            }
+
+            guard let discTurns = sections.map({ $0.N }).min(), discTurns > 1.0 else {
+
+                return "FAILED: coil \(coil) has too few turns per disc to carry a shield"
+            }
+
+            // There are only N − 1 spaces between the turns of a disc, which is the ceiling GetWoundInShieldDialog
+            // enforces on the same figure.
+            let maximumTurns = Int(discTurns.rounded(.down)) - 1
+
+            guard turnsPerDisc >= 1, turnsPerDisc <= maximumTurns else {
+
+                return "FAILED: \(turnsPerDisc) shield turns per disc, but coil \(coil) allows 1 to \(maximumTurns) (N = \(String(format: "%.2f", discTurns)))"
+            }
+
+            // The paper on the shield wire is sized from the working turn-to-shield voltage, so the model has to know
+            // its volts per turn - which recalculateModel has already set from the design file.
+            let voltsPerTurn = await model.voltsPerTurn
+
+            guard voltsPerTurn > 0.0 else {
+
+                return "FAILED: the model has no volts/turn, so the shield paper cannot be sized"
+            }
+
+            let turnInsulation = sections[0].wdgData.turn.turnInsulation
+
+            let wire = Segment.WoundInShieldWire.Standard(connection: connection,
+                                                          maxTurnsPerDisc: turnsPerDisc,
+                                                          discTurns: discTurns,
+                                                          voltsPerTurn: voltsPerTurn,
+                                                          turnInsulation: turnInsulation)
+
+            let core = await model.core
+            var paired:[Segment] = []
+
+            do {
+
+                for i in stride(from: 0, to: sections.count, by: 2) {
+
+                    let newSegment = try Segment(basicSections: [sections[i], sections[i + 1]],
+                                                 realWindowHeight: core.realWindowHeight,
+                                                 useWindowHeight: core.adjustedWindHt)
+
+                    // Two discs to a Segment is exactly one pair per Segment.
+                    await newSegment.SetWoundInShield(Segment.WoundInShield(wire: wire, turnsPerDisc: turnsPerDisc, pairCount: 1))
+                    paired.append(newSegment)
+                }
+            }
+            catch {
+
+                return "FAILED: could not build the shielded segments: \(error)"
+            }
+
+            await controller.updateModel(oldSegments: segments, newSegments: paired, xlFile: nil, reinitialize: false)
+
+            var outcome = "coil \(coil): \(turnsPerDisc)-turn wound-in shield (\(connection.description)) in each of \(paired.count) disc pairs"
+            outcome += String(format: ", wire %.3f mm bare radial + %.3f mm insulation (two-sided)", wire.bareRadial * 1000.0, wire.insulation * 1000.0)
+
+            return outcome
+        }
     }
 
     // MARK: Terminations
@@ -898,7 +1098,7 @@ enum SelfTest {
     /// The peak envelope of the impulsed coil, which is what the continuum model's travelling-wave section (13.5.2)
     /// speaks to - but only qualitatively, since that section is a lossless uniform line with no second winding and no
     /// mutual inductance. This is reported as a regression baseline, not compared against a formula.
-    private static func TransientReport(model:PhaseModel, results:[SimulationModel.SimulationStepResult], scenario:Scenario) async -> String {
+    private static func TransientReport(model:PhaseModel, results:[SimulationModel.SimulationStepResult], scenario:Scenario) async -> (text:String, summary:String) {
 
         var text = "TRANSIENT (frequency-domain solve)\n"
         text += String(repeating: "-", count: 110) + "\n"
@@ -906,7 +1106,7 @@ enum SelfTest {
         guard !results.isEmpty else {
 
             text += "  FAILED: the solver returned no results.\n\n"
-            return text
+            return (text, "transient FAILED")
         }
 
         text += "  Waveform:   \(scenario.waveFormType.rawValue) at \(String(format: "%.1f", scenario.peakVoltage / 1000.0)) kV crest\n"
@@ -916,8 +1116,23 @@ enum SelfTest {
         guard let profile = try? await model.CoilVoltageProfile(coil: scenario.continuumCoil), !profile.isEmpty else {
 
             text += "  FAILED: no voltage profile for coil \(scenario.continuumCoil).\n\n"
-            return text
+            return (text, "transient FAILED - no voltage profile")
         }
+
+        // HOW MUCH WINDING A "SECTION" IS. This is the thing that makes the three STME-0999 scenarios comparable or
+        // not. A section is one Segment, and interleaving or shielding rebuilds the coil into TWO-disc Segments - so
+        // the plain scenario's worst section voltage is across one disc while the other two are across two. Comparing
+        // them directly still answers the designer's question (what does the end unit of the winding actually hold?)
+        // but it is not the same amount of winding, and the report has to say so rather than leave it to be inferred
+        // from a segment count in another section.
+        //
+        // The line-end gradient in the initial-distribution section above is the metric that IS directly comparable -
+        // it is a voltage per unit of winding height, so it does not care how the coil is divided up.
+        let coilSegments = await model.CoilSegments().filter({ $0.radialPos == scenario.continuumCoil })
+        let discCount = coilSegments.reduce(0, { $0 + $1.basicSections.count })
+        let discsPerSection = coilSegments.isEmpty ? 1 : Double(discCount) / Double(coilSegments.count)
+
+        text += "  Sections:   \(coilSegments.count) Segments over \(discCount) discs (\(String(format: "%.2f", discsPerSection)) discs per section)\n\n"
 
         // Each node's worst excursion, and when it happened. The peak is tracked by absolute value but reported
         // signed, because the sign says whether a node has swung past the driven polarity - which is the interesting
@@ -971,7 +1186,26 @@ enum SelfTest {
             text += "  (\(String(format: "%.3f", highest.element / scenario.peakVoltage)) p.u.)\n"
         }
 
-        text += "  Worst section voltage:   \(String(format: "%.1f", worstSectionDrop / 1000.0)) kV across section \(worstSectionIndex), t = \(String(format: "%.3f", worstSectionTime * 1.0e6)) us\n\n"
+        text += "  Worst section voltage:   \(String(format: "%.1f", worstSectionDrop / 1000.0)) kV across section \(worstSectionIndex), t = \(String(format: "%.3f", worstSectionTime * 1.0e6)) us\n"
+        text += "                           = \(String(format: "%.1f", worstSectionDrop / 1000.0 / discsPerSection)) kV per disc averaged over the section's \(String(format: "%.2f", discsPerSection)) discs\n"
+        text += "                             (the average is NOT the internal distribution - an interleaved or shielded\n"
+        text += "                              pair does not divide its voltage equally between its two discs)\n"
+
+        // The caveat that stops this table being read as a clean bill of health on an interleaved winding. A low
+        // section-to-section voltage is exactly what interleaving buys, and it is a real gain against the DISC-TO-DISC
+        // stress - but it is bought by winding turns that are far apart electrically next to each other, so the
+        // TURN-TO-TURN voltage inside the disc goes UP, which is why interleaved windings need heavier turn paper.
+        // Nothing in this report measures that: TurnLadderModel refuses interleaved windings on purpose, because the
+        // position-to-turn map is scheme-dependent and guessing it would give a confidently wrong answer.
+        if let firstSegment = coilSegments.first, await firstSegment.IsInterleaved() {
+
+            text += "\n  NOTE: this coil is interleaved, so the section voltage above is the DISC-TO-DISC stress only.\n"
+            text += "        Interleaving lowers it by putting electrically distant turns side by side, which RAISES the\n"
+            text += "        turn-to-turn voltage inside each disc - the reason an interleaved winding needs heavier turn\n"
+            text += "        insulation. Nothing here measures that; TurnLadderModel handles continuous discs only.\n"
+        }
+
+        text += "\n"
 
         text += "  section   peak kV    p.u.    at t (us)\n"
 
@@ -982,7 +1216,10 @@ enum SelfTest {
 
         text += "\n"
 
-        return text
+        let summary = String(format: "worst section %.1f kV over %.2f discs, peak %.3f p.u.",
+                             worstSectionDrop / 1000.0, discsPerSection, (highest?.element ?? 0.0) / scenario.peakVoltage)
+
+        return (text, summary)
     }
 
     // MARK: Reporting

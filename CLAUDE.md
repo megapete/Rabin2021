@@ -91,6 +91,42 @@ gives `α` from the C_g booked straight to ground alone and again with the coil-
 should land between them. As of 2026-08-06 the HV coil gives **6.56 / 13.21 with a fitted 11.17**, and the local
 d(ln V)/dx sits at 9.8 mid-coil rising to 11.5 near the line end.
 
+#### The three STME-0999 variants
+
+`STME0999`, `STME0999-interleaved` and `STME0999-shield6` differ **only** in `Scenario.restructure` — same core, conductor,
+gaps and impulse — so the line-end gradient can be read off three times with nothing else moved. The restructure runs
+*before* the terminations, because swapping Segments sends `UpdateConnectors` through the connectors and a ground applied
+first would not survive it. `SelfTest.ApplyRestructure` is the model-level half of `doInterleaveSelection` /
+`doAddWoundInShields` without the `SegmentPath` selection or the dialogs; it deliberately does **not** re-implement their
+guards (already-interleaved, non-contiguous, spans a tapping gap), because it always works on a whole coil of a freshly
+loaded model where each is answered by construction. Route anything less regular through the `AppController` versions.
+
+| | C_s per pair | fitted α | line-end gradient | worst section | transient peak |
+|---|---|---|---|---|---|
+| plain | 3.932e-10 (1.0×) | 11.17 | 30.31× | **65.4 kV** / 1 disc | 1.236 p.u. |
+| 6-turn shield | 7.766e-09 (19.8×) | 2.46 | 2.68× | **28.6 kV** / 2 discs | 1.002 p.u. |
+| interleaved | 8.917e-09 (22.7×) | 2.28 | 2.59× | **27.6 kV** / 2 discs | 1.002 p.u. |
+
+Three things to know before reading that table:
+
+- **"Section" is not the same amount of winding down the column.** Both restructures rebuild the coil into *two-disc*
+  Segments, so the plain row's worst section is one disc and the other two are two. The **line-end gradient is the
+  directly comparable number** — it is a voltage per unit of winding height and does not care how the coil is divided.
+- **A 6-turn shield gets 86% of the way to full interleaving**, which surprises people. `C_s(n)` is linear in n
+  (`VerifyWoundInShieldCapacitance` pins that to 4.4e-16), the slope here is 1.229e-9 F per shield turn, and
+  extrapolating hits the interleaved value at **n = 6.94** out of 19.7 turns per disc. So on this design a 7-turn shield
+  *is* an interleaved winding as far as C_s is concerned. That is the whole selling point of 12.11 — but it also means
+  "somewhere in between" is technically true and practically misleading, and a scenario at n = 2 or 3 would sit nearer
+  the middle.
+- **The shield is not free and interleaving is.** The shield adds 1.778 mm of bare radial plus 0.305 mm of paper per
+  shielded pair, taking the HV radial build from 56.767 to 69.264 mm; `ApplyRadialBuildUp` then grows `legCenters`
+  760 → 784.994 mm and the tank depth 1343.3 → 1368.3 mm to hold the clearances. C_g rises only 1.7% because of it.
+
+**The interleaved row's low section voltage is the disc-to-disc stress only**, and the report says so at that line.
+Interleaving buys it by winding electrically distant turns side by side, which *raises* the turn-to-turn voltage inside
+each disc — the reason an interleaved winding needs heavier turn paper. Nothing in this harness measures that, and
+`TurnLadderModel` refuses interleaved windings on purpose (the position-to-turn map is scheme-dependent).
+
 **The C_g "booked to ground" of the outermost coil is not the tank** — it is the tank *plus the adjacent phases*, which
 are **76%** of it here. The report prints the split for exactly that reason; see `OuterShuntCapacitance` and
 `adjacentPhaseCount` under the capacitance section above.
