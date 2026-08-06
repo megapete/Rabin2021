@@ -336,4 +336,52 @@ enum AxisScale {
             label.draw(at: NSPoint(x: axisX - tickLength - labelGap * pointSize - labelSize.width, y: y - labelSize.height / 2.0))
         }
     }
+
+    /// The height, in points, that ``DrawXEndLabels(...)`` needs below the axis line. A view that uses it has to make its bottom
+    /// margin at least this, or the labels are drawn outside the bounds and clipped.
+    static var XEndLabelHeight:CGFloat {
+
+        return majorTickLength + labelGap + labelLineHeight
+    }
+
+    /// Mark and name the two ends of a horizontal axis - nothing in between.
+    ///
+    /// This is for an axis whose ENDS are what matter and whose intermediate values do not: the axial position along a coil, where
+    /// "top" and "bottom" say everything a reader needs and a millimetre scale would only add clutter. It is deliberately not a
+    /// general x-axis tick generator; if one is ever wanted, it belongs beside ``Ticks(...)`` rather than here.
+    ///
+    /// - parameter axisY: the view y coordinate of the axis line the labels hang below (the zero line, in both graph views)
+    /// - parameter pointSize: one typographic point expressed in view coordinates, exactly as in ``DrawYAxis(...)``
+    static func DrawXEndLabels(leftLabel:String, rightLabel:String, axisY:CGFloat, plotLeft:CGFloat, plotRight:CGFloat, pointSize:CGFloat, axisColor:NSColor) {
+
+        guard plotRight > plotLeft else {
+
+            return
+        }
+
+        let font = NSFont.monospacedDigitSystemFont(ofSize: labelFontSize * pointSize, weight: .regular)
+        let tickLength = majorTickLength * pointSize
+
+        axisColor.setStroke()
+
+        for x in [plotLeft, plotRight] {
+
+            let tickPath = NSBezierPath()
+            tickPath.lineWidth = pointSize
+            tickPath.move(to: NSPoint(x: x, y: axisY))
+            tickPath.line(to: NSPoint(x: x, y: axisY - tickLength))
+            tickPath.stroke()
+        }
+
+        let labelY = axisY - tickLength - labelGap * pointSize
+
+        // The two labels are pushed to the outside of their own ends rather than centred on them. Centring would hang the left label
+        // half over the y axis and its tick labels, which is the one place on this plot where there is already ink.
+        let left = NSAttributedString(string: leftLabel, attributes: [.font:font, .foregroundColor:axisColor])
+        left.draw(at: NSPoint(x: plotLeft, y: labelY - left.size().height))
+
+        let right = NSAttributedString(string: rightLabel, attributes: [.font:font, .foregroundColor:axisColor])
+        let rightSize = right.size()
+        right.draw(at: NSPoint(x: plotRight - rightSize.width, y: labelY - rightSize.height))
+    }
 }

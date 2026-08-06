@@ -14,8 +14,33 @@ class CoilResultsDisplayView: NSView {
     // whatever the y-axis labels need (see UpdateScaleAndZoomWindow(extremaRect:)), so the value here is only a floor.
     private let minimumMarginLeft:CGFloat = 12.0
     private let marginRight:CGFloat = 14.0
-    private let marginBottom:CGFloat = 16.0
     private let marginTop:CGFloat = 16.0
+
+    /// The bottom margin grows to fit the x-axis end labels when there are any, the same way the left margin grows to fit the y-axis
+    /// tick labels. Left at its floor they would be drawn below the bounds and clipped away.
+    private var marginBottom:CGFloat {
+
+        return xEndLabels == nil ? 16.0 : max(16.0, AxisScale.XEndLabelHeight + 4.0)
+    }
+
+    /// Names for the two ends of the x axis, or nil to leave the axis unlabelled (which is what the animated coil-results display
+    /// and the stress profiles do - both are read against the y axis, and their x axis is a position whose ends need no naming).
+    ///
+    /// Only the ends are marked, never the values between them: see ``AxisScale/DrawXEndLabels(leftLabel:rightLabel:axisY:plotLeft:plotRight:pointSize:color:)``.
+    var xEndLabels:(left:String, right:String)? = nil {
+
+        didSet {
+
+            // The bottom margin depends on this, and the bounds depend on the margin.
+            guard !extrema.isEmpty else {
+
+                self.needsDisplay = true
+                return
+            }
+
+            UpdateScaleAndZoomWindow(extremaRect: extrema)
+        }
+    }
 
     let axisColor = NSColor.darkGray
     let lineColor = NSColor.red
@@ -181,6 +206,15 @@ class CoilResultsDisplayView: NSView {
         let axisTop = max(ViewY(extrema.maxY), tickPositions.max() ?? 0.0)
 
         AxisScale.DrawYAxis(ticks: yTicks, axisX: plotLeft, axisBottom: axisBottom, axisTop: axisTop, plotRight: plotRight, pointSize: scale, axisColor: axisColor, extremumColor: extremumColor, viewY: ViewY)
+
+        // The end labels hang from the BOTTOM OF THE DATA RECTANGLE, not from the zero line the x axis is drawn on. The two are the
+        // same place for a plot whose values are all positive, but a negative-polarity impulse puts zero at the top of its data and
+        // would then have the labels drawn down across the curve. The bottom edge is also the only place the bottom margin is
+        // reserved, so it is the only place they are guaranteed not to be clipped.
+        if let endLabels = xEndLabels {
+
+            AxisScale.DrawXEndLabels(leftLabel: endLabels.left, rightLabel: endLabels.right, axisY: min(0.0, ViewY(extrema.minY)), plotLeft: plotLeft, plotRight: plotRight, pointSize: scale, axisColor: axisColor)
+        }
 
         if currentData.isEmpty {
 

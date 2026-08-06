@@ -357,6 +357,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     var stressReportWindow:StressReportWindow? = nil
     var stressProfileWindow:StressProfileWindow? = nil
 
+    /// The capacitive initial distribution graph, held for the same reason.
+    var initialDistributionWindow:InitialDistributionWindow? = nil
+
     /// The most recent stress screen, kept so that the profile graphs can be built from exactly the findings the table showed
     /// rather than from a second scan.
     var latestStressChecks:[DielectricStress.StressCheck] = []
@@ -1778,6 +1781,121 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     }
     
     
+    // MARK: The capacitive initial distribution
+
+    @IBAction func handleShowInitialDistribution(_ sender: Any) {
+
+        Task {
+
+            await doShowInitialDistribution()
+        }
+    }
+
+    /// Graph the t = 0+ capacitive distribution of the impulsed coil.
+    ///
+    /// Unlike the rest of the Simulate menu this needs **no simulation result** - alpha is the s -> infinity limit of the same
+    /// assembly the sweep uses, so a simulation model is enough, and one extra solve produces it. That is the point of the feature:
+    /// the initial distribution is what decides whether a winding needs interleaving or shields, and it is worth knowing before
+    /// committing to a run rather than after. A result is used only if one is to hand, and only to put the y axis into volts.
+    func doShowInitialDistribution() async {
+
+        guard let phModel = self.currentModel, let simModel = self.currentSimModel else {
+
+            PCH_ErrorAlert(message: "You must create the simulation model first!")
+            return
+        }
+
+        guard let snapshot = await simModel.Snapshot(), let alpha = await FrequencyDomainSolver.CapacitiveDistribution(snapshot: snapshot) else {
+
+            PCH_ErrorAlert(message: "The initial distribution could not be solved.", info: "This is the same assembly the frequency sweep uses, so a failure here means the capacitance matrix or the boundary conditions are not usable. Try recreating the simulation model.")
+            return
+        }
+
+        // alpha is per unit of the applied crest. Scale it into volts if a run has told us what that crest is; otherwise plot it as
+        // it stands and let the graph label itself per-unit.
+        let peakVoltage = self.latestSimulationResult?.peakVoltage ?? 0.0
+        let inVolts = peakVoltage != 0.0
+        let scale = inVolts ? peakVoltage : 1.0
+
+        // The impulsed coils: those with a node carrying an impulse connector. On any other coil alpha is a small residual set by the
+        // shunt capacitances, which would be squashed flat beside the driven coil's curve - see the file header of
+        // InitialDistributionWindow.
+        let impulsedNodes = await phModel.NodesOfType(connType: .impulse)
+        let impulsedNodeNumbers = Set(impulsedNodes.map({ $0.number }))
+
+        var impulsedCoils:Set<Int> = []
+
+        for nextNode in impulsedNodes {
+
+            if let coil = nextNode.aboveSegment?.radialPos ?? nextNode.belowSegment?.radialPos {
+
+                impulsedCoils.insert(coil)
+            }
+        }
+
+        guard !impulsedCoils.isEmpty else {
+
+            PCH_ErrorAlert(message: "No coil in this model is impulsed.", info: "Attach an impulse connector to a coil terminal and recreate the simulation model.")
+            return
+        }
+
+        var distributions:[InitialDistributionWindow.Distribution] = []
+
+        for coil in impulsedCoils.sorted() {
+
+            guard let profile = try? await phModel.CoilVoltageProfile(coil: coil), profile.count > 1 else {
+
+                continue
+            }
+
+            // CoilVoltageProfile is sorted by ascending height. The graph's x axis is depth below the top of the coil, so that the
+            // top comes out on the left - see ShowDistribution() for why that orientation.
+            guard let topZ = profile.last?.z else {
+
+                continue
+            }
+
+            var points:[(depth:Double, volts:Double)] = []
+
+            for nextPoint in profile {
+
+                guard nextPoint.nodeIndex >= 0, nextPoint.nodeIndex < alpha.count else {
+
+                    continue
+                }
+
+                points.append((depth: topZ - nextPoint.z, volts: alpha[nextPoint.nodeIndex] * scale))
+            }
+
+            guard points.count > 1 else {
+
+                continue
+            }
+
+            points.sort { $0.depth < $1.depth }
+
+            // Which end is driven. Only the two end nodes can carry the impulse lead, so this is a lookup rather than a search for
+            // the largest alpha - which would give the wrong answer on a coil driven at the bottom.
+            let impulseAtTop = impulsedNodeNumbers.contains(profile.last?.nodeIndex ?? -1)
+
+            distributions.append(InitialDistributionWindow.Distribution(name: "Coil \(coil)",
+                                                                        points: points,
+                                                                        impulseAtTop: impulseAtTop,
+                                                                        isInVolts: inVolts))
+        }
+
+        guard let distributionWindow = InitialDistributionWindow(distributions: distributions,
+                                                                 peakTestVoltage: peakVoltage,
+                                                                 title: "Initial Voltage Distribution") else {
+
+            PCH_ErrorAlert(message: "There is no initial distribution to show.", info: "The impulsed coil needs at least two nodes in the model.")
+            return
+        }
+
+        self.initialDistributionWindow = distributionWindow
+        distributionWindow.showWindow(self)
+    }
+
     // MARK: Dielectric stress screen
 
     @IBAction func handleShowStressReport(_ sender: Any) {
@@ -3902,6 +4020,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         if menuItem.action == #selector(handleShowStressReport(_:)) || menuItem.action == #selector(handleShowRadialStressProfiles(_:)) {
 
             return self.currentModel != nil && self.currentSimModel != nil && self.latestSimulationResult != nil
+        }
+
+        // The initial distribution is purely electrostatic - the s -> infinity limit of the sweep's own assembly - so it needs the
+        // simulation model but NOT a run. See doShowInitialDistribution.
+        if menuItem.action == #selector(handleShowInitialDistribution(_:)) {
+
+            return self.currentModel != nil && self.currentSimModel != nil
         }
 
         // The turn ladder is a purely electrostatic solve, so unlike the two above it needs no simulation result - only a model and

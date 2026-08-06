@@ -421,6 +421,12 @@
                                     <action selector="handleShowCoilResults:" target="XWq-sU-B2V" id="406-kZ-IGI"/>
                                 </connections>
                             </menuItem>
+                            <menuItem title="Show Initial Voltage Distribution" id="Ini-Ds-Mi1">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleShowInitialDistribution:" target="XWq-sU-B2V" id="Ini-Ds-Ac1"/>
+                                </connections>
+                            </menuItem>
                             <menuItem isSeparatorItem="YES" id="Str-Rp-Sp1"/>
                             <menuItem title="Show Dielectric Stress Report…" id="Str-Rp-Mi1">
                                 <modifierMask key="keyEquivalentModifierMask"/>

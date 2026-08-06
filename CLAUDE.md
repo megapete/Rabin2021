@@ -35,7 +35,7 @@ Eight `.swift` files sit in the source folder but are **not in the target's Comp
 | `PCH_GraphingView.swift`, `PCH_GraphingWindow.swift` | Dead; the only reference is inside a commented-out block in `AppController.swift`. |
 | `oldPchMatrixView*.swift` (3 files) | Legacy. |
 
-The compiled target is exactly these 27: `AppController`, `AppDelegate`, `AxisScale`, `BasicSection`, `CoilResultsDisplayView`, `CoilResultsDisplayWindow`, `ConductorImpedance`, `Connector`, `Core`, `DielectricStress`, `FrequencyDomainSolver`, `GetNumberDialog`, `GetSimDetailsDialog`, `GetWoundInShieldDialog`, `Node`, `NumericalLaplaceTransform`, `PhaseModel`, `Segment`, `ShowCoilResultsDialog`, `ShowWaveFormsDialog`, `SimulationModel`, `StressProfileWindow`, `StressReportWindow`, `TransformerView`, `TurnLadderModel`, `WaveFormDisplayView`, `WaveFormDisplayWindow`.
+The compiled target is exactly these 28: `AppController`, `AppDelegate`, `AxisScale`, `BasicSection`, `CoilResultsDisplayView`, `CoilResultsDisplayWindow`, `ConductorImpedance`, `Connector`, `Core`, `DielectricStress`, `FrequencyDomainSolver`, `GetNumberDialog`, `GetSimDetailsDialog`, `GetWoundInShieldDialog`, `InitialDistributionWindow`, `Node`, `NumericalLaplaceTransform`, `PhaseModel`, `Segment`, `ShowCoilResultsDialog`, `ShowWaveFormsDialog`, `SimulationModel`, `StressProfileWindow`, `StressReportWindow`, `TransformerView`, `TurnLadderModel`, `WaveFormDisplayView`, `WaveFormDisplayWindow`.
 
 **When adding a `.swift` file, add it to the Compile Sources phase.** Eight files in this folder are already orphaned, and SourceKit reports a misleading `No such module 'PchBasePackage'` on a file that is not in the target — that diagnostic means "not in Compile Sources", not "package missing".
 
@@ -257,8 +257,33 @@ distinction matters: a discretisation error shrinks with N, an assembly error do
 
   **Both graph views set their `bounds` to the data rectangle and let AppKit do the scaling**, which is why `DrawYAxis` takes a `pointSize`: everything drawn at a fixed on-screen size has to be multiplied by the view's bounds-to-frame ratio. That only works because the two views now build their bounds so the ratio is *the same in both directions* — the old code inflated the vertical margin by `scaleMultiplier.y` as well as by the scale, which made it anisotropic. If you change how the bounds are computed, keep `bounds.height == frame.height * scale`, or the tick labels come out stretched.
 
+  **`AxisScale.DrawXEndLabels(...)` marks only the two ENDS of an x axis**, and is used by exactly one graph — the initial
+  distribution, whose x axis is axial position and whose ends are "Top" and "Bottom". It is deliberately not a general x-tick
+  generator: on an axis where the ends say everything, a millimetre scale is clutter. The labels are pushed to the outside of their
+  own ends (a centred left label would hang over the y axis, the one place on the plot that already has ink) and are hung from the
+  **bottom of the data rectangle**, not from the zero line the x axis is drawn on — the two coincide only while every value is
+  positive, and a negative-polarity impulse would otherwise draw them down across the curve. A view that sets
+  `CoilResultsDisplayView.xEndLabels` gets a taller bottom margin (`AxisScale.XEndLabelHeight`) automatically, the same way the left
+  margin already grows to fit the y tick labels; leaving it `nil` is byte-identical to before.
+
   The data reaching both views is now in **volts or amps**, not pre-multiplied by the caller. Each view applies its own power-of-ten `yValueMultiplier` on the way into view coordinates (same "keep the numbers near 1000" trick as before), but it has to know the real values to label them. `AppController.doShowWaveforms` and `CoilResultsDisplayWindow` therefore pass `yQuantity` and `peakTestVoltage` and hand over raw results. Both views also rescale on `setFrameSize`, so a resized window redraws rather than stretching; `CoilResultsDisplayView.currentData` is a point array rather than a prebuilt `NSBezierPath` for the same reason.
 
+- **`InitialDistributionWindow.swift`** — graphs the **capacitive (initial) distribution**, α, against axial position for the
+  impulsed coil. *Simulate → Show Initial Voltage Distribution*. Three things about it are deliberate:
+  - **It needs no simulation run**, only a simulation *model*. α is the s→∞ limit of the sweep's own assembly, so
+    `FrequencyDomainSolver.CapacitiveDistribution` produces it in one extra solve — which is the point, since the steepness at the
+    line end is what decides whether a winding needs interleaving or shields, and that is worth knowing *before* the expensive part.
+    `validateMenuItem` therefore enables it on `currentSimModel != nil` alone, unlike every other item in that menu. A simulation
+    result is used only if one is to hand, and only to scale the y axis from per-unit into volts (`peakVoltage`); with none, the
+    axis is `.unitless` and the note says so.
+  - **It reads the same α the stress report does**, rather than computing an initial distribution of its own — so this graph and the
+    report's `0+ (initial)` rows cannot disagree.
+  - **The x axis runs top-to-bottom, left-to-right**, which is why `Distribution.points` carries a *depth below the top of the coil*
+    and not a height above the yoke. That is the textbook orientation and it puts the line end on the left in the usual case, but it
+    is the **opposite** of `CoilResultsDisplayView`'s other two users, whose x is a height — hence the end labels, which exist so the
+    two graphs cannot be confused. "Impulsed coil" means a coil with a node carrying an impulse connector; if there is more than one
+    they all go in the picker. Coils that are not driven are left out on purpose — α there is a small shunt-capacitance residual that
+    would flatten the driven curve into the floor of the plot.
 - Dialogs / windows (`*.swift` + matching `*.xib`): `GetNumberDialog`, `GetSimDetailsDialog`, `ShowCoilResultsDialog`, `ShowWaveFormsDialog`, `CoilResultsDisplayView/Window`, `WaveFormDisplayView/Window`. `GetSimDetailsDialog` carries the **bandwidth** field (MHz, default 10, clamped 2–200 by `bandwidthInHz`) — the solver's only accuracy control, since there is no longer a step size or error tolerance to set. Those four dialogs subclass `PCH_DialogBox` from `PchDialogBoxPackage`. **`GetWoundInShieldDialog` is the exception**: no `.xib`, an `NSAlert` with an accessory `NSGridView` built in code. It has six read-only fields (insulation, stress, shield radial, build increase, C_s multiple) that all recompute as the user steps the shield count, and keeping that right in hand-maintained auto-layout is not worth it. It clamps `n` to `floor(N) − 1` and opens on `round(0.15·N)`. The progress-indicator window (`rb2021_progressIndicatorWindow` in `AppController`) is `PchProgressIndicatorPackage`'s class; `PCH_GraphingView/Window` and the `old...`-prefixed files are dead — see the target-membership table above.
 
 ## Concurrency
