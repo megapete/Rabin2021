@@ -141,18 +141,20 @@ so a "matched" geometry cannot silently fail to match.
 | C_s per pair, identical geometry | | α fitted | line-end gradient | worst section | peak |
 |---|---|---|---|---|---|
 | plain | 7.063e-10 (1.00×) | 8.22 | 23.09× | 73.1 kV / 1 disc | 1.195 p.u. |
-| 5-turn shield | 5.051e-09 (**7.15×**) | 2.94 | 3.17× | 47.0 kV / 2 discs | 1.002 p.u. |
-| interleaved | 6.111e-09 (**8.65×**) | 2.69 | 3.17× | 46.5 kV / 2 discs | 1.002 p.u. |
+| interleaved | 4.263e-09 (6.04×) | 3.20 | 3.32× | 49.5 kV / 2 discs | 1.002 p.u. |
+| 5-turn shield | 4.988e-09 (7.06×) | 2.96 | 3.19× | 47.2 kV / 2 discs | 1.002 p.u. |
 
-**Interleaving is the higher-capacitance method, by 21% here** — as the literature says it should be. Getting that right
-took fixing the shield paper rule (see `WoundInShieldWire.Standard`); with the old shop-minimum rule the shield came out
-*ahead*, and the whole difference was `c_w/c_t`.
+**k = 5 of N = 10.75 is 47% of the turns, which is right at the break-even point** — turn terms alone are 4.487·c_t
+interleaved against 4.535·c_t shielded, and break-even is k = 4.97. That is why this fixture keeps producing photo
+finishes and why it is a poor place to ask "which method is better". At the shield fractions real designs use it is not
+close: 28% of the turns puts interleaving 66% ahead, 19% puts it 149% ahead. The first fixture, at n/N = 30%, gives
+interleaving +40% and is the more representative comparison. See TODO.md §2b for the table and for the disc-disc
+asymmetry that decides the close case.
 
-Note what the last two columns say, though: a 21% edge in C_s buys **nothing measurable** on this design. Line-end
-gradient 3.17 for both, worst section 46.5 against 47.0 kV, envelope 1.002 p.u. for both. At α ≈ 2.7–2.9 the initial
-distribution is already close enough to linear that more C_s has nothing left to flatten, so the choice between the two
-methods here is a manufacturing decision, not a dielectric one — which is the answer a designer actually wants, and it is
-the opposite of what the C_s column alone suggests.
+Note what the last three columns say regardless: at α ≈ 3 the initial distribution is already near enough to linear that
+more C_s has nothing left to flatten — line-end gradient 3.2 either way, envelope 1.002 p.u. either way. On this design
+the choice is a manufacturing decision, not a dielectric one, which is the answer a designer wants and the opposite of
+what the C_s column alone suggests.
 
 Note that "plain" in that table is **not the as-designed transformer**: it is the design widened to the shield's build,
 which raises its C_s too. It is the right baseline for isolating the shield and the wrong one for costing the design.
@@ -280,12 +282,19 @@ The physics model is layered from smallest to largest unit. Understanding this h
   is measured on two disks of **10 turns/disk at n = 0, 3, 5, 7, 9**, so n/N up to 0.9 is inside his validated range, not an
   extrapolation.
 
-  **The interleaved pair is treated inconsistently with the shielded pair, and this is not yet fixed.** An interleaved Segment goes
-  through `SteinParameters.For` — but Stein assumes one radial traverse and a two-disc unit makes two, which is exactly the argument
-  for giving the shielded pair its own route. The interleaved pair also drops the gap *inside* the pair, which the shielded path
-  counts as `Cdd_internal/3`. Direction matters here: on STME-0999_2, Stein gives the interleaved pair 5.969e-09 where the
-  shielded-pair form would give 5.286e-09, so switching it would **lower** interleaving ~13%, not raise it. It was investigated as a
-  possible cause of the shield-versus-interleaving inversion and is *not* one — the cause was the paper rule above.
+  **The interleaved branch takes the interturn capacitance alone — no Stein, no disc-disc term.** K&K 7.3.5: "it is sufficient to
+  consider only the interturn capacitances for the calculation of the series capacitance of interleaved windings." It used to fall
+  through to the Stein branch, which was wrong twice: Stein assumes one radial traverse where a two-disc unit makes two (the same
+  objection that earned the shielded pair its own route), and the disc-disc energy it added was 24% of the interleaved total. The
+  turn term itself is now **K&K 7.39 exact**, `(C_T/4)[N + ((N−1)/N)²(N−2)]`, rather than his 7.40 `N ≫ 1` form — which is what
+  Veverka 6.4 is, and which runs 4.9% high at N = 19.7 and 8.6% high at N = 10.75, worst exactly where CTC coils live.
+
+  Because `Cs` is now the whole answer for an interleaved unit, `endDisc` and `adjStaticRing` no longer do anything on that path:
+  both exist only to modify the disc-disc term. An interleaved unit at a coil end is no longer reduced, which is right — there is
+  nothing left for the end condition to act on.
+
+  **This leaves a real asymmetry: the interleaved pair drops C_dd and the shielded pair keeps it**, each following the book that
+  discusses that winding, on two structurally identical two-disc units. It decides the close case — see TODO.md §2b.
 
   Other structural facts worth knowing before editing:
   - **`DiscToDiscSeriesCapacitance` gaps are measured between *insulated* surfaces.** A disc's `z1`/`z2` are over-paper and a static ring's rect is its overall wrapped thickness (`stdStaticRingThickness`, 5/8"), so the gap handed in is pure key-spacer/oil and every solid layer is added separately. That is exactly why 12.52 uses τ_p and not 2τ_p for a disc-disc gap: each disc contributes half of its two-sided paper. It takes `innerRadius`/`outerRadius` as **explicit parameters** rather than reading them off the `BasicSection`, because a BasicSection carries the pristine design-file radii while the live geometry lives on the Segment — pass `self.r1`/`self.r2`.

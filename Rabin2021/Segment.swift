@@ -1033,8 +1033,23 @@ actor Segment: Equatable /*, Hashable */ {
         let staticRing = adjStaticRing ?? (above:false, below:false)
 
         // The gap inside the pair. Both discs have the same radii, so either one gives the same area.
+        //
+        // The area that counts EXCLUDES the radial depth taken by the shield turns. Kulkarni & Khaparde, p.317: "there is no
+        // contribution to the energy by the capacitances between the shield turns of the two disks at same radial depth, since
+        // their potentials are equal. For a precise calculation, the radial depth in the above equation should correspond to the
+        // radial depth of the winding excluding that of the shield turns." A laminar gap's capacitance is proportional to its
+        // area, so scaling by the coil turns' share of the radial build is exactly that correction.
+        //
+        // Two limits on it, both worth knowing. His "potentials are equal" is exact only for the first shield turn - his 7.42 and
+        // 7.46 put the two discs' i-th shield turns 2(i−1)ΔV apart - so this is a good approximation rather than an identity. And
+        // it applies to the gap INSIDE the pair only: across an external gap the shield turns facing each other belong to two
+        // different pairs and are a whole pair-voltage apart, so they store energy just as the coil turns there do.
         let internalGap = self.basicSections[1].z1 - self.basicSections[0].z2
-        let CddInternal = Segment.DiscToDiscSeriesCapacitance(belowGap: internalGap, aboveGap: 0.0, basicSection: self.basicSections[0], innerRadius: self.r1, outerRadius: self.r2, staticRing: (above:false, below:false)).below
+        let radialBuild = self.r2 - self.r1
+        let shieldBuild = Double(turnsPerDisc) * wire.overPaperRadial
+        let coilShareOfBuild = radialBuild > 0.0 ? max(0.0, min(1.0, 1.0 - shieldBuild / radialBuild)) : 1.0
+
+        let CddInternal = coilShareOfBuild * Segment.DiscToDiscSeriesCapacitance(belowGap: internalGap, aboveGap: 0.0, basicSection: self.basicSections[0], innerRadius: self.r1, outerRadius: self.r2, staticRing: (above:false, below:false)).below
 
         let CddExternal = Segment.DiscToDiscSeriesCapacitance(belowGap: axialGaps.below, aboveGap: axialGaps.above, basicSection: self.basicSections[0], innerRadius: self.r1, outerRadius: self.r2, staticRing: staticRing)
 
@@ -1206,6 +1221,24 @@ actor Segment: Equatable /*, Hashable */ {
                 }
 
                 return Cs + 2.0 / 3.0 * (CddBelow + CddAbove)
+            }
+            else if self.wdgType == .disc && self.interleaved {
+
+                // An interleaved pair takes the interturn capacitance ALONE - no disc-disc term at all. Kulkarni & Khaparde 7.3.5:
+                // "The capacitances between the disks (interdisk capacitances) have very little effect on the series capacitance of
+                // this type of winding since its value is relatively low. Therefore, it is sufficient to consider only the interturn
+                // capacitances for the calculation of the series capacitance of interleaved windings."
+                //
+                // This used to fall through to the Stein branch below, which was wrong twice over. Stein assumes ONE radial
+                // traverse and an interleaved unit is two discs - the same objection that earned the wound-in-shield pair its own
+                // route (see WoundInShieldPairCapacitance) - and the disc-disc energy it added came to 24% of the interleaved total
+                // on the STME-0999_2 fixture, which is not "very little" by any reading. Both errors inflated interleaving, and
+                // together with the 7.40 approximation they were most of why a half-shielded winding appeared to beat it.
+                //
+                // Dropping Cdd also makes the endDisc and adjStaticRing arguments moot here: both exist only to modify the
+                // disc-disc term. An interleaved unit at a coil end is therefore no longer reduced, which is right - there is
+                // nothing left for the end condition to act on.
+                return Cs
             }
             else if self.wdgType == .disc {
 
@@ -1573,10 +1606,24 @@ actor Segment: Equatable /*, Hashable */ {
             let N = self.basicSections[0].N
 
             if self.wdgType == .disc && self.interleaved {
-                
-                // Veverka method (equation 6.4). This should probably be made more precise using the logic given in DelVecchio where they say that the turn-turn capacitances do not see the full disc voltage (it's actually one turn less voltage per disc). Note that as mentioned in the comment for the function, this is actually double the amount of the double-disc.
-                let Cs = Ctt * (N - 1) // divide by 2 to get the double-disc series capacitance value
-                
+
+                // Kulkarni & Khaparde 7.39, the EXACT interleaved disc-pair series capacitance:
+                //
+                //     Cse = (Ct/4)·[ N + ((N−1)/N)²·(N−2) ]
+                //
+                // His 7.40, Cse = (Ct/2)(N−1), is the N ≫ 1 limit of this and is identical to Veverka 6.4, which is what this
+                // used to return. The two part company exactly where it matters: 7.40 is 4.9% high at N = 19.7 and 8.6% high at
+                // N = 10.75, and a CTC winding - the case that most wants a high series capacitance - has few turns per disc.
+                //
+                // Where the two terms come from (his derivation, above 7.39): a disc pair has 2(N−1) interturn capacitances. In a
+                // fully interleaved pair, N of them span the full half-voltage V/2, because the turns either side are N electrical
+                // turns apart; the remaining (N−2) span only ((N−1)/N)·(V/2), being one turn short of that. Summing ½·Ct·(ΔV)²
+                // over both groups and writing the total as ½·Cse·V² gives 7.39. 7.40 drops the distinction.
+                //
+                // As the doc comment says, what is returned here is DOUBLE the pair's capacitance; SeriesCapacitance halves it.
+                let ratio = (N - 1.0) / N
+                let Cs = (Ctt / 2.0) * (N + ratio * ratio * (N - 2.0))
+
                 return Cs
             }
             else if self.wdgType == .disc || self.wdgType == .sheet {

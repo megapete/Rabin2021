@@ -63,8 +63,39 @@ Three real deviations came out of the comparison, none yet applied:
    is exact only for the first shield turn — 7.42 and 7.46 differ by 2(i−1)ΔV — so this is a good
    approximation rather than an identity.
 
-Applying all three would move interleaved ≈ 5.01e-9 and shielded ≈ 4.93e-9 on STME-0999_2, i.e. still
-a near tie at k = 5, but with interleaving ahead and the margin growing at every smaller k.
+**All three applied 2026-08-06.** My estimate above was wrong: I costed deviation 2 as *switching* the
+interleaved pair to the shielded pair's linear-voltage form, but K&K's rule is to drop the interdisk term
+outright, which is worth −30% on interleaving where the shield correction is only −1.2%. Measured:
+
+| | N, k | interleaved | shielded | |
+|---|---|---|---|---|
+| STME-0999 | 19.7, 6 (30%) | 7.712e-9 | 5.517e-9 | interleaving **+40%** |
+| STME-0999_2 | 10.75, 5 (47%) | 4.263e-9 | 4.988e-9 | shield **+17%** |
+
+So the fixes restored the expected ranking at a realistic shield fraction and left it inverted at k ≈ N/2.
+
+**A new inconsistency now decides the close case, and it should be looked at.** Turn terms alone are a dead
+heat at k = 5 — 4.487·c_t interleaved against 4.535·c_t shielded, break-even k = 4.97 — so the whole 17% is
+the disc-disc term that the interleaved path now omits (K&K 7.3.5) and the shielded path still keeps (the
+DV 12.96 route's `Cdd_int/3 + Cdd_ext/6`). Two structurally identical two-disc units, two different rules,
+each taken from the book that discusses that winding. Giving the interleaved pair the same linear-voltage
+Cdd treatment as the shielded pair would make it 5.006e-9 against 4.988e-9 — interleaving ahead by 0.4% —
+and is arguably more defensible than either book's asymmetry, since K&K justify dropping Cdd by it being
+"relatively low" and here it is 16% of the interleaved total. Not done: it is a judgment call, not a
+conformance fix.
+
+**Shield fraction is what actually settles the question.** Turn terms only, at c_w ≈ c_t and N = 10.75:
+
+| k | % of turns | shield | vs interleaved 4.487·c_t |
+|---|---|---|---|
+| 2 | 19% | 1.806·c_t | interleaving +149% |
+| 3 | 28% | 2.708·c_t | interleaving +66% |
+| 4 | 37% | 3.611·c_t | interleaving +24% |
+| 5 | 47% | 4.514·c_t | dead heat |
+
+Real designs shield far fewer than half the turns — enough to pass the test and no more, since every shield
+turn costs radial build (3.454 mm each here). That is why "interleaving always beats wound-in shields" is
+sound practical guidance without being a property of the equations.
 
 **On connected shields beating interleaving:** they do, and it is measured, not just derived.
 DelVecchio's Table 12.1 (two disks, 10 turns/disk) gives, at n = 5, 1.78 nF floating against 3.53 nF
