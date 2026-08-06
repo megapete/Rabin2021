@@ -29,6 +29,47 @@ term to the C matrix, not just a new branch in `SeriesCapacitance`.
   branch, whose Stein machinery assumes a single radial traverse. That over-counts the disc-disc energy
   by 2× at small α. The wound-in-shield path avoids this by using DelVecchio's linear-voltage form
   instead (see `Segment.WoundInShieldPairCapacitance`); the interleaved path has not been revisited.
+
+#### 2b. Cross-check against Kulkarni & Khaparde §7.3 (2026-08-06)
+
+Done because a 5-turn floating shield came out *ahead* of full interleaving on a CTC coil, which the
+literature says should not happen. **Neither series-capacitance formula is wrong**, and the two books
+agree with each other exactly:
+
+- **K&K 7.44/7.47/7.50 reduce, term for term, to DelVecchio's 12.96.** Kulkarni's shield energy
+  `2k·½C_sh[(V/2)² + (V/2 − ΔV)²]` gives `k·C_sh[1 − 1/N_D + 1/(2N_D²)]`, which is exactly the coded
+  bracket at β = 0, and his `2(N_D−k−1)` turn-to-turn pairs give exactly the coded
+  `c_t(N−n−1)/(2N²)`. Two independent derivations, same answer.
+- **K&K 7.40 `C_se = (C_T/2)(N_D − 1)` is literally the Veverka 6.4 the code uses** for interleaving.
+
+So the surprise is not a coding error. At `C_sh = C_T` the break-even shield count against K&K's *exact*
+7.39 is **k = 4.92 of N_D = 10.75 (46% of the turns)** — i.e. the 5-turn scenario sits within 2% of the
+crossover, which is why it looked like a photo finish. Below that k interleaving wins, as the texts say.
+
+Three real deviations came out of the comparison, none yet applied:
+
+1. **The code uses K&K 7.40, the `N_D ≫ 1` approximation, where 7.39 is exact.** 7.39 is
+   `(C_T/4)[N_D + ((N_D−1)/N_D)²(N_D−2)]`. The code is **8.6% high at N_D = 10.75** and 4.9% high at
+   19.7 — worst exactly where CTC coils live. Cheap fix, one line in
+   `BasicSectionSeriesCapacitance`.
+2. **K&K says to drop the interdisk term entirely for an interleaved winding** (§7.3.5: "it is
+   sufficient to consider only the interturn capacitances"). The code adds it through Stein, worth
+   **24% of the interleaved total** on STME-0999_2. This compounds with the Stein-on-a-pair objection
+   already noted above, and both point the same way: the interleaved figure is too high.
+3. **K&K says C_DU for a shielded pair must exclude the shield turns' radial depth** (p.317: "there is
+   no contribution to the energy by the capacitances between the shield turns of the two disks at same
+   radial depth, since their potentials are equal"). The code takes C_dd over the full built-up radial
+   depth, so on STME-0999_2 the shielded pair's C_dd is **~17% high**. Note his "potentials are equal"
+   is exact only for the first shield turn — 7.42 and 7.46 differ by 2(i−1)ΔV — so this is a good
+   approximation rather than an identity.
+
+Applying all three would move interleaved ≈ 5.01e-9 and shielded ≈ 4.93e-9 on STME-0999_2, i.e. still
+a near tie at k = 5, but with interleaving ahead and the margin growing at every smaller k.
+
+**On connected shields beating interleaving:** they do, and it is measured, not just derived.
+DelVecchio's Table 12.1 (two disks, 10 turns/disk) gives, at n = 5, 1.78 nF floating against 3.53 nF
+attached at the crossover and 6.07 nF attached at the top end. So the ranking the model produces for the
+connected options is backed by his experiment, however counterintuitive it looks.
 - **Multi-start (DV 12.12)** — unimplemented. A `.multistart` BasicSection type exists and is produced by
   `AppController` from the design file, but `CapacitanceTurnToTurn` throws `.UnimplementedWdgType` for it.
 
