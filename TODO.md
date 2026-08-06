@@ -86,8 +86,8 @@ not straight from the book:
   from the book's own Figure 13.5, which is drawn "with a 20% margin". This is the single number that decides how much of the
   breakdown level a design is allowed to use, and it is the first thing to review against house practice.
 
-Also unused so far: `CreepPowerFrequencyByArea` (13.15) is implemented but nothing calls it, since the screen measures a path
-length rather than a creep area. Some creep paths — a stick surface bridging a hilo, say — are arguably better judged on area.
+**All four creep allowables are now unused** — see item 12 below. `creepImpulseRatio` therefore no longer affects any reported
+number, though it remains the thing to replace first if creep comes back.
 
 All eight coefficients were verified against the printed page on 2026-08-05 and the self-check pins each one. Do not re-derive them
 from `pdftotext`: the equations are set in a subsetted math font with no `ToUnicode` CMap, so the text layer drops decimal points
@@ -122,6 +122,28 @@ multi-disc Segment are driven at 2·ΔV_segment/n, which is the same argument ap
 Past the end of a shorter adjacent coil the field is genuinely two-dimensional. The screen holds the nearest inner potential, marks
 the finding "beyond end of …, value indicative only", and the profile graph names the height. No Schwaiger-type end enhancement and
 no oblique-spill estimate is attempted — both were considered and declined.
+
+### 12. There is no creep check — the screen is strike-only
+
+Creep sites were built until **2026-08-06** and were removed, because the model has no way to measure a creep path. The screen used
+the straight axial run between the two electrodes, which for a hilo barrier meant the **difference in the two coils' end heights** —
+not the hilo, and not a path anything creeps along. A design with a 19 mm hilo and coil ends 0.8 mm apart got a 0.8 mm path carrying
+the full end-to-end voltage, judged against 13.16 at 0.8 mm, and sorted straight to the top of the report. The key-spacer and
+tapping-gap sites used the gap itself, which is short for the same reason.
+
+The allowables (13.15, 13.16, `creepImpulseRatio`) stay in `StressAllowable`, unused, and `VerifySelf` still pins them. What has to
+come first is **geometry that is not in `PhaseModel` today**:
+
+- a hilo barrier **extends past the coil ends**, so the path is up one face, around the overhang and back down the other;
+- at high voltage that end carries **angle rings and caps**, which lengthen it further;
+- a key spacer's path runs around the spacer, bounded by the disc faces clamping it.
+
+Note also that some creep paths are better judged on **area** than length — a stick surface bridging a hilo, say — which is what
+`CreepPowerFrequencyByArea` (13.15) was implemented for and why it is worth keeping.
+
+Meanwhile the report's summary line says "strike only" explicitly, because a reader who sees "0 over allowable" will otherwise take
+it as a clean bill of health on a check that was never made — and creep strength falls with distance far faster than strike strength
+does, so a short creep path carrying a large voltage is exactly the case most likely to govern.
 
 ## Notes
 

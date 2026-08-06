@@ -40,8 +40,14 @@
 //  by the book's own path-subdivision procedure (p.371), so there is no sourced allowable for a corner
 //  peak, and inventing one would put a fabricated number beside cited ones.
 //
-//  Creep has no peak column at all - it is a tangential stress along a surface, with no conductor corner
-//  for the field to concentrate at.
+//  WHAT THIS SCREENS, AND WHAT IT DOES NOT. Every check here is a STRIKE check - breakdown through a gap,
+//  across a stack of solid and liquid layers whose thicknesses the model knows. There is no CREEP check:
+//  creep sites were built until 2026-08-06 and were removed because the model cannot measure a creep path
+//  (a hilo barrier's overhang past the coil ends, and the angle rings and caps on it at high voltage, are
+//  not in PhaseModel). The chapter 13 creep allowables are still in StressAllowable, unused and still
+//  self-tested; the note above StressAllowable.CreepPowerFrequency says what has to exist first. Until
+//  then, creep is a gap in the screen's coverage rather than a clean bill of health - and since creep
+//  strength falls with distance far faster than strike strength does, it is not a small gap.
 //
 
 import Foundation
@@ -353,6 +359,26 @@ enum DielectricStress {
         }
 
         // MARK: Creep - tracking along a surface
+        //
+        // NOTHING IN THE SCREEN CALLS THESE AT PRESENT. The creep sites were removed on 2026-08-06 because the screen had no way to
+        // measure a creep path, not because these allowables are wrong - they are cited, and VerifySelf still pins all three.
+        //
+        // What was wrong was the geometry. A creep path was taken to be the straight axial run between the two electrodes: the gap
+        // itself for a key spacer, and for a hilo barrier the difference in height between the two coils' ends. Both are far shorter
+        // than the real surface path, and the hilo one is nearly meaningless - two coils whose ends are a millimetre apart got a
+        // 1 mm path carrying the full end-to-end voltage, which 13.16 then judged at the strength of a 1 mm path. A model artifact,
+        // reported worst-first at the top of the table.
+        //
+        // Before this comes back, a creep site has to be able to measure the ACTUAL path, which means the model has to carry the
+        // insulation structure that the path runs over:
+        //
+        //   - a hilo barrier extends some distance BEYOND the coil ends, so the path is up one face of the barrier, around its
+        //     end and back down the other - not the gap between the coil ends;
+        //   - at high voltage that end is further built up with angle rings and caps, which lengthen it again;
+        //   - a key spacer's path is around the spacer, and it is bounded by the disc faces it is clamped between.
+        //
+        // None of that is in PhaseModel today: the barrier overhang, the angles and the rings are not modelled. Adding a creep
+        // check therefore starts with the geometry, not with this file.
 
         /// Creep along a pressboard surface in oil at power frequency, V/m rms, as a function of the creep DISTANCE.
         /// DelVecchio 13.16 (Moser): E = 16.6·d_c^(−0.46) kV/mm with d_c in mm.
@@ -446,15 +472,6 @@ enum DielectricStress {
         case radialCoilToCoil = "Coil to coil (radial)"
         case coilToCore = "Coil to core"
         case coilToTank = "Coil to tank"
-        case creepKeySpacer = "Creep: key spacer"
-        case creepHiloBarrier = "Creep: hilo barrier"
-        case creepTappingGap = "Creep: tapping gap"
-
-        /// True for the kinds that are a tangential stress along a surface. These report an average only - see the file header.
-        var isCreep:Bool {
-
-            return self == .creepKeySpacer || self == .creepHiloBarrier || self == .creepTappingGap
-        }
     }
 
     /// One term of the linear combination of node potentials that drives a site.
@@ -464,12 +481,9 @@ enum DielectricStress {
         let weight:Double
     }
 
-    /// A creep path: a length along an insulation surface, and what that surface is made of.
-    struct CreepPath:Sendable {
-
-        let pathLength:Double
-        let material:DielectricLayer.Material
-    }
+    // CREEP SITES ARE NOT BUILT (removed 2026-08-06). The allowables in StressAllowable are kept and still self-tested; what was
+    // wrong was the GEOMETRY the screen fed them. See the note above StressAllowable.CreepPowerFrequency for what a creep site has
+    // to know before this comes back.
 
     /// A place in the winding where a voltage difference appears across a known dielectric stack.
     ///
@@ -490,14 +504,12 @@ enum DielectricStress {
         let voltageTerms:[VoltageTerm]
         /// The dielectric columns spanning the gap, each in physical order outwards from the reference electrode. A disc-to-disc gap
         /// has two - the key-spacer column and the oil column - because the two see the same volts across different stacks and
-        /// either may govern. Empty for a pure creep site.
+        /// either may govern.
         let columns:[[DielectricLayer]]
         /// Non-nil for a site whose average field is coaxial rather than laminar: the radius the stack starts at.
         let innerRadius:Double?
-        /// Non-nil for a creep site.
-        let creep:CreepPath?
-        /// Whether the conductor-corner model is meaningful here. False where there is no conductor corner facing the gap - a creep
-        /// path, or a gap bounded by a smooth wrapped surface such as a static ring face.
+        /// Whether the conductor-corner model is meaningful here. False where there is no conductor corner facing the gap - for
+        /// instance a gap bounded by the smooth wrapped surface of a static ring.
         let usesCornerModel:Bool
         /// The total gap thickness, for the report. Metres.
         let gapLength:Double
@@ -540,14 +552,14 @@ enum DielectricStress {
         /// The time at which it occurred, in seconds. Negative marks the t = 0+ capacitive distribution, which is not on the
         /// simulation's time grid but is where the steepest turn-to-turn gradients actually live.
         let time:Double
-        /// The thickness of the governing layer, or for a creep site the surface path length. Metres. This is the distance the
-        /// allowable was evaluated at, which is why it is the layer's own thickness and not the whole gap.
+        /// The thickness of the governing layer, in metres. This is the distance the allowable was evaluated at, which is why it is
+        /// the layer's own thickness and not the whole gap.
         let pathLength:Double
         /// The material carrying the governing field.
         let material:DielectricLayer.Material
         /// The average field in the governing layer, V/m. This is the number that is judged.
         let averageField:Double
-        /// The peak (conductor-corner) field, V/m. Informational - see Evaluate. Nil for creep sites.
+        /// The peak (conductor-corner) field, V/m. Informational - see Evaluate. Nil where the corner model does not apply.
         let peakField:Double?
         /// averageField divided by the chapter 13 impulse allowable for its material AT ITS OWN THICKNESS, with the design margin
         /// applied. 1.0 means the design margin is exactly used up.
@@ -567,8 +579,8 @@ enum DielectricStress {
         var profileName:String? = nil
         var profileHeight:Double? = nil
 
-        /// The number the report ranks on. Ranking on utilization rather than on raw V/m is what lets an oil duct, a paper gap and a
-        /// creep path be compared on one scale - they fail at very different stresses.
+        /// The number the report ranks on. Ranking on utilization rather than on raw V/m is what lets an oil duct and a paper gap be
+        /// compared on one scale - they fail at very different stresses, and at different rates with distance.
         var worstUtilization:Double {
 
             return max(averageUtilization, peakUtilization ?? 0.0)
@@ -599,31 +611,6 @@ enum DielectricStress {
         guard volts > 0.0, volts.isFinite else {
 
             return nil
-        }
-
-        // A creep site is a tangential stress along a surface: one length, one material, no corner model, and its own much steeper
-        // distance dependence (13.16).
-        if let creep = site.creep {
-
-            guard creep.pathLength > 0.0 else {
-
-                return nil
-            }
-
-            let field = volts / creep.pathLength
-
-            return StressCheck(kind: site.kind,
-                               location: site.location,
-                               deltaV: deltaV,
-                               time: time,
-                               pathLength: creep.pathLength,
-                               material: creep.material,
-                               averageField: field,
-                               peakField: nil,
-                               averageUtilization: field / StressAllowable.Creep(path: creep.pathLength),
-                               peakUtilization: nil,
-                               profileName: site.profileName,
-                               profileHeight: site.profileHeight)
         }
 
         guard !site.columns.isEmpty else {
@@ -817,7 +804,7 @@ enum DielectricStress {
         return result
     }
 
-    /// Disc-to-disc gaps, their key-spacer creep paths, and tapping-gap creep - everything that lives in an axial gap.
+    /// Disc-to-disc gaps - everything that lives in an axial gap.
     private static func AppendAxialSites(model:PhaseModel, coil:Int, segments:[Segment], into result:inout [StressSite]) async {
 
         for (i, segment) in segments.enumerated() {
@@ -870,17 +857,7 @@ enum DielectricStress {
                                              voltageTerms: [VoltageTerm(nodeIndex: nodes.above, weight: perDisc), VoltageTerm(nodeIndex: nodes.below, weight: -perDisc)],
                                              columns: [stacks.keySpacer, stacks.oil],
                                              innerRadius: nil,
-                                             creep: nil,
                                              usesCornerModel: true,
-                                             gapLength: gap))
-
-                    result.append(StressSite(kind: .creepKeySpacer,
-                                             location: location,
-                                             voltageTerms: [VoltageTerm(nodeIndex: nodes.above, weight: perDisc), VoltageTerm(nodeIndex: nodes.below, weight: -perDisc)],
-                                             columns: [],
-                                             innerRadius: nil,
-                                             creep: CreepPath(pathLength: gap, material: .pressboard),
-                                             usesCornerModel: false,
                                              gapLength: gap))
                 }
             }
@@ -949,21 +926,9 @@ enum DielectricStress {
                                      voltageTerms: terms,
                                      columns: [stacks.keySpacer, stacks.oil],
                                      innerRadius: nil,
-                                     creep: nil,
                                      // A static ring presents a smoothly wrapped surface to the gap, not a conductor corner, so the
                                      // corner model does not apply on that side. That is the whole point of fitting one.
                                      usesCornerModel: !facesStaticRing,
-                                     gapLength: gap))
-
-            // The creep path bridging the same gap. A tapping gap gets its own kind because it is so often the worst spot in a coil:
-            // a bridged gap can put a large voltage across a small axial distance, and the barrier surface is the path.
-            result.append(StressSite(kind: isTappingGap ? .creepTappingGap : .creepKeySpacer,
-                                     location: location,
-                                     voltageTerms: terms,
-                                     columns: [],
-                                     innerRadius: nil,
-                                     creep: CreepPath(pathLength: gap, material: .pressboard),
-                                     usesCornerModel: false,
                                      gapLength: gap))
         }
     }
@@ -1051,13 +1016,12 @@ enum DielectricStress {
                                      voltageTerms: [VoltageTerm(nodeIndex: nodes.above, weight: weight), VoltageTerm(nodeIndex: nodes.below, weight: -weight)],
                                      columns: [column],
                                      innerRadius: nil,
-                                     creep: nil,
                                      usesCornerModel: true,
                                      gapLength: tp))
         }
     }
 
-    /// Radial sites: coil to coil across each hilo, coil to core, coil to tank, and the creep path at a coil end.
+    /// Radial sites: coil to coil across each hilo, coil to core, and coil to tank.
     private static func AppendRadialSites(model:PhaseModel, coilCount:Int, into result:inout [StressSite]) async {
 
         for coil in 0..<coilCount {
@@ -1135,38 +1099,10 @@ enum DielectricStress {
                                          voltageTerms: terms,
                                          columns: [stack.stick, stack.oil],
                                          innerRadius: stack.innerRadius,
-                                         creep: nil,
                                          usesCornerModel: true,
                                          gapLength: stack.stick.reduce(0.0) { $0 + $1.thickness },
                                          profileName: "Coil \(coil) to \(innerName)",
                                          profileHeight: point.z))
-            }
-
-            // The creep path along the hilo barrier at each end of the coil. The path is the axial run from this coil's end node to
-            // the height of the inner coil's nearest end - which is short, and the voltage across it large, exactly when the two
-            // coils are different heights.
-            if let inner = innerProfile, let innerExtentValue = innerExtent {
-
-                for (end, point) in [("bottom", profile.first!), ("top", profile.last!)] {
-
-                    let innerEndPoint = end == "bottom" ? inner.first! : inner.last!
-                    let innerZ = end == "bottom" ? innerExtentValue.low : innerExtentValue.high
-                    let path = abs(point.z - innerZ)
-
-                    guard path > 0.0 else {
-
-                        continue
-                    }
-
-                    result.append(StressSite(kind: .creepHiloBarrier,
-                                             location: "Coil \(coil) \(end) end to \(innerName) along hilo barrier",
-                                             voltageTerms: [VoltageTerm(nodeIndex: point.nodeIndex, weight: 1.0), VoltageTerm(nodeIndex: innerEndPoint.nodeIndex, weight: -1.0)],
-                                             columns: [],
-                                             innerRadius: nil,
-                                             creep: CreepPath(pathLength: path, material: .pressboard),
-                                             usesCornerModel: false,
-                                             gapLength: path))
-                }
             }
         }
 
@@ -1199,7 +1135,6 @@ enum DielectricStress {
                                              voltageTerms: [VoltageTerm(nodeIndex: point.nodeIndex, weight: 1.0)],
                                              columns: [column],
                                              innerRadius: r2,
-                                             creep: nil,
                                              usesCornerModel: true,
                                              gapLength: tOil + tSolid,
                                              profileName: "Coil \(outermost.radialPos) to tank",

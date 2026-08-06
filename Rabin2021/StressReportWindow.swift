@@ -15,8 +15,12 @@
 //  enhancement ratio, because chapter 13's data are uniform-gap measurements compared against average fields, so there is no
 //  sourced criterion for a corner peak - see DielectricStress.Evaluate.
 //
-//  Rows rank on the average-field utilization, which is what lets an oil duct, a paper gap and a creep path - which fail at very
-//  different stresses, and whose allowables have different distance exponents - be compared on one scale.
+//  Rows rank on the average-field utilization, which is what lets an oil duct and a paper gap - which fail at very different
+//  stresses, and whose allowables have different distance exponents - be compared on one scale.
+//
+//  Every column header carries a tooltip saying what the number in it is. That is not decoration: half of these columns are
+//  quantities whose definition decides whether a row is alarming or routine (whose thickness is "Layer/path"? is "Corner enh." a
+//  margin?), and a header the reader has to come back to this file to decode is a report that will be misread.
 //
 
 import Cocoa
@@ -52,6 +56,43 @@ class StressReportWindow:NSWindowController {
 
             case .kind, .location, .material: return false
             default: return true
+            }
+        }
+
+        /// What the column actually holds, shown as a tooltip on its header. See the file header for why these exist.
+        var explanation:String {
+
+            switch self {
+
+            case .kind:
+                return "What is being checked: the two electrodes and the gap between them."
+
+            case .location:
+                return "Where in the winding. For a disc-to-disc gap, 'worst at ID'/'worst at OD' names the end of the gap that carries the full two-disc voltage - the end away from the crossover."
+
+            case .deltaV:
+                return "The voltage across this gap at the worst instant of the run, in kV."
+
+            case .time:
+                return "When the worst voltage occurred, in microseconds from the start of the impulse.\n\n't = 0+' means the worst case was not on the simulation's time grid at all, but at the instant the impulse arrives: the capacitive (initial) distribution, in which the voltage divides purely by the capacitance network because no current has yet built up in the inductances. It is computed separately and scanned as an extra sample, because the frequency-domain solver's first grid point is already tens of nanoseconds in, by which time the steepest turn-to-turn gradients have begun to relax. Turn-to-turn and disc-to-disc rows usually peak here; coil-to-ground rows usually peak late, on the tail."
+
+            case .path:
+                return "The thickness of the layer that is governing this row - not the whole gap. Each layer is judged against the breakdown level for its OWN thickness, which is why this is the distance shown."
+
+            case .material:
+                return "The material of the governing layer. The oil in a gap carries a higher field than the paper beside it (the ratio across an interface is ε_paper/ε_oil), but paper withstands roughly twice as much, so the governing layer is the one with the worst PERCENTAGE, not the highest field."
+
+            case .averageField:
+                return "The average field in the governing layer, kV/mm. This is the number that is judged."
+
+            case .averageMargin:
+                return "The average field as a percentage of the DelVecchio ch. 13 impulse breakdown level for that material at that thickness, times the design margin. 100% means the margin is exactly used up. Rows rank on this."
+
+            case .peakField:
+                return "The field at a conductor corner, kV/mm, from the same dielectric stack. Informational: ch. 13's data are uniform-gap measurements, so there is no sourced allowable to judge a corner peak against."
+
+            case .peakMargin:
+                return "How much the conductor corner concentrates the field over the average - a ratio, NOT a margin. This column is where a finite-element run earns its keep."
             }
         }
     }
@@ -93,10 +134,13 @@ class StressReportWindow:NSWindowController {
         let over = checks.filter { $0.worstUtilization > 1.0 }.count
         let close = checks.filter { $0.worstUtilization > 0.8 && $0.worstUtilization <= 1.0 }.count
 
-        summaryLabel.stringValue = "\(checks.count) locations checked — \(over) over allowable, \(close) within 20% of it. Allowables are DelVecchio ch. 13 impulse breakdown levels at each layer's own thickness, times a \(Int(DielectricStress.StressAllowable.designMargin * 100))% design margin. The corner column is an enhancement ratio, not a margin: ch. 13 has no criterion for a corner peak."
+        // The "strike only" clause is not a disclaimer for its own sake. A reader who sees "N locations checked, 0 over allowable"
+        // will take it as a clean bill of health, and creep - which is often what governs - is not among the N. See the header of
+        // DielectricStress.swift.
+        summaryLabel.stringValue = "\(checks.count) locations checked — \(over) over allowable, \(close) within 20% of it. Allowables are DelVecchio ch. 13 impulse breakdown levels at each layer's own thickness, times a \(Int(DielectricStress.StressAllowable.designMargin * 100))% design margin. The corner column is an enhancement ratio, not a margin: ch. 13 has no criterion for a corner peak. Strike (breakdown through a gap) only — creep along insulation surfaces is not screened. Hover a column heading for what it holds."
         summaryLabel.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         summaryLabel.lineBreakMode = .byWordWrapping
-        summaryLabel.maximumNumberOfLines = 2
+        summaryLabel.maximumNumberOfLines = 3
         summaryLabel.translatesAutoresizingMaskIntoConstraints = false
 
         for column in Column.allCases {
@@ -105,6 +149,7 @@ class StressReportWindow:NSWindowController {
             tableColumn.title = column.rawValue
             tableColumn.width = column == .location ? 400 : (column == .kind ? 140 : 115)
             tableColumn.minWidth = 60
+            tableColumn.headerToolTip = column.explanation
             tableColumn.sortDescriptorPrototype = NSSortDescriptor(key: column.rawValue, ascending: false)
             tableView.addTableColumn(tableColumn)
         }
@@ -159,8 +204,10 @@ class StressReportWindow:NSWindowController {
             return String(format: "%.2f", check.deltaV / 1000.0)
 
         case .time:
-            // A negative time marks the t = 0+ capacitive distribution, which is not a point on the simulation's grid.
-            return check.isAtCapacitiveDistribution ? "t = 0+" : String(format: "%.3f", check.time * 1.0E6)
+            // A negative time marks the t = 0+ capacitive distribution, which is not a point on the simulation's grid. Spelling out
+            // "initial" rather than leaving it as the bare "t = 0+" it used to be: the header tooltip explains it in full, but the
+            // cell should not need the tooltip to be readable at all.
+            return check.isAtCapacitiveDistribution ? "0+ (initial)" : String(format: "%.3f", check.time * 1.0E6)
 
         case .path:
             return String(format: "%.3f", check.pathLength * 1000.0)
@@ -175,8 +222,8 @@ class StressReportWindow:NSWindowController {
             return String(format: "%.0f%%", check.averageUtilization * 100.0)
 
         case .peakField:
-            // Creep rows leave this empty rather than showing a number that would not mean anything - a tangential stress along a
-            // surface has no conductor corner to concentrate at.
+            // A gap with no conductor corner facing it - a static ring's smoothly wrapped face - leaves this empty rather than
+            // showing a number that would not mean anything.
             guard let peak = check.peakField else { return "—" }
             return String(format: "%.2f", peak / 1.0E6)
 

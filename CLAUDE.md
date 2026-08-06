@@ -165,6 +165,17 @@ decimal points. Verify any change the same way; do not trust `pdftotext` for the
 | **creep**, a.c. rms, by distance | 13.16 | 16.6·d_c^−0.46 |
 | **creep**, a.c. rms, by area | 13.15 | **16.0 − 1.09·ln A_c** |
 
+**The screen is strike-only — the two creep rows are present but unused (2026-08-06).** The creep *allowables* are fine and
+`VerifySelf` still pins all three; what was wrong was the *geometry* fed to them. A creep path was taken as the straight axial run
+between the electrodes: the gap itself for a key spacer, and for a hilo barrier the **difference in the two coils' end heights**.
+That last one is what removal was really about — it is not the hilo at all, so a design with a 19 mm hilo and coil ends a
+millimetre apart got a 1 mm path carrying the full end-to-end voltage, judged at a 1 mm path's strength, and duly sorted to the top
+of the table. A real creep path runs up one face of the barrier, **around its overhang past the coil end** and back down, longer
+again where angle rings and caps are fitted at high voltage. None of that structure is in `PhaseModel`, so **bringing creep back
+starts with the geometry, not with `DielectricStress.swift`** — see the long note above `StressAllowable.CreepPowerFrequency`. Until
+then the summary line in `StressReportWindow` says "strike only" out loud, because "0 over allowable" otherwise reads as a clean
+bill of health on a check that was never made.
+
 Two traps in that table. **13.15 is logarithmic in area, not a power law** — 16.0 and 1.09 in a subtraction, not 16.0 and 0.09 in an
 exponent; 13.9 (oil by volume) has the same shape, and both eventually go negative, which the book flags for 13.9 on p.370 and
 which `CreepPowerFrequencyByArea` clamps. And **pressboard uses 13.8 (90 °C), not 13.7 (room temperature)** — 13.8 is the more
@@ -173,7 +184,8 @@ also a 90 °C measurement whose 10% room-temperature bonus is deliberately decli
 `PressboardImpulseRoomTemperature`.
 
 Four distinctions in there must never be collapsed: **strike vs. creep** (different formulas and much steeper creep exponent — which
-is why a short creep path carrying a large voltage so often governs); **power frequency vs. impulse** (ratio ≈2.8 for oil, 2.7 for
+is why a short creep path carrying a large voltage so often governs, and why the missing creep check above is not a small gap);
+**power frequency vs. impulse** (ratio ≈2.8 for oil, 2.7 for
 paper, 3.0 for pressboard); **rms vs. peak** (the a.c. forms are rms, the impulse forms peak, and the simulation gives instantaneous
 volts, so the impulse forms compare like with like); and **50% breakdown vs. design level** (p.368 — the book's data are the former,
 so `StressAllowable.designMargin`, default 0.80 after the book's own Figure 13.5, brings it to the latter).
@@ -186,7 +198,7 @@ model for the allowables and shipped invented numbers alongside; both are gone.
 because chapter 13's data are uniform-gap measurements judged against average fields — there is no sourced criterion for a corner
 peak. That is precisely where the book says (p.16) "there is usually some judgment involved", and where an FE run earns its keep.
 The one figure here that is an extrapolation rather than a citation is `creepImpulseRatio` (the book gives creep only at power
-frequency); it is isolated as a named constant for that reason.
+frequency); it is isolated as a named constant for that reason, and is on the unused creep path.
 
 **The corner model is geometry, not a tabulated factor.** `CoaxialField` does double duty: at r ≈ 0.3 m it is the hilo, at
 r = `cornerRadiusOnCopper` (0.81 mm, ≈ 1/32″, a documented editable constant) it *is* the corner. The paper follows the corner, so
