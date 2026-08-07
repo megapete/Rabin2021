@@ -968,15 +968,18 @@ actor PhaseModel /*:Codable */ {
             }
             
             let oldSectionsPerNew = oldSegments.count / newSegments.count
-            
+
+            // Connections that the fold strands, paired with the old Segment they were attached to. See the long note below.
+            var strandedConnections:[(oldSerialNumber:Int, connection:Segment.Connection)] = []
+
             for newIndex in 0..<newSegments.count {
-                
+
                 let currentOldSegments = oldSegments[newIndex * oldSectionsPerNew..<newIndex * oldSectionsPerNew + oldSectionsPerNew]
                 let firstOldSeg = currentOldSegments.first!
                 let lastOldSeg = currentOldSegments.last!
-                
+
                 let newSeg = newSegments[newIndex]
-                
+
                 // EVERY old Segment folded into this new one gets an entry, not just the two ends. At two-old-per-new (interleave,
                 // wound-in-shield pairing) first and last are the only two and the distinction does not arise, but combining three
                 // or more discs used to leave the middle ones out of the map, so anything that referred to them stayed dangling.
@@ -985,17 +988,89 @@ actor PhaseModel /*:Codable */ {
                     segmentMap[nextOldSegment.serialNumber] = newSeg
                 }
 
-                await newSeg.SetConnections(connections: firstOldSeg.connections + lastOldSeg.connections)
-                //newSeg.connections.append(contentsOf: lastOldSeg.connections)
-                
+                // A fold DESTROYS every node inside the group: the new Segment is one series branch with exactly two terminals, the
+                // bottom of the first old Segment and the top of the last. Only connections attached at those two points can be
+                // inherited; everything else was attached to a node that no longer exists.
+                //
+                // This used to be `firstOldSeg.connections + lastOldSeg.connections` wholesale, which kept the interior ones too -
+                // and NodeAt resolves a connection by upper/lower alone, so an interior connection inherited from the first old
+                // Segment (an UPPER location) came back attached to the new Segment's TOP node and one from the last old Segment (a
+                // LOWER location) to its BOTTOM node. A single jumper is stored as one connection per Segment meeting the node it
+                // was dropped on (TransformerView.mouseUp adds the whole cross-product), so folding those two Segments into one put
+                // the two halves of one jumper on opposite ends of the new Segment. The visible symptom was two connector lines
+                // where the user drew one; the real one was in SimulationModel.init, which unions the node groups a jumper ties
+                // together and so SHORTED OUT the new Segment - silently, and with a plausible answer at the end of it.
+                var inheritedConnections:[Segment.Connection] = []
+
+                if currentOldSegments.count == 1 {
+
+                    // A one-for-one replacement destroys nothing, so everything is inherited. (Taking first + last here would have
+                    // duplicated every connection on the Segment, since the two are the same object.)
+                    inheritedConnections = await firstOldSeg.connections
+                }
+                else {
+
+                    for nextOldSegment in currentOldSegments {
+
+                        for nextConnection in await nextOldSegment.connections {
+
+                            // Center locations mark a tapping gap and belong to the group's outer boundary if they belong anywhere;
+                            // they are kept from the two end Segments for the same reason their upper/lower siblings are. A
+                            // regrouping is never allowed to span a gap (AppController.SelectionSpansTappingGap), so a center
+                            // connection cannot be interior to the group in the first place.
+                            let survives = (nextOldSegment.serialNumber == firstOldSeg.serialNumber && !nextConnection.connector.fromIsUpper)
+                                        || (nextOldSegment.serialNumber == lastOldSeg.serialNumber && !nextConnection.connector.fromIsLower)
+
+                            if survives {
+
+                                inheritedConnections.append(nextConnection)
+                            }
+                            else {
+
+                                strandedConnections.append((nextOldSegment.serialNumber, nextConnection))
+                            }
+                        }
+                    }
+                }
+
+                await newSeg.SetConnections(connections: inheritedConnections)
+
                 // there may be old-segment references in the newSeg.connections array, get rid of them
                 for nextOldSegment in currentOldSegments {
-                    
+
                     await newSeg.RemoveConnectionsWithID(nextOldSegment.serialNumber)
                     //newSeg.connections.removeAll(where: {$0.segment == nextOldSegment})
                 }
             }
-            
+
+            // Both ends of a stranded connection have to go. Dropping only the new Segment's copy leaves the far Segment pointing
+            // back at a terminal the connection was never attached to - which NodeAt resolves quite happily to the wrong node, so
+            // the short survives from the other side. The sweep runs here, AFTER every new Segment has its connections and BEFORE
+            // the remap below, because it matches on the OLD serial numbers the mirrors still carry.
+            //
+            // Nothing checks whether the far end is one of the old Segments of the same group (a series connection inside it): its
+            // mirror was stranded too and is not in any inherited list, so the removal simply finds nothing.
+            if !strandedConnections.isEmpty {
+
+                let searchSegments = self.segments + newSegments
+
+                for nextStranded in strandedConnections {
+
+                    guard nextStranded.connection.segmentID != nil else {
+
+                        // A termination (ground, impulse or a floating lead) has no far end to clean up.
+                        continue
+                    }
+
+                    let mirror = nextStranded.connection.connector.Inverse()
+
+                    for nextSegment in searchSegments {
+
+                        await nextSegment.RemoveConnectionsMatching(segmentID: nextStranded.oldSerialNumber, connector: mirror)
+                    }
+                }
+            }
+
             // Old serial -> new serial. Segment.serialNumber is a 'let', so reading it needs no await.
             let serialMap = segmentMap.mapValues({ $0.serialNumber })
 

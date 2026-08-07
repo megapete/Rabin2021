@@ -272,9 +272,22 @@ enum SelfTest {
             return false
         }
 
+        if scenarioName == strandedConnectionName {
+
+            Task {
+
+                let report = await CheckStrandedConnection(controller: controller)
+                Record(report: report.text, summary: report.summary, fileName: "SelfTestReport-\(strandedConnectionName).txt")
+                Stage("finished")
+                NSApp.terminate(nil)
+            }
+
+            return true
+        }
+
         guard let scenario = scenarios[scenarioName] else {
 
-            Record(report: "No scenario named '\(scenarioName)'. Known scenarios: \(scenarios.keys.sorted().joined(separator: ", "))",
+            Record(report: "No scenario named '\(scenarioName)'. Known scenarios: \((scenarios.keys + [strandedConnectionName]).sorted().joined(separator: ", "))",
                    summary: "FAILED - unknown scenario '\(scenarioName)'",
                    fileName: "SelfTestReport-\(scenarioName).txt")
             NSApp.terminate(nil)
@@ -479,6 +492,247 @@ enum SelfTest {
             text += String(repeating: "-", count: 110) + "\n"
             text += "  Not run. Add -PCH_SelfTestTransient YES to include the frequency-domain sweep.\n\n"
         }
+
+        return Report(text: text, summary: summary)
+    }
+
+    // MARK: A jumper at a node that a fold destroys
+
+    /// The name that runs `CheckStrandedConnection` instead of a design scenario.
+    static let strandedConnectionName = "STRANDED"
+
+    private static func DescribeConnections(_ segments:[Segment]) async -> String {
+
+        var text = ""
+
+        for nextSegment in segments {
+
+            text += "  Segment \(nextSegment.serialNumber) (radial \(nextSegment.radialPos), axial \(nextSegment.axialPos), \(nextSegment.basicSections.count) disc(s)):\n"
+
+            for nextConnection in await nextSegment.connections {
+
+                text += "      \(nextConnection.connector.fromLocation) -> \(nextConnection.connector.toLocation)   target: \(nextConnection.segmentID.map({ String($0) }) ?? "-")   equivalents: \(nextConnection.equivalentConnections.count)\n"
+            }
+        }
+
+        return text
+    }
+
+    /// Put a jumper on a node that interleaving is about to swallow, interleave anyway, and check that nothing is left behind.
+    ///
+    /// This is the only check here that is about the CONNECTIONS rather than about a design, and it exists because the failure it
+    /// covers is invisible in every other one: a jumper is stored as one connection per Segment that meets each of the two nodes it
+    /// joins (TransformerView.mouseUp adds the whole cross-product of the (Segment, location) pairs at the two ends), so a jumper
+    /// dropped on the node between two discs lives on BOTH of them. Fold those two discs into one Segment and the two halves land
+    /// on opposite terminals of it - which drew the user two connector lines where they had made one, and, far worse, made
+    /// SimulationModel's node merging tie the new Segment's two terminals together. A shorted-out disc pair changes the answer and
+    /// reports nothing.
+    ///
+    /// Three things are asserted, and all three have to hold together:
+    ///
+    ///   1. AppController.SelectionStrandedConnection sees the jumper BEFORE the fold - that is the guard the UI puts up;
+    ///   2. after the fold, neither the merged Segment nor the far coil still names the other - PhaseModel.UpdateConnectors has to
+    ///      drop BOTH halves, since either one alone leaves the far end pointing at a terminal it was never attached to;
+    ///   3. no node group ties the merged Segment's two nodes together - the short itself, tested where it would actually appear.
+    ///
+    /// Run it exactly like a scenario: `-PCH_SelfTest STRANDED`.
+    private static func CheckStrandedConnection(controller:AppController) async -> Report {
+
+        var text = "Stranded-connection check: a jumper on a node that interleaving destroys\n"
+        text += "Run at: \(Date())\n"
+        text += String(repeating: "=", count: 110) + "\n\n"
+
+        Stage("locating the fixture")
+
+        guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+
+            return Report(text: text + "FAILED: no Documents folder.\n", summary: "FAILED - no Documents folder")
+        }
+
+        let fixture = documents.appendingPathComponent("STME-0999_AndIn.txt")
+
+        guard let xlFile = try? PCH_ExcelDesignFile(designFile: fixture) else {
+
+            return Report(text: text + "FAILED: could not read \(fixture.path)\n", summary: "FAILED - no fixture")
+        }
+
+        Stage("building the model")
+
+        await controller.updateModel(oldSegments: [], newSegments: [], xlFile: xlFile, reinitialize: true)
+
+        guard let model = controller.currentModel else {
+
+            return Report(text: text + "FAILED: no model.\n", summary: "FAILED - no model")
+        }
+
+        let hv = await model.CoilSegments().filter({ $0.radialPos == 1 })
+        let lv = await model.CoilSegments().filter({ $0.radialPos == 0 })
+
+        guard hv.count > 12, lv.count > 7 else {
+
+            return Report(text: text + "FAILED: not enough segments (hv \(hv.count), lv \(lv.count)).\n", summary: "FAILED - model too small")
+        }
+
+        // The interior node between HV discs 10 and 11 - which interleaving, pairing (0,1),(2,3)..., will swallow into
+        // the middle of a Segment - jumpered to the interior node between LV segments 5 and 6.
+        let hvA = hv[10], hvB = hv[11]
+        let lvA = lv[5], lvB = lv[6]
+
+        guard let hvSeries = await hvA.connections.first(where: { $0.segmentID == hvB.serialNumber }),
+              let lvSeries = await lvA.connections.first(where: { $0.segmentID == lvB.serialNumber }) else {
+
+            return Report(text: text + "FAILED: could not find the series connections.\n", summary: "FAILED - no series connection")
+        }
+
+        let hvLoc = hvSeries.connector.fromLocation
+        let lvLoc = lvSeries.connector.fromLocation
+
+        Stage("adding the interconnection")
+
+        // Exactly what TransformerView.mouseUp does when the user drags a connection from one lead to another.
+        let allSegments = await model.segments
+
+        var startConnections = await hvA.ConnectionDestinations(fromLocation: hvLoc)
+        startConnections.removeAll(where: { $0.segmentID == nil })
+        startConnections.insert((hvA.serialNumber, hvLoc), at: 0)
+
+        var endConnections = await lvA.ConnectionDestinations(fromLocation: lvLoc)
+        endConnections.removeAll(where: { $0.segmentID == nil })
+        endConnections.insert((lvA.serialNumber, lvLoc), at: 0)
+
+        text += "The user's single jumper: HV \(hvA.serialNumber)/\(hvLoc) <-> LV \(lvA.serialNumber)/\(lvLoc)\n"
+        text += "  start ends at that node: \(startConnections.map({ "\($0.segmentID ?? -1)/\($0.location)" }).joined(separator: ", "))\n"
+        text += "  end ends at that node:   \(endConnections.map({ "\($0.segmentID ?? -1)/\($0.location)" }).joined(separator: ", "))\n\n"
+
+        var equivalentConnections:Set<Segment.Connection.EquivalentConnection> = []
+
+        for nextStartConnection in startConnections {
+
+            for nextEndConnection in endConnections {
+
+                guard let nextStartSegment = allSegments.first(where: { $0.serialNumber == nextStartConnection.segmentID }) else { continue }
+
+                let newConnections = await nextStartSegment.AddConnector(segments: allSegments, fromLocation: nextStartConnection.location, toLocation: nextEndConnection.location, toSegmentID: nextEndConnection.segmentID)
+
+                guard let newSrcConnection = newConnections.from, let newDestConnection = newConnections.to else { continue }
+
+                equivalentConnections.insert(Segment.Connection.EquivalentConnection(parent: nextStartConnection.segmentID!, connection: newSrcConnection))
+                equivalentConnections.insert(Segment.Connection.EquivalentConnection(parent: nextEndConnection.segmentID!, connection: newDestConnection))
+            }
+        }
+
+        for nextConnection in equivalentConnections {
+
+            guard let nextConnParent = allSegments.first(where: { $0.serialNumber == nextConnection.parent }) else { continue }
+
+            await nextConnParent.AddEquivalentConnections(to: nextConnection.connection, equ: equivalentConnections)
+        }
+
+        text += "BEFORE INTERLEAVING\n" + String(repeating: "-", count: 110) + "\n"
+        text += await DescribeConnections([hvA, hvB, lvA, lvB])
+        text += "\n"
+
+        Stage("interleaving")
+
+        // 1. The guard the UI puts up. ApplyRestructure deliberately does not call it (see its note), so the fold below happens
+        //    whatever this says - which is the point: the model has to be safe even when nothing stopped the operation.
+        let guardSays = await controller.SelectionStrandedConnection(model: model, segments: hv)
+        let guardSawIt = guardSays != nil
+
+        text += "The UI guard on this selection says: \(guardSays ?? "nothing in the way")\n\n"
+
+        let restructure = await ApplyRestructure(.interleave(coil: 1), model: model, controller: controller)
+        text += "AFTER INTERLEAVING (\(restructure))\n" + String(repeating: "-", count: 110) + "\n"
+
+        let newHV = await model.CoilSegments().filter({ $0.radialPos == 1 })
+
+        guard let merged = newHV.first(where: { $0.basicSections.contains(where: { $0.location.axial == hvA.axialPos }) }) else {
+
+            return Report(text: text + "FAILED: could not find the merged Segment.\n", summary: "FAILED - no merged segment")
+        }
+
+        text += await DescribeConnections([merged, lvA, lvB])
+        text += "\n"
+
+        // 2. Both halves of the jumper have to be gone. Either one left behind re-attaches it to a terminal it was never on.
+        let mergedStillNames = await merged.connections.contains(where: { $0.segmentID == lvA.serialNumber || $0.segmentID == lvB.serialNumber })
+        let lvAStillNames = await lvA.connections.contains(where: { $0.segmentID == merged.serialNumber })
+        let lvBStillNames = await lvB.connections.contains(where: { $0.segmentID == merged.serialNumber })
+        let lvStillNames = lvAStillNames || lvBStillNames
+
+        Stage("applying the terminations")
+
+        for nextTermination in [Termination(coil: 0, end: .bottom, type: .ground),
+                                Termination(coil: 0, end: .top, type: .ground),
+                                Termination(coil: 1, end: .bottom, type: .ground),
+                                Termination(coil: 1, end: .top, type: .impulse)] {
+
+            text += "  " + (await ApplyTermination(nextTermination, model: model)) + "\n"
+        }
+
+        text += "\n"
+
+        Stage("building the simulation model")
+
+        guard let simModel = await SimulationModel(model: model) else {
+
+            return Report(text: text + "FAILED: no simulation model.\n", summary: "FAILED - no simulation model")
+        }
+
+        let upperNode = await model.NodeAt(segment: merged, useFrom: true, connector: Connector(fromLocation: .outside_upper, toLocation: .floating))
+        let lowerNode = await model.NodeAt(segment: merged, useFrom: true, connector: Connector(fromLocation: .outside_lower, toLocation: .floating))
+
+        text += "Merged segment \(merged.serialNumber): upper node \(upperNode.map({ String($0.number) }) ?? "-"), lower node \(lowerNode.map({ String($0.number) }) ?? "-")\n\n"
+
+        let groups = await simModel.finalConnectedNodes
+
+        text += "MERGED NODE GROUPS\n" + String(repeating: "-", count: 110) + "\n"
+
+        // 3. The short itself, tested where it would actually show up.
+        var shorted = false
+
+        if groups.isEmpty {
+
+            text += "  (none - nothing in this model ties two nodes together)\n"
+        }
+
+        for (nextKey, nextSet) in groups {
+
+            let all = [nextKey] + Array(nextSet)
+            text += "  \(all.map({ String($0.number) }).sorted().joined(separator: " = "))\n"
+
+            if let upper = upperNode, let lower = lowerNode, all.contains(upper), all.contains(lower) {
+
+                shorted = true
+            }
+        }
+
+        var failures:[String] = []
+
+        if !guardSawIt {
+
+            failures.append("the UI guard did not see the jumper")
+        }
+
+        if mergedStillNames {
+
+            failures.append("the merged Segment still names the far coil")
+        }
+
+        if lvStillNames {
+
+            failures.append("the far coil still names the merged Segment")
+        }
+
+        if shorted {
+
+            failures.append("the merged Segment's two nodes were tied together")
+        }
+
+        let summary = failures.isEmpty ? "PASSED - the jumper was refused by the guard and left nothing behind when folded anyway"
+                                       : "FAILED - " + failures.joined(separator: "; ")
+
+        text += "\nVERDICT\n" + String(repeating: "-", count: 110) + "\n  \(summary)\n"
 
         return Report(text: text, summary: summary)
     }

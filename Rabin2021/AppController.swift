@@ -2710,6 +2710,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
             if await model.SegmentsAreContiguous(segments: segments) {
 
+                // The combined Segment has two terminals, so every node inside the selection is about to disappear along with
+                // anything the user attached to it. See SelectionStrandedConnection.
+                if let stranded = await self.SelectionStrandedConnection(model: model, segments: segments) {
+
+                    PCH_ErrorAlert(message: "There is a connection inside the selection!", info: "Combining would destroy the node it is attached to (\(stranded)). Remove the connection first.")
+                    return
+                }
+
                 var newBasicSectionArray:[BasicSection] = []
                 
                 
@@ -2830,6 +2838,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                     return
                 }
 
+                // Interleaving turns each disc pair into one two-terminal Segment, so any connection inside the selection loses the
+                // node it was made at. See SelectionStrandedConnection.
+                if let stranded = await self.SelectionStrandedConnection(model: model, segments: segments) {
+
+                    PCH_ErrorAlert(message: "There is a connection inside the selection!", info: "Interleaving would destroy the node it is attached to (\(stranded)). Remove the connection first.")
+                    return
+                }
+
                 var basicSections:[BasicSection] = []
                 for nextSegment in segments {
 
@@ -2900,6 +2916,80 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
 
         return false
+    }
+
+    /// Describe the first connection that would be stranded by folding `segments` (which must already be sorted) into fewer
+    /// Segments, or nil if there is none.
+    ///
+    /// Combining, interleaving and wound-in-shield pairing all replace a run of Segments with fewer, larger ones, and a Segment is
+    /// a single series branch with exactly two terminals. Every node INSIDE the run therefore ceases to exist. A series connection
+    /// across such a node is exactly what is supposed to disappear; anything else attached there - a jumper to another disc or
+    /// another coil, a ground, an impulse - has nowhere to go.
+    ///
+    /// Letting it through is not a cosmetic problem. A jumper is stored as one connection per Segment that meets the node it was
+    /// dropped on, so the two halves of one jumper end up on opposite terminals of the new Segment, and SimulationModel's node
+    /// merging then ties those two terminals together - shorting the new Segment out, with no error anywhere. PhaseModel's
+    /// UpdateConnectors now discards both halves rather than leave that behind, so the model is safe either way; this guard is
+    /// what makes the loss the user's decision instead of a silent one.
+    ///
+    /// Like SelectionSpansTappingGap, the test is over the WHOLE selection rather than only the boundaries a particular regrouping
+    /// would actually swallow. Interleaving pairs the flattened discs 0-1, 2-3, ..., so a jumper on an even boundary would in fact
+    /// survive - but which boundaries those are depends on how the flatten happens to divide, and a rule that sometimes lets a
+    /// connection through is worse than a conservative one for something with an easy workaround (remove the connection, regroup,
+    /// put it back if the node still exists).
+    func SelectionStrandedConnection(model:PhaseModel, segments:[Segment]) async -> String? {
+
+        guard segments.count > 1 else {
+
+            return nil
+        }
+
+        /// The connections `segment` carries at the node it shares with `neighbour`, other than the series connection itself.
+        func StrandedAt(segment:Segment, upperEnd:Bool, neighbour:Segment) async -> String? {
+
+            for nextConnection in await segment.connections {
+
+                let atThisEnd = upperEnd ? nextConnection.connector.fromIsUpper : nextConnection.connector.fromIsLower
+
+                guard atThisEnd, nextConnection.connector.toLocation != .floating else {
+
+                    continue
+                }
+
+                if let connectedID = nextConnection.segmentID {
+
+                    // The series connection to the neighbour is the one thing here that is meant to vanish.
+                    if connectedID != neighbour.serialNumber {
+
+                        return "segment \(segment.serialNumber) (\(nextConnection.connector.fromLocation)) is connected to segment \(connectedID)"
+                    }
+                }
+                else {
+
+                    return "segment \(segment.serialNumber) (\(nextConnection.connector.fromLocation)) is connected to \(nextConnection.connector.toLocation)"
+                }
+            }
+
+            return nil
+        }
+
+        for i in 0..<(segments.count - 1) {
+
+            let lower = segments[i]
+            let upper = segments[i + 1]
+
+            if let stranded = await StrandedAt(segment: lower, upperEnd: true, neighbour: upper) {
+
+                return stranded
+            }
+
+            if let stranded = await StrandedAt(segment: upper, upperEnd: false, neighbour: lower) {
+
+                return stranded
+            }
+        }
+
+        return nil
     }
 
     @IBAction func handleAddWoundInShields(_ sender: Any) {
@@ -2974,6 +3064,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             if needsRebuild, await self.SelectionSpansTappingGap(model: model, segments: segments) {
 
                 PCH_ErrorAlert(message: "The selection spans a tapping gap!", info: "Pairing the discs for a wound-in shield would regroup them across the gap. Select the discs on one side of the gap at a time.")
+                return
+            }
+
+            // Same story for a connection at a node the pairing would swallow - and, as above, only the rebuild path can swallow
+            // one. See SelectionStrandedConnection.
+            if needsRebuild, let stranded = await self.SelectionStrandedConnection(model: model, segments: segments) {
+
+                PCH_ErrorAlert(message: "There is a connection inside the selection!", info: "Pairing the discs for a wound-in shield would destroy the node it is attached to (\(stranded)). Remove the connection first.")
                 return
             }
 

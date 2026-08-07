@@ -211,15 +211,34 @@ struct SegmentPath:Equatable, Sendable  {
         let selfConnections = await self.segment.connections
 
         for nextConnection in selfConnections {
-            
+
             if let otherSegmentID = nextConnection.segmentID {
-                                
+
                 if maskSegments.contains(otherSegmentID) || otherSegmentID == self.segment.serialNumber {
-                    
+
                     continue
                 }
             }
-            
+
+            // One jumper, one line. A connection the user drew is stored once for every Segment that meets each of the two nodes
+            // it joins - mouseUp() adds the whole cross-product of the (Segment, location) pairs at the two ends, and records the
+            // result in each copy's equivalentConnections. Two axially adjacent discs meet at the same node, so those copies land
+            // a disc gap apart and used to be drawn as two or four lines almost (but not exactly) on top of each other. Drawing
+            // only the first member of an equivalence class also keeps the lane assignment honest: the copies have different
+            // ViewConnectorIdentities, so assignLane would otherwise spread them into parallel lanes as though they were separate
+            // connections. Removing the drawn one still removes the whole class - RemoveConnection() follows the same set.
+            if !nextConnection.equivalentConnections.isEmpty, txfoView.viewConnectors.contains(where: { drawnConnector in
+
+                let drawnFrom = drawnConnector.segments.from.serialNumber
+                let drawn = Segment.Connection(segmentID: drawnConnector.segments.to?.serialNumber, connector: drawnConnector.connector)
+
+                return nextConnection.equivalentConnections.contains(where: { $0.parent == drawnFrom && $0.connection == drawn })
+
+            }) {
+
+                continue
+            }
+
             let connectorPath = NSBezierPath()
             
             var fromPoint = NSPoint()

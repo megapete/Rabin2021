@@ -56,6 +56,10 @@ Add `-PCH_SelfTestTransient YES` for the frequency-domain sweep as well. A full 
 radial build-up, FE phase, eddy losses, inductance, capacitance, terminations, initial distribution and a 2048-step
 transient — is **37 seconds**, so there is no reason not to run it.
 
+One name in that argument is not a design: **`STRANDED`** runs `SelfTest.CheckStrandedConnection` instead, which is about the
+connections rather than about a winding — it drops a jumper on a node that interleaving is about to swallow and checks that the
+guard sees it and that the fold leaves nothing behind. See *Connector / Segment.Connection* below.
+
 Four mechanical points, each forced by something:
 
 - **`NSUserDefaults` parses `-key value` launch arguments itself**, so there is no argument plumbing and the test path
@@ -208,6 +212,29 @@ The physics model is layered from smallest to largest unit. Understanding this h
 - **`Connector`** / **`Segment.Connection`** (`Connector.swift`, `Segment.swift`) — an electrical "jumper". A `Connector` has a `fromLocation`/`toLocation` from the `Connector.Location` enum: eight physical points on a segment (`{inside,center,outside}_{upper,lower}` plus `outside_center`/`inside_center`) and the special *terminations* `floating`, `ground`, `impulse`. A `Segment.Connection` pairs a `Connector` with an optional `segmentID`: non-nil ⇒ a jumper to that segment's location; nil ⇒ a termination on `self`. Coil ends and tapping gaps carry a `floating` lead by default; `AddConnector` **replaces** a floating lead with ground/impulse but **appends** a segment-to-segment jumper (leaving the floating lead in place).
 
   **A tapping gap breaks the node chain even when it is bridged.** `outside_center`/`inside_center` connectors are created in exactly one place — `AppController:1030-1044`, at tapping/DV gaps — and `Connector.AlternatingLocation` only ever pairs a center location with another center location; a real series connection between adjacent discs always maps an **upper** location to a **lower** one. So a center connector means "tapping gap", always. `SetNodes` therefore gives each side of a gap its own node, testing `IsTappingGap` *as well as* the presence of a connection — matching `NonAdjacentConnections`' rule that gap jumpers "will be adjacent, but for the purposes of the simulation they will not be". The jumper is then tied up explicitly through `finalConnectedNodes` → `mergedNodes` → the `V_eliminated − V_kept = 0` row surgery. Testing only for a connection (as `SetNodes` did until 2026-08-04) made a *bridged* gap look continuous, so `NodeAt` — which resolves a center connector only to a dangling node — could not find the node its own connector described, and `SimulationModel.init` failed. **Both routines must keep using the same predicate** — and `SetNodes` now ends by calling `VerifyNodeTopology()`, which asks `NodeAt` to resolve every connector in the model and throws `.UnresolvableConnector` if one fails. Note what that guard deliberately is *not*: a node **count** check (`nodes == segments + breaks + coils`) is a tautology, because `breaks` comes from the same predicate — it held perfectly while the bug was live. Only a check that crosses the `SetNodes`/`NodeAt` boundary can see a wrong break decision. Relatedly, neither operation that *regroups* a selection (`doInterleaveSelection`, `doAddWoundInShields`' pairing path) may run across a gap: flattening would swallow the break into the middle of a Segment and strand its two center leads. Both call `AppController.SelectionSpansTappingGap` and refuse.
+  **One jumper is stored as up to four connections, and a fold is where that bites.** A node is shared by the two Segments that meet
+  at it, and `TransformerView.mouseUp` registers a new jumper on **every** (Segment, location) pair at each of its two ends — the
+  whole cross-product, each copy carrying the others in its `equivalentConnections`. So a jumper dropped between discs 10 and 11 lives
+  on *both* discs (and on both discs at the far end). While those discs are separate Segments the copies describe the same node and
+  are drawn a disc-gap apart, i.e. on top of each other. **Fold the two discs into one Segment and they no longer do**: `NodeAt`
+  resolves a connection by upper/lower alone, so disc 10's copy (an *upper* location) comes back on the new Segment's **top** node and
+  disc 11's (a *lower* location) on its **bottom** node. That drew two connector lines where the user made one — and
+  `SimulationModel.init` unions the node groups a jumper ties together, so it also **shorted the new Segment out**, silently, with a
+  plausible answer at the end of it. Three things now stand between that and a wrong answer, and they are meant to be read together:
+
+  - `PhaseModel.UpdateConnectors` inherits **only** the connections at the two surviving terminals (lower-locations from the first old
+    Segment, upper-locations from the last) and sweeps away the **mirror** of everything it discards — matching on the old serial
+    number *and* the connector, which is what `Segment.RemoveConnectionsMatching` is for. Dropping one half only re-attaches the jumper
+    from the other side, so both halves have to go together, and the sweep has to run **before** the serial remap.
+  - `AppController.SelectionStrandedConnection` refuses the operation first, so the loss is the user's decision rather than a silent
+    one. It is called by *Combine*, *Interleave* and the wound-in-shield **rebuild** path, and is conservative over the whole selection
+    for the same reason `SelectionSpansTappingGap` is.
+  - `SegmentPath.SetUpConnectors` draws **one line per equivalence class**, so the redundant copies never reach the screen (and
+    `assignLane` stops spreading them into parallel lanes as though they were separate connections).
+
+  `SelfTest`'s **`STRANDED`** run (`-PCH_SelfTest STRANDED`) puts a jumper on a node interleaving is about to swallow and checks all
+  three: the guard sees it, neither end still names the other afterwards, and no node group ties the merged Segment's two terminals.
+
 - **`PhaseModel`** (`actor`, `PhaseModel.swift`) — the central model object. Owns the sorted `segmentStore`, the `nodeStore`, and the `core`. All model mutation/queries go through it. Throws `PhaseModelError`.
   - It also holds `voltsPerTurn`, set by `AppController.recalculateModel` from the design file. It is the one place the model knows an *actual* operating voltage rather than a per-unit one; only the wound-in-shield paper sizing uses it so far.
   - **Live vs pristine radial geometry.** A `BasicSection`'s rect holds the **pristine** radii read from the design file and is never rewritten; the **live** geometry is the owning `Segment`'s `rect`. `PhaseModel.ApplyRadialBuildUp()` recomputes every Segment's rect from pristine + the current wound-in-shield set, widening each shielded coil by its widest disc's requirement, pushing everything outside it straight out (preserving the hilos, which are withstand-driven minimums), and growing `core.legCenters` and `tankDepth` by twice the total. Because it works from pristine absolutes it is idempotent and exactly reversible, so `AppController.recalculateModel` just calls it unconditionally — which also repairs the geometry after a combine/split/interleave. `basicSections` stays a `let` deliberately: `validateMenuItem` reads it synchronously from the main actor and cannot `await`.

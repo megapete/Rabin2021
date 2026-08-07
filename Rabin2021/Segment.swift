@@ -433,10 +433,24 @@ actor Segment: Equatable /*, Hashable */ {
     }
     
     func RemoveConnectionsWithID(_ segID:Int) {
-        
+
         self.connections.removeAll(where: { $0.segmentID == segID })
     }
-    
+
+    /// Remove every connection that names `segmentID` through exactly `connector`, and return how many went.
+    ///
+    /// This is the narrow version of RemoveConnectionsWithID, and the difference matters wherever the far end of a jumper has to be
+    /// taken out without touching the series connection that runs to the same Segment: two axially adjacent Segments in the same
+    /// coil are joined by a series connection AND may carry a jumper to each other, and the serial number alone cannot tell them
+    /// apart. See PhaseModel.UpdateConnectors, which uses it to clean up the mirror image of a connection that a fold discarded.
+    @discardableResult func RemoveConnectionsMatching(segmentID:Int, connector:Connector) -> Int {
+
+        let before = self.connections.count
+        self.connections.removeAll(where: { $0.segmentID == segmentID && $0.connector == connector })
+
+        return before - self.connections.count
+    }
+
     func AppendConnection(connection:Connection) {
         
         self.connections.append(connection)
