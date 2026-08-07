@@ -33,12 +33,6 @@
 		F531E27E2B7C0B9F004DE02F /* WaveFormDisplayWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F531E27C2B7C0B9F004DE02F /* WaveFormDisplayWindow.swift */; };
 		F531E27F2B7C0B9F004DE02F /* WaveFormDisplayWindow.xib in Resources */ = {isa = PBXBuildFile; fileRef = F531E27D2B7C0B9F004DE02F /* WaveFormDisplayWindow.xib */; };
 		F531E2812B7C0BC3004DE02F /* WaveFormDisplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F531E2802B7C0BC3004DE02F /* WaveFormDisplayView.swift */; };
-		F5A15CE02C0A100000000002 /* AxisScale.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE02C0A100000000001 /* AxisScale.swift */; };
-		F5A15CE12C0A110000000002 /* DielectricStress.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE12C0A110000000001 /* DielectricStress.swift */; };
-		F5A15CE22C0A120000000002 /* StressReportWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE22C0A120000000001 /* StressReportWindow.swift */; };
-		F5A15CE32C0A130000000002 /* StressProfileWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE32C0A130000000001 /* StressProfileWindow.swift */; };
-		F5A15CE32C0A130000000012 /* InitialDistributionWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE32C0A130000000011 /* InitialDistributionWindow.swift */; };
-		F5A15CE42C0A140000000002 /* TurnLadderModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE42C0A140000000001 /* TurnLadderModel.swift */; };
 		F53EB3CF2B6938A400299736 /* SimulationModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F53EB3CE2B6938A400299736 /* SimulationModel.swift */; };
 		F561C3C82B4838AF00C9CEDE /* PchBasePackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3C72B4838AF00C9CEDE /* PchBasePackage */; };
 		F561C3CA2B4838AF00C9CEDE /* PchDialogBoxPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3C92B4838AF00C9CEDE /* PchDialogBoxPackage */; };
@@ -46,6 +40,12 @@
 		F561C3CE2B4838AF00C9CEDE /* PchMatrixPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3CD2B4838AF00C9CEDE /* PchMatrixPackage */; };
 		F561C3D02B4838AF00C9CEDE /* PchProgressIndicatorPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3CF2B4838AF00C9CEDE /* PchProgressIndicatorPackage */; };
 		F561C3D32B4B528800C9CEDE /* PchFiniteElementPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3D22B4B528800C9CEDE /* PchFiniteElementPackage */; };
+		F5A15CE02C0A100000000002 /* AxisScale.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE02C0A100000000001 /* AxisScale.swift */; };
+		F5A15CE12C0A110000000002 /* DielectricStress.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE12C0A110000000001 /* DielectricStress.swift */; };
+		F5A15CE22C0A120000000002 /* StressReportWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE22C0A120000000001 /* StressReportWindow.swift */; };
+		F5A15CE32C0A130000000002 /* StressProfileWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE32C0A130000000001 /* StressProfileWindow.swift */; };
+		F5A15CE32C0A130000000012 /* InitialDistributionWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE32C0A130000000011 /* InitialDistributionWindow.swift */; };
+		F5A15CE42C0A140000000002 /* TurnLadderModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE42C0A140000000001 /* TurnLadderModel.swift */; };
 		F5C0DE012C50000100AA0001 /* ConductorImpedance.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C0DE002C50000100AA0001 /* ConductorImpedance.swift */; };
 		F5C0DE032C50000100AA0002 /* NumericalLaplaceTransform.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C0DE022C50000100AA0002 /* NumericalLaplaceTransform.swift */; };
 		F5C0DE052C50000100AA0003 /* FrequencyDomainSolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C0DE042C50000100AA0003 /* FrequencyDomainSolver.swift */; };
@@ -81,13 +81,13 @@
 		F531E27C2B7C0B9F004DE02F /* WaveFormDisplayWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveFormDisplayWindow.swift; sourceTree = "<group>"; };
 		F531E27D2B7C0B9F004DE02F /* WaveFormDisplayWindow.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = WaveFormDisplayWindow.xib; sourceTree = "<group>"; };
 		F531E2802B7C0BC3004DE02F /* WaveFormDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveFormDisplayView.swift; sourceTree = "<group>"; };
+		F53EB3CE2B6938A400299736 /* SimulationModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulationModel.swift; sourceTree = "<group>"; };
 		F5A15CE02C0A100000000001 /* AxisScale.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AxisScale.swift; sourceTree = "<group>"; };
 		F5A15CE12C0A110000000001 /* DielectricStress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DielectricStress.swift; sourceTree = "<group>"; };
 		F5A15CE22C0A120000000001 /* StressReportWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressReportWindow.swift; sourceTree = "<group>"; };
 		F5A15CE32C0A130000000001 /* StressProfileWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressProfileWindow.swift; sourceTree = "<group>"; };
 		F5A15CE32C0A130000000011 /* InitialDistributionWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InitialDistributionWindow.swift; sourceTree = "<group>"; };
 		F5A15CE42C0A140000000001 /* TurnLadderModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnLadderModel.swift; sourceTree = "<group>"; };
-		F53EB3CE2B6938A400299736 /* SimulationModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulationModel.swift; sourceTree = "<group>"; };
 		F5C0DE002C50000100AA0001 /* ConductorImpedance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConductorImpedance.swift; sourceTree = "<group>"; };
 		F5C0DE022C50000100AA0002 /* NumericalLaplaceTransform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NumericalLaplaceTransform.swift; sourceTree = "<group>"; };
 		F5C0DE042C50000100AA0003 /* FrequencyDomainSolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrequencyDomainSolver.swift; sourceTree = "<group>"; };
@@ -470,7 +470,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2D73656C;
+				CURRENT_PROJECT_VERSION = 3025FE1E;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -483,7 +483,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.6;
+				MARKETING_VERSION = 0.9;
 				PRODUCT_BUNDLE_IDENTIFIER = com.huberistech.Rabin2021;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -503,7 +503,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2D73656C;
+				CURRENT_PROJECT_VERSION = 3025FE1E;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -516,7 +516,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.6;
+				MARKETING_VERSION = 0.9;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.huberistech.Rabin2021;
 				PRODUCT_NAME = "$(TARGET_NAME)";
