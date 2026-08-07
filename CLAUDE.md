@@ -74,11 +74,28 @@ Four mechanical points, each forced by something:
 - **`PCH_SelfTestStage` is written and flushed before each step.** The pipeline raises `NSAlert`s on failure and a modal
   alert with nobody watching hangs the run forever, so that key is the only evidence of where a hung run stopped.
 
-Terminations are applied by finding the **floating lead already at the coil end** and handing its location to
-`AddConnector` (which replaces a floating lead rather than appending to it) — exactly what `TransformerView`'s
-`mouseDownWithAddGround` / `mouseDownWithAddImpulse` do, minus the hit testing. Do not compute the location instead: a
-coil end sits at `.inside_lower`, `.outside_lower` or `.center_lower` depending on winding type and disc count, and a
-guessed one produces a connector `NodeAt` cannot resolve.
+**A scenario names its connections as `SelfTest.LeadPoint`s, never as (Segment, location) pairs**, and `FindLead` goes and looks
+for the lead the point names. Neither half of the pair is knowable from the design file: which Segment is at the bottom of a coil
+depends on how many there are, and its lead sits at `.inside_lower`, `.outside_lower` or `.center_lower` depending on winding type
+and disc count. A guessed one produces a connector `NodeAt` cannot resolve — which is the failure class this harness exists to
+catch, so it must not be able to manufacture it. Two kinds of point exist: `.coilEnd(coil:end:)`, and `.gapLead(coil:gap:side:)`
+for the two leads facing each other across an internal tapping/DV gap.
+
+- **Terminations** hand the found location to `AddConnector`, which *replaces* a floating lead rather than appending to it —
+  exactly what `TransformerView`'s `mouseDownWithAddGround` / `mouseDownWithAddImpulse` do, minus the hit testing. The
+  `ConnectionDestinations` loop after it carries the ground to everything already jumpered to that lead, which is how "tie the two
+  centre leads together and ground them" is one termination and not two.
+- **Jumpers** (`SelfTest.Jumper`, applied between the restructure and the terminations) are a port of `TransformerView.mouseUp`,
+  **cross-product and all**: a lead that already carries jumpers is at the same potential as everything on their far ends, so a
+  new jumper is registered on every (Segment, location) pair at each end. Doing less would build a model the UI cannot produce.
+  The order is forced from both sides — a restructure sends `UpdateConnectors` through the connectors and would sweep a jumper
+  away, and a termination replaces the floating lead a later jumper needs in order to find its end.
+
+**The run re-runs `SetNodes` itself, after the connections are on.** Nothing else does: the node topology a scenario is carrying
+was built during the restructure's recalculation, when the coil ends were still floating. That is harmless when every connection
+is a coil end, and wrong the moment one is not — a jumper across a tapping gap and a ground on a centre lead both change what
+`SetNodes` decides. It calls `PhaseModel.CalculateCapacitanceMatrix` directly rather than `AppController.recalculateModel`,
+because that one puts an `NSAlert` up when this throws and a modal alert with nobody at the keyboard hangs the run forever.
 
 #### What the STME-0999 fixture is for
 
@@ -190,6 +207,32 @@ The line-end gradient is divided by the end section's **own** span in x, not by 
 of the end disc while interior nodes sit at gap midpoints, so end sections are ~12% shorter and 1/N charges them for
 length they do not have.
 
+#### The S0738 fixture: a connection, not a winding
+
+`S0738` and `S0738-plain` (`S0738_AndIn.txt`, four coils, 1050 kV on the HV) are the first fixture here that is about **how the
+coils are wired together**. Coils 0 and 1 are grounded at both ends; coil 2 is the impulsed 74-disc HV, interleaved in its
+entirety in the first variant and left alone in the second; **coil 3 is a double-stacked tap winding** whose two ends are tied to
+each other and to the *bottom of coil 2*, and whose two centre leads are tied to each other and grounded. Three things in that are
+not reachable from either STME fixture, and all three are node-topology questions rather than capacitance ones:
+
+- a coil with an **internal tapping gap** (`AppController`'s segment-building loop cuts one into any double-stacked coil, and
+  gives each side its own `outside_center`/`inside_center` floating lead);
+- **both centre leads jumpered together *and* grounded**, which is the combination that erases every floating lead at the gap;
+- a coil **fed from another coil** rather than from a ground, an impulse or nothing.
+
+It was written to reproduce a reported failure and did, verbatim: *"segment 168 has a connector at outside_center with no node
+there (target: 169)"* — see `IsTappingGap` under *Connector / Segment.Connection*. Both variants now run the whole pipeline
+including the transient (82 s with `-PCH_SelfTestTransient YES`).
+
+**The continuum comparison is declined on this fixture, out loud.** DelVecchio 13.5.1 solves a boundary-value problem, and one of
+its two boundaries is missing here: coil 2's far end returns through both halves of coil 3 to a centre ground, so it floats at
+**0.652 p.u.** at t = 0+ (0.169 p.u. unrestructured) and `V(0) = 0` is simply false. Fitting anyway returned α = 0.010 "inside the
+bracket" on a winding whose local α is 0.2 and rising — the same class of artefact as the linear-vs-logarithmic fit above.
+`ContinuumComparison` therefore **measures** the far end against `groundedEndTolerance` (1e-6; a grounded node comes back an exact
+zero from the row surgery, so there is nothing to tune between that and 0.65) and, when it fails, prints the distribution and the
+line-end gradient alone. Those two are what survive the model not applying, and the gradient is still the comparable number:
+**25.18× average plain against 0.615× interleaved**.
+
 ## Dependencies (Swift Package Manager)
 
 Resolved packages live in `ImpulseDistribution.xcodeproj/.../swiftpm/Package.resolved`. Several are private/GitHub packages by the same author (megapete):
@@ -212,6 +255,18 @@ The physics model is layered from smallest to largest unit. Understanding this h
 - **`Connector`** / **`Segment.Connection`** (`Connector.swift`, `Segment.swift`) — an electrical "jumper". A `Connector` has a `fromLocation`/`toLocation` from the `Connector.Location` enum: eight physical points on a segment (`{inside,center,outside}_{upper,lower}` plus `outside_center`/`inside_center`) and the special *terminations* `floating`, `ground`, `impulse`. A `Segment.Connection` pairs a `Connector` with an optional `segmentID`: non-nil ⇒ a jumper to that segment's location; nil ⇒ a termination on `self`. Coil ends and tapping gaps carry a `floating` lead by default; `AddConnector` **replaces** a floating lead with ground/impulse but **appends** a segment-to-segment jumper (leaving the floating lead in place).
 
   **A tapping gap breaks the node chain even when it is bridged.** `outside_center`/`inside_center` connectors are created in exactly one place — `AppController:1030-1044`, at tapping/DV gaps — and `Connector.AlternatingLocation` only ever pairs a center location with another center location; a real series connection between adjacent discs always maps an **upper** location to a **lower** one. So a center connector means "tapping gap", always. `SetNodes` therefore gives each side of a gap its own node, testing `IsTappingGap` *as well as* the presence of a connection — matching `NonAdjacentConnections`' rule that gap jumpers "will be adjacent, but for the purposes of the simulation they will not be". The jumper is then tied up explicitly through `finalConnectedNodes` → `mergedNodes` → the `V_eliminated − V_kept = 0` row surgery. Testing only for a connection (as `SetNodes` did until 2026-08-04) made a *bridged* gap look continuous, so `NodeAt` — which resolves a center connector only to a dangling node — could not find the node its own connector described, and `SimulationModel.init` failed. **Both routines must keep using the same predicate** — and `SetNodes` now ends by calling `VerifyNodeTopology()`, which asks `NodeAt` to resolve every connector in the model and throws `.UnresolvableConnector` if one fails. Note what that guard deliberately is *not*: a node **count** check (`nodes == segments + breaks + coils`) is a tautology, because `breaks` comes from the same predicate — it held perfectly while the bug was live. Only a check that crosses the `SetNodes`/`NodeAt` boundary can see a wrong break decision. Relatedly, neither operation that *regroups* a selection (`doInterleaveSelection`, `doAddWoundInShields`' pairing path) may run across a gap: flattening would swallow the break into the middle of a Segment and strand its two center leads. Both call `AppController.SelectionSpansTappingGap` and refuse.
+
+  **`IsTappingGap` recognises a gap by the LOCATION, not by the termination** — and until 2026-08-07 it did the opposite, which
+  cost the same failure a second time. Its test was for a *floating* lead facing across the boundary from each side, and
+  `AddConnector` **replaces** a floating lead with a ground or an impulse. So a designer doing the ordinary thing with a
+  double-stacked winding — tie the two centre leads together, ground them, which is what a centre-grounded tap winding *is* —
+  leaves neither side floating and erases the only evidence the gap existed. `SetNodes` then read the bridging jumper as a series
+  connection, gave the two sides one shared node, and `NodeAt` could not find the dangling node a centre connector insists on:
+  *"segment 168 has a connector at outside_center with no node there (target: 169)"*. Since a centre location is only ever created
+  at a gap, the location is permanent evidence and the termination is not, so the predicate now accepts `fromIsCenter` whatever it
+  is tied to. **Both sides must still agree**, and that is not belt-and-braces: the Segment *above* a gap carries a centre lead
+  facing down, so testing either side alone would report the boundary above *it* as a gap too. `SelfTest`'s **`S0738`** scenario is
+  this case end to end.
   **One jumper is stored as up to four connections, and a fold is where that bites.** A node is shared by the two Segments that meet
   at it, and `TransformerView.mouseUp` registers a new jumper on **every** (Segment, location) pair at each of its two ends — the
   whole cross-product, each copy carrying the others in its `equivalentConnections`. So a jumper dropped between discs 10 and 11 lives

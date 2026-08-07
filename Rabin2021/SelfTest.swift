@@ -95,13 +95,40 @@ enum SelfTest {
         case top
     }
 
-    /// One terminal of the test connection: a coil end, and what it is tied to.
+    /// A point on the winding that a lead comes off - the thing the user would click on in `TransformerView`.
+    ///
+    /// A scenario names its connections this way rather than by (Segment, Connector.Location) because neither of those is knowable
+    /// from the design file: which Segment is at the bottom of a coil depends on how many there are, and whether its lead is at
+    /// `.inside_lower`, `.outside_lower` or `.center_lower` depends on the winding type and the disc count (see AppController's
+    /// segment-building loop). Guessing either gives a connector `NodeAt` cannot resolve, which is exactly the failure this file
+    /// exists to catch, so the lead is always *found* and never computed.
+    enum LeadPoint {
+
+        /// The lead at the bottom or top of a whole coil.
+        case coilEnd(coil:Int, end:CoilEnd)
+        /// A lead at one side of a coil's internal tapping/DV gap. `gap` counts gaps from the bottom of the coil, and `side` says
+        /// which of the two leads facing across it is wanted - `.bottom` for the one on the Segment below the gap.
+        case gapLead(coil:Int, gap:Int, side:CoilEnd)
+    }
+
+    /// One terminal of the test connection: a lead, and what it is tied to.
     struct Termination {
 
-        let coil:Int
-        let end:CoilEnd
+        let point:LeadPoint
         /// Either `.ground` or `.impulse`. Nothing else is a termination.
         let type:Connector.Location
+    }
+
+    /// A jumper between two leads - what the user makes by dragging from one connector to another.
+    ///
+    /// Applied AFTER the restructure and BEFORE the terminations, in the order the scenario lists them, because both of those
+    /// orderings are load-bearing. A restructure swaps Segments and sends `UpdateConnectors` through the connectors, which a
+    /// jumper made first would not survive; and `AddConnector` REPLACES a floating lead with a ground or an impulse while it
+    /// APPENDS a jumper, so a lead that has already been terminated is no longer there to jumper from.
+    struct Jumper {
+
+        let from:LeadPoint
+        let to:LeadPoint
     }
 
     /// A structural change made to the model after it is loaded and before the terminations go on.
@@ -123,6 +150,16 @@ enum SelfTest {
         case interleave(coil:Int)
         /// Put a wound-in shield of `turnsPerDisc` turns into every disc pair of the coil (DelVecchio 12.11).
         case woundInShield(coil:Int, turnsPerDisc:Int, connection:Segment.WoundInShieldWire.Connection)
+
+        var isInterleave:Bool {
+
+            if case .interleave = self {
+
+                return true
+            }
+
+            return false
+        }
     }
 
     /// Hold a coil at the radial build a wound-in shield would need, without fitting the shield.
@@ -151,6 +188,8 @@ enum SelfTest {
         let fixtureName:String
         /// A sentence about the design, echoed into the report so that a stale report identifies itself.
         let notes:String
+        /// Segment-to-segment jumpers, applied in order, after the restructure and before the terminations.
+        let jumpers:[Jumper]
         let terminations:[Termination]
         let waveFormType:SimulationModel.WaveForm.Types
         /// Impulse crest, in volts.
@@ -181,10 +220,11 @@ enum SelfTest {
                         matchedBuild: nil,
                         fixtureName: "STME-0999_AndIn.txt",
                         notes: "4160Y/2400 V LV (48-turn helical), 69 kV delta HV (70-disc continuous), 350 kV full wave on the HV line end. " + notes,
-                        terminations: [Termination(coil: 0, end: .bottom, type: .ground),
-                                       Termination(coil: 0, end: .top, type: .ground),
-                                       Termination(coil: 1, end: .bottom, type: .ground),
-                                       Termination(coil: 1, end: .top, type: .impulse)],
+                        jumpers: [],
+                        terminations: [Termination(point: .coilEnd(coil: 0, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 0, end: .top), type: .ground),
+                                       Termination(point: .coilEnd(coil: 1, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 1, end: .top), type: .impulse)],
                         waveFormType: .FullWave,
                         peakVoltage: 350.0e3,
                         displaySpan: 100.0e-6,
@@ -232,8 +272,61 @@ enum SelfTest {
         "STME0999_2-shield5" : STME0999_2(name: "STME0999_2-shield5",
                                           notes: "A 5-turn wound-in shield in every disc pair of the HV - about half its turns.",
                                           restructure: .woundInShield(coil: 1, turnsPerDisc: 5, connection: .floating),
-                                          matchedBuild: nil)
+                                          matchedBuild: nil),
+
+        "S0738" : S0738(name: "S0738", restructure: .interleave(coil: 2)),
+
+        // The same connection with the HV left alone, so that a failure can be pinned on the restructure or acquitted of it.
+        "S0738-plain" : S0738(name: "S0738-plain", restructure: .none)
     ]
+
+    /// The S0738 fixture: a four-coil design whose HV is fed through a centre-grounded tap winding.
+    ///
+    /// This is the first fixture here that is about the CONNECTIONS rather than about the winding, and it is the first with more
+    /// than two coils. Three things in it are not exercised by either STME-0999 fixture, and all three are places where the node
+    /// topology has to be got right rather than merely computed:
+    ///
+    ///   1. A COIL WITH AN INTERNAL TAPPING GAP. Coil 3 is double-stacked, so AppController's segment-building loop cuts a centre
+    ///      gap into it and gives each side of the gap its own `outside_center`/`inside_center` floating lead. A gap is a break in
+    ///      the node chain even when it is bridged - see the long note in `PhaseModel.SetNodes`.
+    ///   2. BOTH CENTRE LEADS TIED TOGETHER AND GROUNDED. That is a jumper across the gap AND a termination on it, which is the
+    ///      combination that removes every trace of the gap from the connections: `AddConnector` replaces a floating lead with a
+    ///      ground, so after this neither side of the gap still carries a floating centre lead.
+    ///   3. A COIL FED FROM ANOTHER COIL. Coil 3's two ends are tied to each other and then to the bottom of coil 2, so the HV's
+    ///      return path runs out of coil 2, through both halves of coil 3 in parallel, and to ground at coil 3's centre. Nothing
+    ///      in the two-coil fixtures makes a coil end anything other than a ground, an impulse or a floating lead.
+    ///
+    /// The HV is then interleaved in its entirety, which is what the plain variant exists to isolate.
+    private static func S0738(name:String, restructure:Restructure) -> Scenario {
+
+        return Scenario(name: name,
+                        restructure: restructure,
+                        matchedBuild: nil,
+                        fixtureName: "S0738_AndIn.txt",
+                        notes: "Four coils. Coils 0 and 1 grounded at both ends; coil 2 is the impulsed HV (1050 kV full wave on its top); coil 3 is a double-stacked tap winding whose two ends are tied together and to the bottom of coil 2, and whose two centre leads are tied together and grounded. "
+                             + (restructure.isInterleave ? "Coil 2 interleaved in its entirety." : "Coil 2 as designed."),
+                        jumpers: [// The tap winding's two ends, tied to each other and then to the bottom of the HV. The second
+                                  // jumper names coil 3's TOP again on purpose: the UI's cross-product (TransformerView.mouseUp)
+                                  // then carries coil 3's bottom along with it, exactly as dragging from an already-jumpered lead
+                                  // does, and this routine has to behave the same way or the test is not testing the UI's model.
+                                  Jumper(from: .coilEnd(coil: 3, end: .top), to: .coilEnd(coil: 3, end: .bottom)),
+                                  Jumper(from: .coilEnd(coil: 3, end: .top), to: .coilEnd(coil: 2, end: .bottom)),
+                                  // The two leads facing each other across coil 3's centre gap.
+                                  Jumper(from: .gapLead(coil: 3, gap: 0, side: .bottom), to: .gapLead(coil: 3, gap: 0, side: .top))],
+                        terminations: [Termination(point: .coilEnd(coil: 0, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 0, end: .top), type: .ground),
+                                       Termination(point: .coilEnd(coil: 1, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 1, end: .top), type: .ground),
+                                       // Grounding one of the two jumpered centre leads grounds both, through the same
+                                       // ConnectionDestinations loop the UI's mouseDownWithAddGround uses.
+                                       Termination(point: .gapLead(coil: 3, gap: 0, side: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 2, end: .top), type: .impulse)],
+                        waveFormType: .FullWave,
+                        peakVoltage: 1050.0e3,
+                        displaySpan: 100.0e-6,
+                        bandwidth: 10.0e6,
+                        continuumCoil: 2)
+    }
 
     /// The STME-0999_2 fixture: 25 MVA, 120 kV wye to 26.4 kV delta, both coils disc-wound in CTC. 550 kV BIL on the HV.
     ///
@@ -247,10 +340,11 @@ enum SelfTest {
                         matchedBuild: matchedBuild,
                         fixtureName: "STME-0999_2_AndIn.txt",
                         notes: "25 MVA. Coil 0 = 26.4 kV delta LV (262 turns, 90 discs), coil 1 = 120 kV wye HV (688 turns, 64 discs). Both coils CTC disc windings. 550 kV full wave on the HV line end. " + notes,
-                        terminations: [Termination(coil: 0, end: .bottom, type: .ground),
-                                       Termination(coil: 0, end: .top, type: .ground),
-                                       Termination(coil: 1, end: .bottom, type: .ground),
-                                       Termination(coil: 1, end: .top, type: .impulse)],
+                        jumpers: [],
+                        terminations: [Termination(point: .coilEnd(coil: 0, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 0, end: .top), type: .ground),
+                                       Termination(point: .coilEnd(coil: 1, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 1, end: .top), type: .impulse)],
                         waveFormType: .FullWave,
                         peakVoltage: 550.0e3,
                         displaySpan: 100.0e-6,
@@ -416,6 +510,29 @@ enum SelfTest {
         text += await GeometryReport(model: model)
         text += await CapacitanceBreakdown(model: model, coil: scenario.continuumCoil)
 
+        // The jumpers go on after the restructure (which would sweep them away with UpdateConnectors) and before the
+        // terminations (which replace the floating lead a jumper needs in order to find its end). See `Jumper`.
+        if !scenario.jumpers.isEmpty {
+
+            Stage("applying the jumpers")
+
+            text += "JUMPERS\n"
+            text += String(repeating: "-", count: 110) + "\n"
+
+            for nextJumper in scenario.jumpers {
+
+                let outcome = await ApplyJumper(nextJumper, model: model)
+                text += "  \(outcome)\n"
+
+                guard !outcome.hasPrefix("FAILED") else {
+
+                    return Report(text: text, summary: "FAILED - " + outcome)
+                }
+            }
+
+            text += "\n"
+        }
+
         Stage("applying the terminations")
 
         text += "TERMINATIONS\n"
@@ -439,6 +556,34 @@ enum SelfTest {
         guard terminationsOK else {
 
             return Report(text: text + "FAILED: a termination could not be applied - see above.\n", summary: "FAILED - could not apply the terminations")
+        }
+
+        // REBUILD THE NODES WITH THE CONNECTIONS IN PLACE.
+        //
+        // Nothing above this line has re-run SetNodes since the terminations went on: the node topology the model is carrying was
+        // built during the restructure's recalculation, when the coil ends were still floating. That is fine for a scenario whose
+        // connections are all coil ends - the nodes do not depend on what a coil end is tied to - but it is NOT fine in general,
+        // because a jumper across a tapping gap and a ground on a centre lead both change what SetNodes decides. In the app the
+        // same rebuild is provoked by the next edit that touches the model at all.
+        //
+        // This calls CalculateCapacitanceMatrix rather than AppController.recalculateModel deliberately: recalculateModel puts an
+        // NSAlert up when this throws, and a modal alert with nobody at the keyboard hangs the run forever. Here the throw is the
+        // result, and PhaseModelError.UnresolvableConnector - the guard at the end of SetNodes - is precisely the failure this
+        // scenario is built to provoke, so it has to arrive as text in a report and not as a dialog nobody will see.
+        Stage("rebuilding the node topology with the connections in place")
+
+        text += "NODE TOPOLOGY\n"
+        text += String(repeating: "-", count: 110) + "\n"
+
+        do {
+
+            try await model.CalculateCapacitanceMatrix()
+            text += "  \(await model.nodes.count) nodes; every connector in the model resolves to one (PhaseModel.VerifyNodeTopology).\n\n"
+        }
+        catch {
+
+            text += "  FAILED: \(error)\n\n"
+            return Report(text: text, summary: "FAILED - the node topology does not match the connectors: \(error)")
         }
 
         Stage("creating the simulation model")
@@ -662,10 +807,10 @@ enum SelfTest {
 
         Stage("applying the terminations")
 
-        for nextTermination in [Termination(coil: 0, end: .bottom, type: .ground),
-                                Termination(coil: 0, end: .top, type: .ground),
-                                Termination(coil: 1, end: .bottom, type: .ground),
-                                Termination(coil: 1, end: .top, type: .impulse)] {
+        for nextTermination in [Termination(point: .coilEnd(coil: 0, end: .bottom), type: .ground),
+                                Termination(point: .coilEnd(coil: 0, end: .top), type: .ground),
+                                Termination(point: .coilEnd(coil: 1, end: .bottom), type: .ground),
+                                Termination(point: .coilEnd(coil: 1, end: .top), type: .impulse)] {
 
             text += "  " + (await ApplyTermination(nextTermination, model: model)) + "\n"
         }
@@ -924,44 +1069,230 @@ enum SelfTest {
         }
     }
 
-    // MARK: Terminations
+    // MARK: Finding a lead
 
-    /// Tie one coil end to ground or to the impulse generator.
+    /// The outcome of looking for the lead a `LeadPoint` names.
+    private enum LeadLookup {
+
+        case ok(segment:Segment, location:Connector.Location)
+        case failed(String)
+    }
+
+    private static func Describe(_ point:LeadPoint) -> String {
+
+        switch point {
+
+        case .coilEnd(let coil, let end):
+
+            return "coil \(coil) \(end == .bottom ? "bottom" : "top")"
+
+        case .gapLead(let coil, let gap, let side):
+
+            return "coil \(coil) gap \(gap) \(side == .bottom ? "lower" : "upper") lead"
+        }
+    }
+
+    /// Find the (Segment, location) a `LeadPoint` names, by looking at what the model actually has.
     ///
-    /// This does what TransformerView.mouseDownWithAddGround / .mouseDownWithAddImpulse do when the user clicks a
-    /// lead, minus the hit testing: find the floating lead at that coil end and hand its location to AddConnector,
-    /// which REPLACES a floating lead rather than appending to it. Taking the location from the lead that is already
-    /// there is the whole point - a coil end's lead is at .inside_lower, .outside_lower or .center_lower depending on
-    /// winding type and disc count (see AppController's segment-building loop), and guessing it here would give a
-    /// connector that NodeAt cannot resolve.
-    private static func ApplyTermination(_ termination:Termination, model:PhaseModel) async -> String {
+    /// Nothing here is computed from the design: a coil-end lead is whichever floating termination sits at the outward end of the
+    /// coil's outermost Segment, and a gap lead is whichever centre-location connection sits on a Segment facing across a break.
+    /// See `LeadPoint` for why that matters.
+    private static func FindLead(_ point:LeadPoint, model:PhaseModel) async -> LeadLookup {
 
-        let label = "coil \(termination.coil) \(termination.end == .bottom ? "bottom" : "top") -> \(termination.type)"
+        switch point {
 
-        let coilSegments = await model.CoilSegments().filter({ $0.radialPos == termination.coil })
+        case .coilEnd(let coil, let end):
 
-        guard let segment = termination.end == .bottom ? coilSegments.first : coilSegments.last else {
+            let coilSegments = await model.CoilSegments().filter({ $0.radialPos == coil })
 
-            return "FAILED: \(label): coil \(termination.coil) has no segments"
+            guard let segment = end == .bottom ? coilSegments.first : coilSegments.last else {
+
+                return .failed("coil \(coil) has no segments")
+            }
+
+            let wantLower = end == .bottom
+
+            // A coil-end lead is a termination on the Segment itself (segmentID nil) that is still floating, at a lower
+            // location for the bottom of the coil and an upper one for the top.
+            guard let lead = await segment.connections.first(where: {
+
+                $0.segmentID == nil
+                    && $0.connector.toLocation == .floating
+                    && (wantLower ? $0.connector.fromIsLower : $0.connector.fromIsUpper)
+
+            }) else {
+
+                return .failed("no floating lead at that end of segment \(segment.serialNumber)")
+            }
+
+            return .ok(segment: segment, location: lead.connector.fromLocation)
+
+        case .gapLead(let coil, let gap, let side):
+
+            let coilSegments = await model.CoilSegments().filter({ $0.radialPos == coil })
+
+            // A centre location is created in exactly one place - AppController's segment-building loop, at a tapping/DV gap - so
+            // a Segment carrying one is a Segment facing across a gap, and two consecutive such Segments ARE a gap. The test is
+            // on the location and not on the lead still being floating, because by the time a scenario grounds the second of two
+            // jumpered centre leads the first one is no longer floating.
+            var gaps:[(below:Segment, above:Segment)] = []
+
+            for i in 0..<max(coilSegments.count - 1, 0) {
+
+                let below = coilSegments[i]
+                let above = coilSegments[i + 1]
+
+                let belowHasCentre = await below.connections.contains(where: { $0.connector.fromIsCenter })
+                let aboveHasCentre = await above.connections.contains(where: { $0.connector.fromIsCenter })
+
+                if belowHasCentre && aboveHasCentre {
+
+                    gaps.append((below: below, above: above))
+                }
+            }
+
+            guard gap >= 0, gap < gaps.count else {
+
+                return .failed("coil \(coil) has \(gaps.count) internal gap(s), so gap \(gap) does not exist")
+            }
+
+            let segment = side == .bottom ? gaps[gap].below : gaps[gap].above
+            let locations = Set(await segment.connections.filter({ $0.connector.fromIsCenter }).map({ $0.connector.fromLocation }))
+
+            // A Segment between two gaps would carry two centre leads with nothing in the location to say which gap each faces.
+            // The disc arithmetic in AppController makes that impossible (the lower and upper tapping gaps are a quarter of the
+            // coil apart), so this is a guard against a future geometry rather than a case to handle.
+            guard locations.count == 1, let location = locations.first else {
+
+                return .failed("segment \(segment.serialNumber) carries \(locations.count) centre leads, so which one faces gap \(gap) is ambiguous")
+            }
+
+            return .ok(segment: segment, location: location)
+        }
+    }
+
+    // MARK: Jumpers
+
+    /// Put a jumper between two leads, the way `TransformerView.mouseUp` does.
+    ///
+    /// This is a port of that routine's body with the hit testing and the redraw taken out, and the cross-product is the part
+    /// worth keeping: a lead that already carries jumpers is at the same potential as everything on the far end of them, so a new
+    /// jumper is registered on EVERY (Segment, location) pair at each of its two ends, with each copy carrying the others in its
+    /// `equivalentConnections`. Doing less than that here would build a model the UI cannot produce, and the redundant copies are
+    /// exactly what `PhaseModel.UpdateConnectors` and `SegmentPath.SetUpConnectors` are written to cope with.
+    private static func ApplyJumper(_ jumper:Jumper, model:PhaseModel) async -> String {
+
+        let label = "\(Describe(jumper.from)) <-> \(Describe(jumper.to))"
+
+        let fromLookup = await FindLead(jumper.from, model: model)
+
+        guard case .ok(let fromSegment, let fromLocation) = fromLookup else {
+
+            if case .failed(let why) = fromLookup {
+
+                return "FAILED: \(label): \(Describe(jumper.from)): \(why)"
+            }
+
+            return "FAILED: \(label): could not find \(Describe(jumper.from))"
+        }
+
+        let toLookup = await FindLead(jumper.to, model: model)
+
+        guard case .ok(let toSegment, let toLocation) = toLookup else {
+
+            if case .failed(let why) = toLookup {
+
+                return "FAILED: \(label): \(Describe(jumper.to)): \(why)"
+            }
+
+            return "FAILED: \(label): could not find \(Describe(jumper.to))"
         }
 
         let allSegments = await model.segments
-        let wantLower = termination.end == .bottom
 
-        // A coil-end lead is a termination on the Segment itself (segmentID nil) that is still floating, at a lower
-        // location for the bottom of the coil and an upper one for the top.
-        guard let lead = await segment.connections.first(where: {
+        // Both ends carry along everything already jumpered to them. The floating terminations are dropped (segmentID nil) - they
+        // are not a place to jumper TO - and the lead itself goes in at the head of its own list.
+        var startConnections = await fromSegment.ConnectionDestinations(fromLocation: fromLocation)
+        startConnections.removeAll(where: { $0.segmentID == nil })
+        startConnections.insert((fromSegment.serialNumber, fromLocation), at: 0)
 
-            $0.segmentID == nil
-                && $0.connector.toLocation == .floating
-                && (wantLower ? $0.connector.fromIsLower : $0.connector.fromIsUpper)
+        var endConnections = await toSegment.ConnectionDestinations(fromLocation: toLocation)
+        endConnections.removeAll(where: { $0.segmentID == nil })
+        endConnections.insert((toSegment.serialNumber, toLocation), at: 0)
 
-        }) else {
+        var equivalentConnections:Set<Segment.Connection.EquivalentConnection> = []
+        var madeCount = 0
 
-            return "FAILED: \(label): no floating lead at that end of segment \(segment.serialNumber)"
+        for nextStartConnection in startConnections {
+
+            for nextEndConnection in endConnections {
+
+                guard let nextStartSegment = allSegments.first(where: { $0.serialNumber == nextStartConnection.segmentID }) else {
+
+                    return "FAILED: \(label): segment \(nextStartConnection.segmentID.map({ String($0) }) ?? "nil") is not in the model"
+                }
+
+                let newConnections = await nextStartSegment.AddConnector(segments: allSegments,
+                                                                         fromLocation: nextStartConnection.location,
+                                                                         toLocation: nextEndConnection.location,
+                                                                         toSegmentID: nextEndConnection.segmentID)
+
+                // AddConnector returns (nil, nil) for one reason only: it was asked to connect a Segment to itself, which happens
+                // here whenever the two ends of the cross-product land on the same Segment. That pair is simply not a jumper.
+                guard let newSrcConnection = newConnections.from, let newDestConnection = newConnections.to else {
+
+                    continue
+                }
+
+                equivalentConnections.insert(Segment.Connection.EquivalentConnection(parent: nextStartConnection.segmentID!, connection: newSrcConnection))
+                equivalentConnections.insert(Segment.Connection.EquivalentConnection(parent: nextEndConnection.segmentID!, connection: newDestConnection))
+                madeCount += 1
+            }
         }
 
-        let fromLocation = lead.connector.fromLocation
+        for nextConnection in equivalentConnections {
+
+            guard let nextConnParent = allSegments.first(where: { $0.serialNumber == nextConnection.parent }) else {
+
+                return "FAILED: \(label): equivalent-connection parent \(nextConnection.parent) is not in the model"
+            }
+
+            await nextConnParent.AddEquivalentConnections(to: nextConnection.connection, equ: equivalentConnections)
+        }
+
+        guard madeCount > 0 else {
+
+            return "FAILED: \(label): no connector was made - both ends resolved to the same Segment"
+        }
+
+        return "\(label): \(madeCount) connector(s) from segment \(fromSegment.serialNumber) (\(fromLocation)) to segment \(toSegment.serialNumber) (\(toLocation))"
+    }
+
+    // MARK: Terminations
+
+    /// Tie one lead to ground or to the impulse generator.
+    ///
+    /// This does what TransformerView.mouseDownWithAddGround / .mouseDownWithAddImpulse do when the user clicks a
+    /// lead, minus the hit testing: find the lead and hand its location to AddConnector, which REPLACES a floating
+    /// lead rather than appending to it. Taking the location from the lead that is already there is the whole point -
+    /// see `LeadPoint`.
+    private static func ApplyTermination(_ termination:Termination, model:PhaseModel) async -> String {
+
+        let label = "\(Describe(termination.point)) -> \(termination.type)"
+
+        let lookup = await FindLead(termination.point, model: model)
+
+        guard case .ok(let segment, let fromLocation) = lookup else {
+
+            if case .failed(let why) = lookup {
+
+                return "FAILED: \(label): \(why)"
+            }
+
+            return "FAILED: \(label): the lead could not be found"
+        }
+
+        let allSegments = await model.segments
 
         await segment.AddConnector(segments: allSegments, fromLocation: fromLocation, toLocation: termination.type, toSegmentID: nil)
 
@@ -1355,6 +1686,60 @@ enum SelfTest {
             return (text + "  FAILED: too few nodes to compare.\n\n", "FAILED - too few nodes")
         }
 
+        // 13.5.1 SOLVES A BOUNDARY-VALUE PROBLEM, AND ONE OF THE TWO BOUNDARIES MAY NOT BE THERE.
+        //
+        // sinh(alpha*x)/sinh(alpha) is the solution of V'' = alpha^2 V under V(0) = 0 and V(1) = 1. The second boundary is the
+        // impulse and is always satisfied; the first says the far end of the winding is AT GROUND, and that is a property of the
+        // connection, not of the winding. On S0738 it is false: coil 2's far end returns through both halves of coil 3 to a
+        // centre ground, so it floats at 0.65 p.u. at t = 0+ and the whole coil sits on that pedestal.
+        //
+        // Fitting anyway produces numbers - it produced a fitted alpha of 0.010 "inside the bracket" on a winding whose local
+        // alpha is 0.2 and rising - and every one of them is an artefact of forcing a curve through the wrong boundary. That is
+        // the same failure as the linear-vs-logarithmic fit recorded in CLAUDE.md, and the same rule applies: a diagnostic that
+        // reports a comfortable number on a case it cannot describe is worse than no diagnostic. So the applicability is measured
+        // rather than assumed - from the computed distribution's own value at x = 0 - and the comparison is declined out loud.
+        //
+        // What survives is what does not depend on the continuum model at all: the distribution itself, which is the regression
+        // baseline, and the line-end gradient, which is the number the designer acts on.
+        let groundedEndVoltage = points[0].v
+
+        guard abs(groundedEndVoltage) < groundedEndTolerance else {
+
+            text += "  Driven end:            \(drivenAtTop ? "top" : "bottom")\n"
+            text += "  Nodes compared:        \(points.count)\n"
+            text += "  Cs (whole winding):    \(Farads(seriesCapacitance))\n"
+            text += "  Cg booked to ground:   \(Farads(ground.direct))   (tank + adjacent phase - see the split above)\n"
+            text += "  Cg to other coils:     \(Farads(ground.toOtherCoils))\n\n"
+
+            text += String(format: "  NOT COMPARED against 13.5.1: the far end of coil %d is at %.4f p.u., not at ground.\n", coil, groundedEndVoltage)
+            text += "  The continuum model assumes V(0) = 0, so no alpha fitted to this distribution would mean anything. This\n"
+            text += "  coil's return path runs through another winding rather than straight to ground - see the jumpers above.\n\n"
+
+            let gradient = LineEndGradient(points: points)
+            text += String(format: "  Line-end gradient over the end section: %.4f x the average gradient\n\n", gradient)
+
+            text += "  x (0 = far end)   V/Vcrest (model)   local alpha\n"
+
+            for (i, nextPoint) in points.enumerated() {
+
+                text += String(format: "  %13.6f   %16.6f", nextPoint.x, nextPoint.v)
+
+                if i > 0, points[i - 1].v >= fittingFloor, nextPoint.v > 0.0, nextPoint.x > points[i - 1].x {
+
+                    text += String(format: "   %11.3f", log(nextPoint.v / points[i - 1].v) / (nextPoint.x - points[i - 1].x))
+                }
+
+                text += "\n"
+            }
+
+            text += "\n"
+
+            let summary = String(format: "13.5.1 not applicable (far end at %.4f p.u., not grounded); line-end gradient %.3f x average, far end %.4f p.u.",
+                                 groundedEndVoltage, gradient, groundedEndVoltage)
+
+            return (text, summary)
+        }
+
         let alphaDirect = sqrt(ground.direct / seriesCapacitance)
         let alphaTotal = sqrt((ground.direct + ground.toOtherCoils) / seriesCapacitance)
         let alphaFitted = FitAlpha(points: points)
@@ -1401,8 +1786,7 @@ enum SelfTest {
         // model's equivalent is its own average slope over that same interval rather than its endpoint derivative
         // alpha/tanh(alpha), so that the two are measured over the same piece of winding.
         let lastSpan = points[points.count - 1].x - points[points.count - 2].x
-        let endSectionDrop = abs(points[points.count - 1].v - points[points.count - 2].v)
-        let modelEnhancement = lastSpan > 0.0 ? endSectionDrop / lastSpan : 0.0
+        let modelEnhancement = LineEndGradient(points: points)
 
         text += "  Line-end gradient over the end section, as a multiple of the average gradient:\n"
         text += "    model:                        \(String(format: "%8.4f", modelEnhancement))\n"
@@ -1447,6 +1831,34 @@ enum SelfTest {
                              alphaDirect, alphaTotal, alphaFitted, bracketed ? "inside" : "OUTSIDE", modelEnhancement)
 
         return (text, summary)
+    }
+
+    /// How far from zero the far end of a coil may sit and still be called grounded, in per unit of the crest.
+    ///
+    /// A node tied to ground comes back from the solver as an exact zero (the row surgery puts it there), so anything this side
+    /// of the number is numerical noise and anything the far side is a real potential. It is not a tuned threshold and there is
+    /// nothing between 1e-6 and 0.65 to tune it against.
+    private static let groundedEndTolerance = 1.0e-6
+
+    /// The voltage gradient over the coil's end section, as a multiple of the average gradient down the whole coil.
+    ///
+    /// The divisor is the end section's OWN span in x, not 1/N. The end nodes of a coil sit at the outer face of the end disc
+    /// while the interior ones sit at the gap midpoints, so the end sections are about 12% shorter in x than the interior ones;
+    /// dividing by 1/N charges the end section for length it does not have.
+    ///
+    /// This is the one number in the comparison that survives the continuum model not applying, which is why it is a function
+    /// rather than three lines inside one: it asks only what the model computed, over what length.
+    private static func LineEndGradient(points:[(x:Double, v:Double)]) -> Double {
+
+        guard points.count > 1 else {
+
+            return 0.0
+        }
+
+        let lastSpan = points[points.count - 1].x - points[points.count - 2].x
+        let endSectionDrop = abs(points[points.count - 1].v - points[points.count - 2].v)
+
+        return lastSpan > 0.0 ? endSectionDrop / lastSpan : 0.0
     }
 
     /// DelVecchio 13.5.1: V(x)/V = sinh(alpha*x) / sinh(alpha), with x = 0 at the grounded end.

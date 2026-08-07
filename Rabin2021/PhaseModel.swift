@@ -562,34 +562,63 @@ actor PhaseModel /*:Codable */ {
         return result
     }
     
+    /// Is the boundary between these two axially adjacent Segments a tapping/DV gap - a break in the winding rather than a series
+    /// connection?
+    ///
+    /// # Why a centre LOCATION counts, whatever it is tied to
+    ///
+    /// The obvious test, and the one this used to make on its own, is for a *floating* lead facing across the boundary from each
+    /// side: a gap is cut by giving both sides a lead that goes nowhere. That test is destroyed by the user doing the ordinary
+    /// thing with those leads. `Segment.AddConnector` REPLACES a floating lead with a ground or an impulse, so a designer who ties
+    /// the two centre leads of a double-stacked winding together and grounds them - which is what a centre-grounded tap winding
+    /// IS - leaves neither side floating. `SetNodes` then saw the bridging jumper as a series connection, gave the two sides one
+    /// shared node, and `NodeAt` - which resolves a centre connector only to a DANGLING node - could not find the node its own
+    /// connector described. That failure is what `SelfTest`'s S0738 scenario provokes.
+    ///
+    /// The repair is to recognise a gap the way `NodeAt` already does, by the LOCATION rather than by the termination.
+    /// `outside_center` and `inside_center` are created in exactly one place - AppController's segment-building loop, at a
+    /// tapping/DV gap - and `Connector.AlternatingLocation` only ever pairs a centre location with another centre location, while
+    /// a real series connection always maps an upper location to a lower one. So a centre connection means "gap", permanently,
+    /// and nothing the user does to the lead can take that back.
+    ///
+    /// Both sides are still required to agree, and that is not belt-and-braces: the Segment ABOVE a gap carries a centre lead
+    /// facing down, so testing either side alone would report the boundary above *it* as a gap too.
     func IsTappingGap(segment1:Segment, segment2:Segment) async -> Bool {
-        
-        // the idea here is to check if there are "floating" connections between the two segments, and if so, this must be a tapping gap (used for offload taps)
-        
+
         // take care of the case where these are not even adjacent, which is handled differently
         guard SegmentsAreAdjacent(segment1: segment1, segment2: segment2) else {
-            
+
             return false
         }
-        
+
         // sort the segments by their axial positions
         var segments = [segment1, segment2]
         segments.sort(by: {$0.axialPos < $1.axialPos})
-        
-        for nextConnection1 in await segments[0].connections {
-            
-            if !nextConnection1.connector.fromIsLower && nextConnection1.connector.toLocation == .floating {
-                
-                for nextConnection2 in await segments[1].connections {
-                    
-                    if !nextConnection2.connector.fromIsUpper && nextConnection2.connector.toLocation == .floating {
-                        
-                        return true
-                    }
-                }
+
+        var lowerFacesGap = false
+
+        for nextConnection in await segments[0].connections {
+
+            if nextConnection.connector.fromIsCenter || (!nextConnection.connector.fromIsLower && nextConnection.connector.toLocation == .floating) {
+
+                lowerFacesGap = true
+                break
             }
         }
-        
+
+        guard lowerFacesGap else {
+
+            return false
+        }
+
+        for nextConnection in await segments[1].connections {
+
+            if nextConnection.connector.fromIsCenter || (!nextConnection.connector.fromIsUpper && nextConnection.connector.toLocation == .floating) {
+
+                return true
+            }
+        }
+
         return false
     }
     
