@@ -805,20 +805,33 @@ actor PhaseModel /*:Codable */ {
     
     /// Function to return the axially adjacent Segments below and above the given Segment
     func AxiallyAdjacentSegments(to:Segment) async throws -> (below:Segment?, above:Segment?) {
-        
+
         do {
-            
+
+            // SegmentIndex returns an ordinal into CoilSegments(), so CoilSegments() is the array it has to index. Subscripting
+            // 'segments' - the full store, shielding elements included - with it went off by the number of static rings and
+            // radial shields sorted ahead of the Segment, and could hand back a shielding element as an "adjacent Segment".
+            let coilSegments = self.CoilSegments()
             let segmentIndex = try await self.SegmentIndex(segment: to)
-            let belowIndex = segmentIndex - 1
-            let aboveIndex = segmentIndex == self.segments.count - 1 ? -1 : segmentIndex + 1
-            
-            let belowSegment:Segment? = belowIndex < 0 ? nil : self.segments[belowIndex]
-            let aboveSegment:Segment? = aboveIndex < 0 ? nil : self.segments[aboveIndex]
-            
+
+            var belowSegment:Segment? = segmentIndex > 0 ? coilSegments[segmentIndex - 1] : nil
+            var aboveSegment:Segment? = segmentIndex + 1 < coilSegments.count ? coilSegments[segmentIndex + 1] : nil
+
+            // The Segment after the top of one coil is the bottom of the next, which is not axially adjacent to anything.
+            if belowSegment?.radialPos != to.radialPos {
+
+                belowSegment = nil
+            }
+
+            if aboveSegment?.radialPos != to.radialPos {
+
+                aboveSegment = nil
+            }
+
             return (belowSegment, aboveSegment)
         }
         catch {
-            
+
             throw error
         }
     }
@@ -870,12 +883,16 @@ actor PhaseModel /*:Codable */ {
     /// Calculate the B matrix, save it to B and return it. NOTE: In practice, I doubt that it is actually worth creating this matrix and multiplying it by the Voltage vector. It is probably better to simply maintain a voltage-drop vector - TBD.
     func GetBmatrix() async throws -> PchMatrix {
         
-        guard !segments.isEmpty else {
-            
+        // Rows are indexed by SegmentIndex, which is an ordinal into CoilSegments() - so that, and not the full store, is what
+        // sizes the matrix. Using segments.count left one empty row per shielding element at the bottom of it.
+        let coilSegmentCount = self.CoilSegments().count
+
+        guard coilSegmentCount > 0 else {
+
             throw PhaseModelError(info: "", type: .EmptyModel);
         }
-        
-        let newB = PchMatrix(matrixType: .general, numType: .Double, rows: UInt(segments.count), columns: UInt(nodes.count));
+
+        let newB = PchMatrix(matrixType: .general, numType: .Double, rows: UInt(coilSegmentCount), columns: UInt(nodes.count));
         
         for nextNode in nodes {
             
@@ -1680,8 +1697,8 @@ actor PhaseModel /*:Codable */ {
                 
                 let endDisc:(lowest:Bool, highest:Bool)? = (isBottomSegment || isTopSegment) ? (isBottomSegment, isTopSegment) : nil
                 
-                let staticRingUnder = try await StaticRingBelow(segment: nextSegment, recursiveCheck: false)
-                let staticRingOver = try await StaticRingAbove(segment: nextSegment, recursiveCheck: false)
+                let staticRingUnder = try await StaticRingBelow(segment: nextSegment)
+                let staticRingOver = try await StaticRingAbove(segment: nextSegment)
                 
                 /*
                 if staticRingOver != nil {
@@ -2390,12 +2407,12 @@ actor PhaseModel /*:Codable */ {
         
         do {
             
-            if let staticRingAbove = try await self.StaticRingAbove(segment: segment, recursiveCheck: true) {
-                
+            if let staticRingAbove = try await self.StaticRingAbove(segment: segment) {
+
                 aboveResult = await staticRingAbove.z1 - segment.z2
             }
-            
-            if let staticRingBelow = try await self.StaticRingBelow(segment: segment, recursiveCheck: true) {
+
+            if let staticRingBelow = try await self.StaticRingBelow(segment: segment) {
                 
                 belowResult = await segment.z1 - staticRingBelow.z2
             }
@@ -2630,33 +2647,47 @@ actor PhaseModel /*:Codable */ {
             
             // check if there is already a static ring above/below the adjacent segment
             if above {
-                
-                if let _ = try await StaticRingAbove(segment: adjacentSegment, recursiveCheck: true) {
-                    
+
+                if let _ = try await StaticRingAbove(segment: adjacentSegment) {
+
                     throw PhaseModelError(info: "Static Ring", type: .ShieldingElementExists)
                 }
-                
+
             }
             else {
-                
-                if let _ = try await StaticRingBelow(segment: adjacentSegment, recursiveCheck: true) {
-                    
+
+                if let _ = try await StaticRingBelow(segment: adjacentSegment) {
+
                     throw PhaseModelError(info: "Static Ring", type: .ShieldingElementExists)
                 }
             }
-        
+
+            // ...and refuse it here if it would leave a Segment with a ring on BOTH sides. CalculateCapacitanceMatrix throws
+            // .OnlyOneStaticRingAllowed on that configuration - DelVecchio 12.78-81 makes the two discs either side of a ring
+            // electrostatically coupled THROUGH it, which a scalar Segment.seriesCapacitance cannot carry (see TODO.md) - and
+            // finding that out only at the next recalculation leaves the user with a ring in the model, no undo, and nothing that
+            // will compute until they take it out again. Note this covers the neighbour as well as the selected Segment: a ring
+            // above Segment k is a ring below Segment k+1, and the lookups now say so from both sides.
+            let opposite = above ? try await StaticRingBelow(segment: adjacentSegment) : try await StaticRingAbove(segment: adjacentSegment)
+
+            if opposite != nil {
+
+                throw PhaseModelError(info: "(There is already one on the other side of that segment.)", type: .OnlyOneStaticRingAllowed)
+            }
+
             let axialSpaces = try await self.AxialSpacesAboutSegment(segment: adjacentSegment)
             let gapToRing = await gapToStaticRing != nil ? gapToStaticRing! : try self.StandardAxialGap(coil: adjacentSegment.location.radial) / 2
             let srThickness = staticRingThickness != nil ? staticRingThickness! : Segment.stdStaticRingThickness
             let requiredSpace = gapToRing + srThickness
-            
+
             if (above && requiredSpace >= axialSpaces.above) || (!above && requiredSpace >= axialSpaces.below) {
-                
+
                 throw PhaseModelError(info: "Static Ring", type: .NoRoomForShieldingElement)
             }
-            
-            // There is room for the static ring, so try creating it
-            let newRing = try await Segment.StaticRing(adjacentSegment: adjacentSegment, gapToSegment: gapToRing, staticRingIsAbove: above, staticRingThickness: srThickness)
+
+            // There is room for the static ring, so try creating it. The axial coordinate comes from the model rather than from
+            // the neighbour's own: it is an identity and nothing more - see NextStaticRingAxialPosition and NearestStaticRing.
+            let newRing = try await Segment.StaticRing(adjacentSegment: adjacentSegment, gapToSegment: gapToRing, staticRingIsAbove: above, staticRingThickness: srThickness, axialPosition: self.NextStaticRingAxialPosition(coil: adjacentSegment.radialPos))
             
             // if we get here, we know that the call was succesful
             return newRing
@@ -2667,84 +2698,111 @@ actor PhaseModel /*:Codable */ {
         }
     }
     
-    /// Check if there is a static ring  above the given segment, and if so, return the segment - otherwise return nil. If the segment is not in the model, this function throws an error.
-    /// - Parameter segment: The segment that we want to check
-    /// - Parameter recursiveCheck: A Boolean to indicate whether we should check below the next segment as well (needed to avoid infinite loops)
-    func StaticRingAbove(segment:Segment, recursiveCheck:Bool) async throws -> Segment? {
-        
-        guard let segIndex = self.segmentStore.firstIndex(of: segment) else {
-            
-            throw PhaseModelError(info: "", type: .SegmentNotInModel)
-        }
-        
-        var staticRingAbove:Segment? = nil
-        
-        // check the easy thing first, looking for a direct reference to a static ring
-        let srAxial = segment.axialPos == 0 ? Segment.negativeZeroPosition : -segment.axialPos
-        let srLocation = LocStruct(radial: segment.radialPos, axial: srAxial)
-        if let srSegment = await self.SegmentAt(location: srLocation) {
-            
-            if await srSegment.z1 > segment.z1 {
-                
-                staticRingAbove = srSegment
-            }
-        }
-        
-        // if this is the last segment in the whole model, just return
-        guard segIndex + 1 < self.segmentStore.count else {
-            
-            return staticRingAbove
-        }
-        
-        // there might still be a static ring above, but it's been defined as being below the next segment in the array (and there is not a gap there, which is defined as anything greater or equal to 25mm)
-        var srIsBelowNext = self.segmentStore[segIndex + 1].radialPos == segment.radialPos
-        srIsBelowNext = await self.segmentStore[segIndex + 1].z1 - segment.z2 < 0.025 && srIsBelowNext
-        if staticRingAbove == nil && recursiveCheck && srIsBelowNext {
-            
-            staticRingAbove = try? await StaticRingBelow(segment: self.segmentStore[segIndex + 1], recursiveCheck: false)
-        }
-        
-        return staticRingAbove
+    /// Two faces closer together than this are treated as touching. A static ring sits a gap away from its neighbour, so the
+    /// only thing this absorbs is the rounding in `z1`/`z2`, which are sums of `NSRect` members.
+    private static let staticRingFacingTolerance = 1.0e-9
+
+    /// The static ring immediately above the given Segment, or nil if there is none. Throws if the Segment is not in the model.
+    ///
+    /// See `NearestStaticRing` for why this asks the geometry rather than the locations.
+    func StaticRingAbove(segment:Segment) async throws -> Segment? {
+
+        return try await self.NearestStaticRing(to: segment, above: true)
     }
-    
-    /// Check if there is a static ring  below the given segment, and if so, return the segment - otherwise return nil. If the segment is not in the model, this function throws an error.
-    /// - Parameter segment: The segment that we want to check
-    /// - Parameter recursiveCheck: A Boolean to indicate whether we should check above the next segment as well (needed to avoid infinite loops)
-    func StaticRingBelow(segment:Segment, recursiveCheck:Bool) async throws -> Segment? {
-        
-        guard let segIndex = self.segmentStore.firstIndex(of: segment) else {
-            
+
+    /// The static ring immediately below the given Segment, or nil if there is none. Throws if the Segment is not in the model.
+    ///
+    /// See `NearestStaticRing` for why this asks the geometry rather than the locations.
+    func StaticRingBelow(segment:Segment) async throws -> Segment? {
+
+        return try await self.NearestStaticRing(to: segment, above: false)
+    }
+
+    /// The nearest static ring on one side of a Segment, provided nothing else of the same coil stands between the two.
+    ///
+    /// **The lookup is geometric, and that is the whole design.** A static ring used to be tied to its neighbour by its axial
+    /// coordinate - `axial = -adjacentSegment.axialPos` - and adjacency was recovered by inverting that arithmetic. Three
+    /// things were wrong with it, all of which this replaces rather than repairs:
+    ///
+    /// - **A restructure breaks the arithmetic.** `axialPos` is a pristine design-file disc index that is never renumbered
+    ///   (see the note on `Segment.axialPos`), so interleaving 2n discs leaves the coordinates at 0/2/4/..., a combine leaves
+    ///   only the lowest one, and a ring booked against a coordinate that no longer belongs to any Segment simply stopped
+    ///   being found. It stayed in the model, kept its space and kept being drawn, while the discs on either side of it
+    ///   computed their gaps as though it were not there.
+    /// - **"Above segment k" and "below segment k+1" are the same ring**, but the two sides recovered it by different routes,
+    ///   so only one of them ever saw it. `CalculateCapacitanceMatrix` took the *gap* from `AxialSpacesAboutSegment` (which
+    ///   looked at the neighbour as well) and the static-ring *flag* from a lookup that did not, so a disc could be handed a
+    ///   5 mm gap and told there was no ring in it - and then build the dielectric stack for a plain disc-to-disc gap.
+    /// - **The encoding cannot represent a ring on both sides of the same Segment.** Both wanted the same coordinate, so the
+    ///   second one collided in `InsertSegment` with `.SegmentExists`. It is still refused, but by `AddStaticRing` with
+    ///   `.OnlyOneStaticRingAllowed` and its explanation, which is the honest answer: the configuration is unsupported
+    ///   physics (DV 12.78-81, see TODO.md), not an unrepresentable location.
+    ///
+    /// Nothing else here needs a ring's axial coordinate to mean anything; it only has to be negative and unique. See
+    /// `NextStaticRingAxialPosition`.
+    ///
+    /// A coil Segment found nearer than any ring *blocks*: a ring on the far side of another disc is in that disc's gap, not
+    /// in this one. That falls out of taking the nearest thing on the side of interest and keeping it only if it is a ring.
+    private func NearestStaticRing(to segment:Segment, above:Bool) async throws -> Segment? {
+
+        guard self.segmentStore.contains(where: { $0 === segment }) else {
+
             throw PhaseModelError(info: "", type: .SegmentNotInModel)
         }
-        
-        var staticRingBelow:Segment? = nil
-        
-        // check the easy thing first, looking for a direct reference to a static ring
-        let srAxial = segment.axialPos == 0 ? Segment.negativeZeroPosition : -segment.axialPos
-        let srLocation = LocStruct(radial: segment.radialPos, axial: srAxial)
-        if let srSegment = await self.SegmentAt(location: srLocation) {
-            
-            if await srSegment.z1 < segment.z1 {
-                
-                staticRingBelow = srSegment
+
+        // A shielding element is not part of the series chain, so nothing is above or below it in the sense meant here.
+        guard !segment.isStaticRing && !segment.isRadialShield else {
+
+            return nil
+        }
+
+        let coil = segment.radialPos
+
+        // The sweep below is O(coil) and CalculateCapacitanceMatrix asks twice per Segment, so a coil with no rings on it - which
+        // is every coil in most models - should not pay for the search at all.
+        guard self.segmentStore.contains(where: { $0.radialPos == coil && $0.isStaticRing }) else {
+
+            return nil
+        }
+
+        let face = above ? await segment.z2 : await segment.z1
+
+        var nearest:Segment? = nil
+        var nearestDistance = Double.greatestFiniteMagnitude
+
+        for nextSegment in self.segmentStore {
+
+            guard nextSegment.radialPos == coil, !(nextSegment === segment), !nextSegment.isRadialShield else {
+
+                continue
             }
+
+            let nextFace = above ? await nextSegment.z1 : await nextSegment.z2
+            let distance = above ? nextFace - face : face - nextFace
+
+            guard distance >= -PhaseModel.staticRingFacingTolerance, distance < nearestDistance else {
+
+                continue
+            }
+
+            nearestDistance = distance
+            nearest = nextSegment
         }
-        
-        // if this is the bottom-most segment of a coil, just return
-        guard segment.axialPos > 0 else {
-            
-            return staticRingBelow
-        }
-        
-        // there might still be a static ring below, but it's been defined as being above the previous segment in the array (and there is not a gap there, which is defined as anything greater or equal to 25mm)
-        var srIsAbovePrev = self.segmentStore[segIndex - 1].radialPos == segment.radialPos
-        srIsAbovePrev = await segment.z1 - self.segmentStore[segIndex - 1].z2 < 0.025 && srIsAbovePrev
-        if staticRingBelow == nil && recursiveCheck && srIsAbovePrev {
-            
-            staticRingBelow = try? await StaticRingAbove(segment: self.segmentStore[segIndex - 1], recursiveCheck: false)
-        }
-        
-        return staticRingBelow
+
+        return (nearest?.isStaticRing ?? false) ? nearest : nil
+    }
+
+    /// A free axial coordinate for a new static ring in the given coil.
+    ///
+    /// The value is an **identity, not a position**. It has to be negative, which is how `CoilSegments()`,
+    /// `ApplyRadialBuildUp` and `CoilCount` tell a shielding element from a disc, and it has to be unique within the coil,
+    /// which is what `InsertSegment` insists on. Where the ring physically sits is answered by `StaticRingAbove` /
+    /// `StaticRingBelow`, from the geometry, so this does not have to encode a neighbour and deliberately does not try to.
+    private func NextStaticRingAxialPosition(coil:Int) -> Int {
+
+        let used = self.segmentStore.filter({ $0.radialPos == coil && $0.axialPos < 0 }).map({ $0.axialPos })
+
+        return (used.min() ?? 0) - 1
     }
     
     /// Function to remove a radial shield
@@ -2812,19 +2870,31 @@ actor PhaseModel /*:Codable */ {
     }
     
     
-    /// Check if there is a Segment at the specified location and if so, return it (otherwise, return nil)
+    /// The Segment at the given location, or nil if there is none.
+    ///
+    /// **This searches the WHOLE store, shielding elements included, and it has to.** A static ring lives at
+    /// `(radial: itsCoil, axial: <negative>)` and a radial shield at `(radial: <negative>, axial: 0)`, so every routine that
+    /// goes looking for one - `StaticRingAbove`/`StaticRingBelow`, `RadialShieldInside`/`RadialShieldOutside`, the duplicate
+    /// guards in `AddStaticRing`/`AddRadialShieldInside`, and the shield branches of `HiloUnder` and
+    /// `CoilInnerShuntCapacitance` - asks for it through here. Restricting this to `CoilSegments()` (which is exactly what
+    /// filters those locations out) therefore did not hide shielding elements from *some* callers: it made every one of
+    /// those lookups return nil unconditionally, so no static ring or radial shield in the model was ever found by anything.
+    /// Static rings stopped reaching the capacitance calculation, and the "there is already one there" guards stopped firing,
+    /// which turned a second static ring on the same Segment into a `.SegmentExists` throw out of `InsertSegment`.
+    ///
+    /// Nothing is lost by searching the whole store. A coil Segment's axial coordinate is >= 0 and its radial is >= 0, so a
+    /// lookup for an ordinary `(coil, disc)` location cannot match a shielding element to begin with.
     func SegmentAt(location:LocStruct) async -> Segment? {
-        
-        let coilSegs = self.CoilSegments()
-        for nextSegment in coilSegs {
-            
+
+        for nextSegment in self.segmentStore {
+
             let nextLoc = await nextSegment.location
             if nextLoc == location {
-                
+
                 return nextSegment
             }
         }
-        
+
         return nil
     }
     
@@ -2855,17 +2925,36 @@ actor PhaseModel /*:Codable */ {
         var wdgTypeIsDiscOrHelix = await bottomMostDisc.wdgType == .disc
         wdgTypeIsDiscOrHelix = await bottomMostDisc.wdgType == .helical || wdgTypeIsDiscOrHelix
         if !wdgTypeIsDiscOrHelix {
-            
+
             throw PhaseModelError(info: "", type: .NotADiscCoil)
         }
-        
-        guard let nextDisc = await self.SegmentAt(location: LocStruct(radial: coil, axial: 1)) else {
-            
-            throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
+
+        // The gap between the coil's two lowest DISCS. That is not the same question as "the gap between its two lowest
+        // Segments", because the discs of a combined, interleaved or shield-paired Segment are inside it - so the first disc
+        // gap of an interleaved coil is a gap this routine can only see by looking at BasicSections.
+        //
+        // This used to ask for the Segment at axial 1. `axialPos` is a pristine design-file disc index that is never
+        // renumbered, so interleaving 2n discs leaves the coordinates at 0/2/4/... and there is no Segment at 1 at all: the
+        // lookup came back nil and the coil was reported as not existing. That is reachable straight from the UI - AddStaticRing
+        // calls this for its default gap - so adding a static ring to an interleaved coil failed with "coil 1 does not exist".
+        var result = 0.0
+
+        if bottomMostDisc.basicSections.count > 1 {
+
+            result = bottomMostDisc.basicSections[1].z1 - bottomMostDisc.basicSections[0].z2
         }
-        
-        let result = await nextDisc.z1 - bottomMostDisc.z2
-        
+        else {
+
+            let coilSegments = self.CoilSegments().filter({ $0.radialPos == coil })
+
+            guard coilSegments.count > 1 else {
+
+                throw PhaseModelError(info: "\(coil)", type: .CoilDoesNotExist)
+            }
+
+            result = await coilSegments[1].z1 - bottomMostDisc.z2
+        }
+
         if result < 0.0 {
             
             throw PhaseModelError(info: "It is negative", type: .IllegalAxialGap)

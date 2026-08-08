@@ -884,7 +884,7 @@ enum DielectricStress {
                 continue
             }
 
-            let facesStaticRing = (try? await model.StaticRingAbove(segment: segment, recursiveCheck: true)) .flatMap { $0 } != nil
+            let facesStaticRing = (try? await model.StaticRingAbove(segment: segment)) .flatMap { $0 } != nil
             let isTappingGap = await model.IsTappingGap(segment1: segment, segment2: above)
             let stacks = Segment.DiscToDiscLayerStack(basicSection: bs, gap: gap, facesStaticRing: facesStaticRing)
 
@@ -977,8 +977,8 @@ enum DielectricStress {
             if let gaps = try? await model.AxialSpacesAboutSegment(segment: segment),
                let Cs = try? await segment.BasicSectionSeriesCapacitance(), Cs > 0.0 {
 
-                let staticRing = (above: ((try? await model.StaticRingAbove(segment: segment, recursiveCheck: true)).flatMap { $0 }) != nil,
-                                  below: ((try? await model.StaticRingBelow(segment: segment, recursiveCheck: true)).flatMap { $0 }) != nil)
+                let staticRing = (above: ((try? await model.StaticRingAbove(segment: segment)).flatMap { $0 }) != nil,
+                                  below: ((try? await model.StaticRingBelow(segment: segment)).flatMap { $0 }) != nil)
 
                 let Cdd = Segment.DiscToDiscSeriesCapacitance(belowGap: gaps.below,
                                                               aboveGap: gaps.above,

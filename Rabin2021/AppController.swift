@@ -803,12 +803,21 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         
         
         
-        for i in await 0..<model.segments.count {
-            
-            let axialPU = await fePhase.window.sections[i].eddyLossDueToAxialFlux / fePhase.window.sections[i].resistiveLoss
-            let radialPU = await fePhase.window.sections[i].eddyLossDueToRadialFlux / fePhase.window.sections[i].resistiveLoss
-            await model.segments[i].SetEddyLossesPU(radial: radialPU, axial: axialPU)
-            
+        // One FE section per CoilSegments() entry, in that order - the same correspondence the current assignment above uses, and
+        // for the same reason (CreateFePhase built the sections by walking that array).
+        //
+        // This used to run over model.segments, which is the FULL store, static rings and radial shields included. CoilSegments()
+        // filters those out, so the FE array is SHORTER than the store by the number of shielding elements in the model and
+        // window.sections[i] ran off the end of it: "Index out of range", raised by the first recalculation after a static ring
+        // was added. Before it overran it was also writing each coil Segment's eddy losses onto whatever Segment happened to sit
+        // at that index - a static ring sorts to the FRONT of its coil's block, since its axial coordinate is negative, so the
+        // misalignment started at the first shielded coil and quietly shifted every coil outside it.
+        for (segIndex, nextSegment) in coilSegments.enumerated() {
+
+            let feSection = await fePhase.window.sections[segIndex]
+            let axialPU = await feSection.eddyLossDueToAxialFlux / feSection.resistiveLoss
+            let radialPU = await feSection.eddyLossDueToRadialFlux / feSection.resistiveLoss
+            await nextSegment.SetEddyLossesPU(radial: radialPU, axial: axialPU)
         }
         
         // The inductance calculation reports one update per section (ie: per row of the matrix). Same pattern as the simulation bar: '.bufferingNewest(1)' so the solver never blocks on the UI, and the stream is drained on the main actor so AppKit can actually redraw between updates.
@@ -2729,40 +2738,16 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 
                 
                 do {
-                    
-                    // we need to keep track of static rings that are at the ends of new (combined) Segments
-                    let bottomStaticRing = try await model.StaticRingBelow(segment: segments.first!, recursiveCheck: false)
-                    let topStaticRing = try await model.StaticRingAbove(segment: segments.last!, recursiveCheck: false)
-                    
+
                     let core = await model.core
                     let combinedSegment = try Segment(basicSections: newBasicSectionArray, realWindowHeight: core.realWindowHeight, useWindowHeight: core.adjustedWindHt)
-                    
+
+                    // Static rings at the ends of the selection need no attention here any more, and that is the point of the
+                    // geometric lookup in PhaseModel.NearestStaticRing: a ring does not name the Segment it sits against, so
+                    // rebuilding that Segment cannot orphan it. This used to tear each end ring down and build a replacement
+                    // against the combined Segment, which was both unnecessary and lossy - the replacement was created at the
+                    // DEFAULT gap and thickness, silently discarding a ring the user had asked for at anything else.
                     await self.updateModel(oldSegments: segments, newSegments: [combinedSegment], xlFile: nil, reinitialize: false)
-                    
-                    var capMatrixNeedsUpdate = false
-                    
-                    if bottomStaticRing != nil {
-                        
-                        let bSR = try await model.AddStaticRing(adjacentSegment: combinedSegment, above: false)
-                        try await model.InsertSegment(newSegment: bSR)
-                        try await model.RemoveStaticRing(staticRing: bottomStaticRing!)
-                        capMatrixNeedsUpdate = true
-                    }
-                    
-                    if topStaticRing != nil {
-                        
-                        let tSR = try await model.AddStaticRing(adjacentSegment: combinedSegment, above: true)
-                        try await model.InsertSegment(newSegment: tSR)
-                        try await model.RemoveStaticRing(staticRing: topStaticRing!)
-                        capMatrixNeedsUpdate = true
-                    }
-                    
-                    if capMatrixNeedsUpdate {
-                        
-                        try await model.CalculateCapacitanceMatrix()
-                        //print("Coil 0 Cs: \(try model.CoilSeriesCapacitance(coil: 0))")
-                        //print("Coil 1 Cs: \(try model.CoilSeriesCapacitance(coil: 1))")
-                    }
                 }
                 catch {
                     

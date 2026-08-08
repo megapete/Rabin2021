@@ -20,6 +20,15 @@ electrostatically coupled *through* the rings, producing a mutual C₁₃ that b
 A scalar `Segment.seriesCapacitance` cannot represent that, so supporting it means adding an off-diagonal
 term to the C matrix, not just a new branch in `SeriesCapacitance`.
 
+As of 2026-08-08 `AddStaticRing` refuses the configuration up front as well, so the user is told at the
+point of fitting the second ring rather than at the next recalculation. Note that until the same date the
+restriction was **unreachable**: `SegmentAt` was searching `CoilSegments()`, which filters shielding
+elements out, so `StaticRingAbove`/`StaticRingBelow` returned nil for every static ring in every model and
+no ring reached the capacitance calculation at all. A single Segment carrying the whole coil with a ring at
+each end is now also representable and now also throws — the error's own `info` string ("consider splitting
+it into at least 2 Segments") is the workaround for that one, and it is a real one: two Segments put the
+two rings on different discs and out of 12.78-81's way.
+
 ### 2. Interleaved, wound-in-shield and multi-start windings
 
 - Interleaved discs use **Veverka eq. 6.4** (`Cs = Ctt·(N−1)`, halved by the caller), not DelVecchio, who

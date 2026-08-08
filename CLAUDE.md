@@ -207,6 +207,25 @@ The line-end gradient is divided by the end section's **own** span in x, not by 
 of the end disc while interior nodes sit at gap midpoints, so end sections are ~12% shorter and 1/N charges them for
 length they do not have.
 
+#### The two `-rings` variants: the first fixture with a Segment that is not a circuit element
+
+`STME0999-rings` and `STME0999-interleaved-rings` are the first two scenarios to fit a **static ring**, one at each end of the HV,
+via a `Scenario.staticRings` list applied *after* the restructure (the order the user works in — a ring is fitted to whatever
+Segment the coil ended up with). They exist because a static ring is the only thing in the model that is a `Segment` and is **not**
+a circuit element, so the moment one is present "the number of Segments" has two different answers and every array sized by it has
+to pick the right one. `SelfTest.StaticRingCheck` asserts the three that matter: the inductance matrix is `CoilSegments().count`
+square and not `segments.count`; every ring in the store is reported by at least one Segment (no orphans); and the Segments on
+either side of a ring agree about it. The interleaved variant is the reported failure end to end — restructure, then ring, then a
+full recalculation.
+
+Fitting the rings is not cosmetic, and the numbers say why: on the plain HV the two end discs go from **0.294 of the mean section
+Cs to 0.712**, and the line-end gradient from **30.31× to 15.96×** with the worst section voltage from 65.4 kV to 50.7 kV. That is
+`SeriesCapacitance`'s static-ring branch (DV 12.62) replacing its end-disc branch (12.63-64): an end disc with no ring has a
+neighbour on one side only and loses its outward C_dd entirely, while a ring gives it a facing electrode across 1.96 mm of oil plus
+the ring's own 3 mm/side wrap. It does not recover *all* of it — the wrap is thick — hence 0.71 and not 1.0. **None of this was
+reachable before 2026-08-08**, because `SegmentAt` could not find a static ring at all (see above), so the ring was in the picture
+and out of the physics.
+
 #### The S0738 fixture: a connection, not a winding
 
 `S0738` and `S0738-plain` (`S0738_AndIn.txt`, four coils, 1050 kV on the HV) are the first fixture here that is about **how the
@@ -247,9 +266,49 @@ Resolved packages live in `ImpulseDistribution.xcodeproj/.../swiftpm/Package.res
 The physics model is layered from smallest to largest unit. Understanding this hierarchy is essential:
 
 - **`BasicSection`** (struct, `BasicSection.swift`) — the smallest unit the program recognizes: one coil section at a physical location. `LocStruct` gives its `(radial, axial)` position, where radial 0 is closest to the core leg and axial 0 is closest to the bottom yoke.
-- **`Segment`** (`actor`, `Segment.swift`) — a collection of *axially contiguous* `BasicSection`s from the **same winding**. This is the unit that is actually modeled and drawn. Static rings and radial shields are special Segments created via class factory functions. Segments are `Equatable`/hashed **by serial number** — be very careful when assigning serial numbers.
+- **`Segment`** (`actor`, `Segment.swift`) — a collection of *axially contiguous* `BasicSection`s from the **same winding**. This is the unit that is actually modeled and drawn. Static rings and radial shields are special Segments created via class factory functions. Segments are `Equatable`/hashed **by serial number** — be very careful when assigning serial numbers, and note that **every Segment now gets a real one**: shielding elements used to share a dummy `-1`, which made all of them equal to each other, so `segmentStore.firstIndex(of: aStaticRing)` found whichever came first and *Remove Static Ring* on the second one removed the first (or a radial shield).
 
   **`axialPos` is a coordinate, never an index.** `Segment.axialPos` returns `basicSections[0].location.axial` — the *pristine design-file disc index* of the Segment's lowest BasicSection — and is **never renumbered**. It equals the Segment's ordinal position within its coil only while every Segment holds exactly one BasicSection, which the load path guarantees (`AppController:955` wraps each BasicSection in its own Segment) and which a combine, an interleave, or a wound-in-shield pairing destroys: 8 discs interleaved into 4 Segments leaves the coordinates at 0/2/4/6. The **ordinal is a Segment's position in `PhaseModel.CoilSegments()`**, which is what `CreateFePhase` walks to build the FE sections, what `SimulationModel` sizes `vDropInd` by, and what the capacitance assembly indexes. Deriving one from the other — `GetHighestSection(coil:) + …`, or `+ segment.axialPos` — was a real bug at **four** sites (fixed 2026-08-04/05): it crashed *Interleave* inside `PchFePhase.SetSeriesRmsCurrentForSection` with "Index out of range", and when the restructured coil was not the last one it instead wrote one coil's currents over the next coil's sections and returned a plausible, wrong inductance matrix with no error at all. The fourth was `ShowWaveFormsDialog`, which was handed `GetHighestSection` values and rebuilt the flat per-coil offsets itself; it now takes `coilRanges:[ClosedRange<Int>]` from `SegmentRange(coil:)`, which deletes that arithmetic rather than repairing it. **When something needs a range of `CoilSegments()` indices, get it from `SegmentRange(coil:)` — do not recompute it.** `GetHighestSection` is still correct where it is **compared against another `axialPos`** (`TransformerView`'s end-disc tests, `PhaseModel:1483/2189/2245`); it is never a count. `CreateFePhase` asserts the `(radialPos, axialPos)` sort that the ordinal depends on, and `recalculateModel` guards `window.sections.count == coilSegments.count`.
+
+  **The other half of the same rule: `CoilSegments()` is not `segments`.** `PhaseModel.segments` is the whole store, *including*
+  static rings and radial shields; `CoilSegments()` drops them (`radialPos < 0 || axialPos < 0`). The two are the same array only
+  in a model that has no shielding element in it, which is every model until the user fits one — so an index or a count taken from
+  one and used against the other is a bug that lies dormant until the first static ring. **Anything sized by, or indexed against,
+  the FE sections or the inductance matrix must come from `CoilSegments()`.** Three sites had it backwards (fixed 2026-08-08):
+  `recalculateModel`'s eddy-loss transfer walked `model.segments` while subscripting `fePhase.window.sections`, which is one entry
+  per `CoilSegments()` entry — that is the reported **"Index out of range" when calculating inductances**, raised by the first
+  recalculation after a static ring was added; `PhaseModel.AxiallyAdjacentSegments` subscripted `segments` with a `SegmentIndex`
+  ordinal (and ran off the top of a coil into the next one); and `GetBmatrix` sized its rows from `segments.count`. Note the eddy
+  loop's *quiet* failure mode, which is the worse one: a static ring sorts to the **front** of its coil's block, because its axial
+  coordinate is negative, so before the loop overran it was writing each coil Segment's eddy losses onto its neighbour.
+
+  **Static rings are located by GEOMETRY, not by their coordinates** (redesigned 2026-08-08). `PhaseModel.StaticRingAbove(segment:)`
+  / `StaticRingBelow(segment:)` return the nearest static ring in the same coil on the side asked for, provided no coil Segment
+  stands between the two — see `NearestStaticRing`. A ring's own axial coordinate is now only an *identity*: negative, so the rest
+  of the program can tell it from a disc, and unique within the coil, so `InsertSegment` accepts it. It is handed out by
+  `NextStaticRingAxialPosition` and means nothing else. It used to be `-adjacentSegment.axialPos`, and adjacency was recovered by
+  inverting that arithmetic, which failed three ways: a restructure renumbers nothing (see above), so interleaving a coil
+  **orphaned** every ring already on it — the ring kept its space and kept being drawn while the discs either side measured their
+  gaps straight through it; "above Segment k" and "below Segment k+1" are the *same ring* but were recovered by different routes,
+  so an interior ring was visible from one side only; and the encoding could not represent a ring on each side of one Segment at
+  all. The payoff beyond correctness is that a rebuild cannot lose a ring, which is why *Combine* no longer tears its end rings
+  down and builds replacements (that path also silently reset a custom gap or thickness to the default).
+
+  **`SegmentAt(location:)` searches the whole store, and must.** Restricting it to `CoilSegments()` — which is exactly the filter
+  that removes shielding elements — did not hide them from *some* callers, it made **every** shielding-element lookup in the model
+  return nil unconditionally: `StaticRingAbove`/`StaticRingBelow`, `RadialShieldInside`/`RadialShieldOutside`, the "there is
+  already one there" guards in `AddStaticRing`/`AddRadialShieldInside`, and the shield branches of `HiloUnder` and
+  `CoilInnerShuntCapacitance`. No static ring in a model had reached the capacitance calculation since. Nothing is lost by
+  searching the whole store: a coil Segment's coordinates are both >= 0, so an ordinary `(coil, disc)` lookup cannot match a
+  shielding element anyway.
+
+  Two more that only a restructured coil reaches: `StandardAxialGap(coil:)` asked for the Segment at **axial 1**, which does not
+  exist once a coil has been interleaved or combined (the coordinates run 0/2/4/…), and reported it as "the coil does not exist" —
+  straight out of *Add Static Ring*, which calls it for its default gap. It now takes the gap between the two lowest **discs**,
+  looking inside the bottom Segment's `basicSections` when it holds more than one. And `AddStaticRing` refuses up front a ring that
+  would leave a Segment with one on **both** sides, rather than letting `CalculateCapacitanceMatrix` throw
+  `.OnlyOneStaticRingAllowed` at the next recalculation — that configuration is unsupported physics (DV 12.78-81, TODO.md §1), and
+  finding out afterwards left the user with a ring in the model, no undo, and nothing that would compute until it came out again.
 - **`Core`** (struct, `Core.swift`) — core geometry (diameter, window height, leg centers) used by inductance calculations.
 - **`Node`** (struct, `Node.swift`) — a connection point between segments. Its `number` is **0-based and doubles as the index into the capacitance matrix**. Shunt capacitances to ground use `toNode = -1`.
 - **`Connector`** / **`Segment.Connection`** (`Connector.swift`, `Segment.swift`) — an electrical "jumper". A `Connector` has a `fromLocation`/`toLocation` from the `Connector.Location` enum: eight physical points on a segment (`{inside,center,outside}_{upper,lower}` plus `outside_center`/`inside_center`) and the special *terminations* `floating`, `ground`, `impulse`. A `Segment.Connection` pairs a `Connector` with an optional `segmentID`: non-nil ⇒ a jumper to that segment's location; nil ⇒ a termination on `self`. Coil ends and tapping gaps carry a `floating` lead by default; `AddConnector` **replaces** a floating lead with ground/impulse but **appends** a segment-to-segment jumper (leaving the floating lead in place).

@@ -314,7 +314,9 @@ actor Segment: Equatable /*, Hashable */ {
         return self.woundInShield != nil
     }
 
-    /// A  constant used to identify the location of radial shields and static rings whose associated Segment is in position 0
+    /// A constant used to identify the RADIAL location of a radial shield that sits inside coil 0 (the negative of 0 being no use
+    /// as a marker). Static rings no longer use it: their axial coordinate is handed out by
+    /// `PhaseModel.NextStaticRingAxialPosition` and carries no meaning beyond "negative, and not already taken".
     static let negativeZeroPosition = -2048
     
     /// A Boolean to indicate whether the segment is actually a static ring
@@ -710,8 +712,12 @@ actor Segment: Equatable /*, Hashable */ {
         
         self.rect = NSRect(x: first.r1, y: first.z1, width: first.width, height: last.z2 - first.z1)
         
-        // if it's a static ring or radial shield, set the serial number to a dummy number, otherwise set it to the next available serial number
-        self.serialNumber = isStaticRing || isRadialShield ? -1 : Segment.nextSerialNumber
+        // EVERY Segment gets its own serial number, shielding elements included. Segments are Equatable and Hashable BY serial
+        // number, so the dummy -1 that static rings and radial shields used to share made all of them equal to each other and to
+        // one another: `segmentStore.firstIndex(of: aStaticRing)` found whichever shielding element came first, so removing the
+        // second static ring in a model removed the first one - or a radial shield. Shielding elements carry no connectors, so a
+        // real serial number costs nothing but the counter.
+        self.serialNumber = Segment.nextSerialNumber
         self.isStaticRing = isStaticRing
         self.isRadialShield = isRadialShield
     }
@@ -2081,17 +2087,17 @@ actor Segment: Equatable /*, Hashable */ {
         }
     }
     
-    /// Class function to create a static ring. The Segment is marked as a static ring using its 'isStaticRing' property. The radial location of the static ring is equal to the radial location of the 'adjacentSegment' argument. The axial location is equal to the _negative_ of the adjacentSegment argument, unless the adjacent segment is at axial location 0, in which case the static ring's axial location is equal to Segment.negativeZeroPosition
+    /// Class function to create a static ring. The Segment is marked as a static ring using its 'isStaticRing' property. The radial location of the static ring is equal to the radial location of the 'adjacentSegment' argument, and its axial location is whatever the caller hands in.
     /// - Parameter adjacentSegment: The segment that is immediately adjacent to the static ring.
     /// - Parameter gapToSegment: The axial gap (shrunk) between the adjacent segment and the static ring
     /// - Parameter staticRingIsAbove: Boolean to indicate whether the static ring is above (true) or below (false) the adjacentSegment
     /// - Parameter staticRingThickness: An optional static ring thickness (axial height). If nil, then the "standard" thickness of 5/8" is used.
-    static func StaticRing(adjacentSegment:Segment, gapToSegment:Double, staticRingIsAbove:Bool, staticRingThickness:Double? = nil) async throws -> Segment {
-        
+    /// - Parameter axialPosition: The axial coordinate to give the ring. It must be **negative** (that is how the rest of the program tells a shielding element from a disc) and unique within the coil. It is an identity and not a position: which Segments the ring actually sits between is worked out from the geometry by `PhaseModel.StaticRingAbove`/`StaticRingBelow`. Get it from `PhaseModel.NextStaticRingAxialPosition`, which is what `PhaseModel.AddStaticRing` does. It used to be derived here as the negative of `adjacentSegment.axialPos`, which tied the ring to a disc index that a combine or an interleave could renumber out from under it.
+    static func StaticRing(adjacentSegment:Segment, gapToSegment:Double, staticRingIsAbove:Bool, staticRingThickness:Double? = nil, axialPosition:Int) async throws -> Segment {
+
         // Create a special BasicSection as follows
-        // The location is the same as the adjacent segment EXCEPT the axial position is the NEGATIVE of the adjacent segment
-        let axialPos = adjacentSegment.axialPos == 0 ? Segment.negativeZeroPosition : -adjacentSegment.axialPos
-        let srLocation = LocStruct(radial: adjacentSegment.radialPos, axial: axialPos)
+        // The location is the same as the adjacent segment EXCEPT for the (negative) axial position handed in by the caller
+        let srLocation = LocStruct(radial: adjacentSegment.radialPos, axial: axialPosition)
         // The rect has the same x-origin and width as the adjacent segment but is offset by the gaptoSegment and the standard static-ring axial dimension
         let srThickness = staticRingThickness == nil ? stdStaticRingThickness : staticRingThickness!
         let offsetY = await staticRingIsAbove ? adjacentSegment.rect.height + gapToSegment : -(gapToSegment + srThickness)

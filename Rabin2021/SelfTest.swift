@@ -131,6 +131,19 @@ enum SelfTest {
         let to:LeadPoint
     }
 
+    /// A static ring fitted to one end of a coil, AFTER the restructure.
+    ///
+    /// The order is the point of it. A ring is a Segment like any other, so it has to go on after the interleaving or shielding
+    /// that rebuilds the coil's Segments, exactly as the user would fit one (`AppController.doAddStaticRingOver` is enabled on a
+    /// selection of one Segment, whatever that Segment turned out to be). The scenario names an END of a coil rather than a
+    /// Segment for the same reason `LeadPoint` does: which Segment is at the top of a restructured coil is not knowable from the
+    /// design file.
+    struct StaticRing {
+
+        let coil:Int
+        let end:CoilEnd
+    }
+
     /// A structural change made to the model after it is loaded and before the terminations go on.
     ///
     /// These are the two things a designer does when the initial distribution is too steep, and the whole reason for
@@ -184,6 +197,8 @@ enum SelfTest {
         let restructure:Restructure
         /// Widen a coil to a shield's build without fitting the shield. Nil leaves the geometry as the design file has it.
         let matchedBuild:MatchedBuild?
+        /// Static rings to fit after the restructure. Empty for a scenario that is about something else.
+        var staticRings:[StaticRing] = []
         /// The design file's name in the container's Documents folder.
         let fixtureName:String
         /// A sentence about the design, echoed into the report so that a stale report identifies itself.
@@ -213,11 +228,12 @@ enum SelfTest {
     ///
     /// The three variants differ ONLY in `restructure`, which is the point: same core, same conductor, same gaps, same
     /// impulse, so the line-end gradient can be read off three times and compared without anything else having moved.
-    private static func STME0999(name:String, notes:String, restructure:Restructure) -> Scenario {
+    private static func STME0999(name:String, notes:String, restructure:Restructure, staticRings:[StaticRing] = []) -> Scenario {
 
         return Scenario(name: name,
                         restructure: restructure,
                         matchedBuild: nil,
+                        staticRings: staticRings,
                         fixtureName: "STME-0999_AndIn.txt",
                         notes: "4160Y/2400 V LV (48-turn helical), 69 kV delta HV (70-disc continuous), 350 kV full wave on the HV line end. " + notes,
                         jumpers: [],
@@ -273,6 +289,27 @@ enum SelfTest {
                                           notes: "A 5-turn wound-in shield in every disc pair of the HV - about half its turns.",
                                           restructure: .woundInShield(coil: 1, turnsPerDisc: 5, connection: .floating),
                                           matchedBuild: nil),
+
+        // A STATIC RING AT EACH END OF THE HV, on top of each of the first two variants.
+        //
+        // These exist because a static ring is the one thing in the model that is a Segment but is NOT a circuit element, and
+        // every array whose length is "the number of Segments" therefore has two possible meanings the moment one is fitted.
+        // `CoilSegments()` filters shielding elements out and `PhaseModel.segments` does not, and mixing the two is what made
+        // `recalculateModel` walk off the end of the finite-element model's section array - "Index out of range", raised from the
+        // eddy-loss transfer immediately before the inductance calculation. The interleaved variant is the case that was
+        // reported: a restructure makes the two arrays differ in length twice over, once for the pairing and once for the ring.
+        //
+        // They are also the only scenarios that fit a ring to a coil whose Segments were REBUILT after it was loaded, which is
+        // the other half of the redesign - a ring is located by its geometry, so interleaving cannot renumber it into an orphan.
+        "STME0999-rings" : STME0999(name: "STME0999-rings",
+                                    notes: "HV as designed, with a static ring at each end of it.",
+                                    restructure: .none,
+                                    staticRings: [StaticRing(coil: 1, end: .bottom), StaticRing(coil: 1, end: .top)]),
+
+        "STME0999-interleaved-rings" : STME0999(name: "STME0999-interleaved-rings",
+                                                notes: "The whole HV winding interleaved, with a static ring at each end of it.",
+                                                restructure: .interleave(coil: 1),
+                                                staticRings: [StaticRing(coil: 1, end: .bottom), StaticRing(coil: 1, end: .top)]),
 
         "S0738" : S0738(name: "S0738", restructure: .interleave(coil: 2)),
 
@@ -504,6 +541,63 @@ enum SelfTest {
         }
 
         text += "\n"
+
+        // The static rings go on after the restructure, the way the user fits them, and then the whole recalculation is asked for
+        // again. That second pass is the thing being tested: it is where CreateFePhase's section array (one entry per
+        // CoilSegments() entry) meets code that used to size itself from PhaseModel.segments (the full store, rings included).
+        if !scenario.staticRings.isEmpty {
+
+            Stage("fitting the static rings")
+
+            text += "STATIC RINGS\n"
+            text += String(repeating: "-", count: 110) + "\n"
+
+            for nextRing in scenario.staticRings {
+
+                let outcome = await ApplyStaticRing(nextRing, model: model)
+                text += "  \(outcome)\n"
+
+                guard !outcome.hasPrefix("FAILED") else {
+
+                    return Report(text: text, summary: "FAILED - " + outcome)
+                }
+            }
+
+            // Ask for the capacitance here, in a do/catch of our own, BEFORE handing the model to recalculateModel. That routine
+            // puts an NSAlert up when this throws - .OnlyOneStaticRingAllowed is the reachable one - and a modal alert with nobody
+            // at the keyboard hangs the run forever. Same reasoning as the node-topology rebuild further down.
+            do {
+
+                try await model.CalculateCapacitanceMatrix()
+            }
+            catch {
+
+                text += "  FAILED recomputing the capacitance with the rings on: \(error)\n"
+                return Report(text: text, summary: "FAILED - capacitance with static rings: \(error)")
+            }
+
+            Stage("recalculating with the static rings in place (inductance + capacitance)")
+
+            await controller.recalculateModel(reinitialize: false)
+
+            guard controller.inductanceIsValid, controller.capacitanceIsValid else {
+
+                text += "  FAILED: the recalculation did not complete (inductance valid: \(controller.inductanceIsValid), capacitance valid: \(controller.capacitanceIsValid))\n"
+                return Report(text: text, summary: "FAILED - recalculation with static rings did not complete")
+            }
+
+            text += "  recalculated: inductance and capacitance both valid with the rings in the model\n"
+
+            let ringCheck = await StaticRingCheck(model: model)
+            text += ringCheck.text
+
+            guard ringCheck.ok else {
+
+                return Report(text: text, summary: "FAILED - " + ringCheck.summary)
+            }
+
+            text += "\n"
+        }
 
         Stage("reporting the geometry")
 
@@ -1067,6 +1161,142 @@ enum SelfTest {
 
             return outcome
         }
+    }
+
+    /// Fit one static ring to one end of a coil, the way `AppController.doAddStaticRingOver`/`doAddStaticRingBelow` do: find the
+    /// Segment, ask the model for the ring, insert it.
+    ///
+    /// The Segment is *found* rather than computed, for the reason `LeadPoint` gives - after a restructure the top of a coil is
+    /// not at the axial coordinate the design file would suggest.
+    private static func ApplyStaticRing(_ ring:StaticRing, model:PhaseModel) async -> String {
+
+        let coilSegments = await model.CoilSegments().filter({ $0.radialPos == ring.coil })
+        let isAbove = ring.end == .top
+
+        guard let adjacent = isAbove ? coilSegments.last : coilSegments.first else {
+
+            return "FAILED: coil \(ring.coil) has no Segments to fit a static ring to"
+        }
+
+        do {
+
+            let newRing = try await model.AddStaticRing(adjacentSegment: adjacent, above: isAbove)
+            try await model.InsertSegment(newSegment: newRing)
+
+            let z1 = await newRing.z1
+            let thickness = await newRing.z2 - z1
+            let gap = isAbove ? await z1 - adjacent.z2 : await adjacent.z1 - newRing.z2
+
+            return String(format: "coil %d %@: ring at axial %d, %.3f mm thick, z1 = %.1f mm, %.3f mm gap to Segment %d (axial %d, %d disc(s))",
+                          ring.coil, isAbove ? "top" : "bottom", newRing.axialPos, thickness * 1000.0, z1 * 1000.0, gap * 1000.0,
+                          adjacent.serialNumber, adjacent.axialPos, adjacent.basicSections.count)
+        }
+        catch {
+
+            return "FAILED adding the static ring to coil \(ring.coil): \(error)"
+        }
+    }
+
+    /// What has to be true of a model that carries static rings, checked after the recalculation that used to crash.
+    ///
+    /// Three things, and they are three because the failure they come from had three separable parts:
+    ///
+    ///   1. **The inductance matrix is sized by `CoilSegments()`, not by the store.** A static ring is not a circuit element and
+    ///      gets no row. This is the invariant the eddy-loss transfer in `recalculateModel` broke by walking `segments` while
+    ///      indexing the finite-element sections, and it is the one that turns into "Index out of range".
+    ///   2. **Every ring is still found from the winding.** A ring is located by geometry now (`PhaseModel.NearestStaticRing`),
+    ///      so a restructure cannot leave one in the model that no Segment can see. Under the old axial-coordinate scheme,
+    ///      interleaving a coil orphaned every ring already fitted to it, silently: the ring kept its space and kept being drawn
+    ///      while the discs either side of it measured their gaps straight through it.
+    ///   3. **Both sides of a ring agree about it.** A ring above Segment k IS the ring below Segment k+1. The two used to be
+    ///      recovered by different routes, so an interior ring was visible from one side only.
+    private static func StaticRingCheck(model:PhaseModel) async -> (ok:Bool, text:String, summary:String) {
+
+        var text = ""
+        var failures:[String] = []
+
+        let allSegments = await model.segments
+        let coilSegments = await model.CoilSegments()
+        let rings = allSegments.filter({ $0.isStaticRing })
+
+        text += "  Store: \(allSegments.count) Segments, of which \(coilSegments.count) are circuit elements and \(rings.count) are static rings\n"
+
+        if let indMatrix = await model.unfactoredM {
+
+            let rows = await indMatrix.rows
+            text += "  Inductance matrix: \(rows) x \(await indMatrix.columns)\n"
+
+            if Int(rows) != coilSegments.count {
+
+                failures.append("the inductance matrix is \(rows) rows against \(coilSegments.count) coil Segments")
+            }
+        }
+        else {
+
+            failures.append("there is no inductance matrix")
+        }
+
+        // Uniqueness of the rings' axial coordinates. InsertSegment enforces it, so a duplicate here would mean a ring never made
+        // it into the store at all.
+        let ringLocations = await Locations(rings)
+        if Set(ringLocations.map({ "\($0.radial),\($0.axial)" })).count != rings.count {
+
+            failures.append("two static rings share a location")
+        }
+
+        for nextRing in rings {
+
+            var seenFromBelow:Segment? = nil
+            var seenFromAbove:Segment? = nil
+
+            for nextSegment in coilSegments where nextSegment.radialPos == nextRing.radialPos {
+
+                if let found = try? await model.StaticRingAbove(segment: nextSegment), found === nextRing {
+
+                    seenFromBelow = nextSegment
+                }
+
+                if let found = try? await model.StaticRingBelow(segment: nextSegment), found === nextRing {
+
+                    seenFromAbove = nextSegment
+                }
+            }
+
+            let below = seenFromBelow.map({ "Segment \($0.serialNumber) (axial \($0.axialPos))" }) ?? "-"
+            let above = seenFromAbove.map({ "Segment \($0.serialNumber) (axial \($0.axialPos))" }) ?? "-"
+
+            text += "  Ring at axial \(nextRing.axialPos) of coil \(nextRing.radialPos): reported above \(below), below \(above)\n"
+
+            if seenFromBelow == nil && seenFromAbove == nil {
+
+                failures.append("the static ring at axial \(nextRing.axialPos) of coil \(nextRing.radialPos) is orphaned - no Segment can see it")
+            }
+        }
+
+        for nextFailure in failures {
+
+            text += "  FAILED: \(nextFailure)\n"
+        }
+
+        if failures.isEmpty {
+
+            text += "  OK: the rings are all reachable from the winding and the matrices are sized by the circuit elements alone\n"
+        }
+
+        return (failures.isEmpty, text, failures.first ?? "")
+    }
+
+    /// The locations of a set of Segments. Only here because `Segment.location` is actor-isolated and the caller wants them all.
+    private static func Locations(_ segments:[Segment]) async -> [LocStruct] {
+
+        var result:[LocStruct] = []
+
+        for nextSegment in segments {
+
+            result.append(await nextSegment.location)
+        }
+
+        return result
     }
 
     // MARK: Finding a lead
