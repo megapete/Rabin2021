@@ -1054,6 +1054,29 @@ enum DielectricStress {
                 innerName = "coil \(coil - 1)"
             }
 
+            // HiloLayerStack puts this coil's own half-wrap on the outside of the gap and leaves the inner one to us, because what
+            // is inside may be a core, a tank or a shield, none of which carries turn paper. Here it is a coil, so its half-wrap
+            // goes on - and the stack then starts half a wrap further in, at the inner coil's copper rather than at its insulated
+            // surface, since r2 is over-paper exactly as this coil's r1 is.
+            var stickColumn = stack.stick
+            var oilColumn = stack.oil
+            var stackInnerRadius = stack.innerRadius
+
+            if kind == .radialCoilToCoil,
+               (try? await model.RadialShieldInside(coil: coil)) ?? nil == nil,
+               let innerSeg = await model.SegmentAt(location: LocStruct(radial: coil - 1, axial: 0)),
+               let innerBS = await innerSeg.basicSections.first {
+
+                let innerPaper = DielectricLayer.Paper(innerBS.wdgData.turn.turnInsulation / 2.0)
+
+                if innerPaper.thickness > 0.0 {
+
+                    stickColumn.insert(innerPaper, at: 0)
+                    oilColumn.insert(innerPaper, at: 0)
+                    stackInnerRadius -= innerPaper.thickness
+                }
+            }
+
             let innerExtent:(low:Double, high:Double)? = innerProfile.flatMap { points in
 
                 guard let lo = points.first?.z, let hi = points.last?.z else { return nil }
@@ -1097,10 +1120,10 @@ enum DielectricStress {
                 result.append(StressSite(kind: kind,
                                          location: location,
                                          voltageTerms: terms,
-                                         columns: [stack.stick, stack.oil],
-                                         innerRadius: stack.innerRadius,
+                                         columns: [stickColumn, oilColumn],
+                                         innerRadius: stackInnerRadius,
                                          usesCornerModel: true,
-                                         gapLength: stack.stick.reduce(0.0) { $0 + $1.thickness },
+                                         gapLength: stickColumn.reduce(0.0) { $0 + $1.thickness },
                                          profileName: "Coil \(coil) to \(innerName)",
                                          profileHeight: point.z))
             }

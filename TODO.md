@@ -137,6 +137,13 @@ hard-codes `ws = 0.75"`, where DV 12.61 wants the number and width of the **stic
 `Npress = round(hilo/0.0084 − 0.5)` barrier count is likewise a shop heuristic with no counterpart in the
 book. `Segment.LayerToLayerCapacitance` makes the same substitution deliberately, for consistency.
 
+The barrier count now carries more weight than it did, because `PhaseModel.HiloLayerStack` builds the
+stress stack duct by duct from it (`Npress` barriers, `Npress + 1` oil ducts, oil against both winding
+surfaces) rather than lumping — and the oil allowable goes as `d^−0.36`, so one barrier more or fewer moves
+the reported coil-to-coil utilization by several percent. The capacitance is unaffected either way (Σ(ℓ/ε)
+is subdivision-independent). If the heuristic is ever replaced by a real barrier schedule, the stress
+report is what will notice.
+
 ### 4. Shunt capacitance is always split 50/50 onto the two end nodes
 
 DV 12.71 gives `C₁ₐ = Cs·γa(α/tanh α − α/sinh α)`; 12.72 says only that this *approaches* Ca/2 for small α,

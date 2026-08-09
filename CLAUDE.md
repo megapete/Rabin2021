@@ -621,6 +621,20 @@ r = `cornerRadiusOnCopper` (0.81 mm, ≈ 1/32″, a documented editable constant
 the paper's field is read at the copper radius and the oil's at the paper's outer radius. Anchor to re-check after any edit: a 4 mm
 duct with 0.4 mm paper per face gives **2.12×** over laminar.
 
+**A hilo is a stack of ducts, and lumping it is only legal for the capacitance** (2026-08-09). `PhaseModel.HiloLayerStack` returns
+the oil column **duct by duct** — `Npress` barriers of 0.080″ from the shop heuristic `round(hilo/0.0084 − 0.5)`, with oil against
+*both* winding surfaces, so `Npress + 1` ducts share the remaining space. It used to return one lumped board layer and one lumped
+oil layer, the way `CoilInnerShuntCapacitance` does. **That is exact for a capacitance and wrong for a withstand**: a series
+reduction is Σ(ℓ/ε), which does not care how a material is subdivided, but `StressAllowable.Strike` is a function of the layer's own
+thickness. On STME-0999 the 35.506 mm HV/LV hilo came back as a single 27.4 mm oil gap allowed 12.15 kV/mm where the five real
+5.48 mm ducts earn 21.69, and **every coil-to-coil finding on that report was manufactured by the lumping** — utilization 0.820
+against a true 0.470, a factor of **1.75**. The 15.875 mm LV hilo is out by 1.29. Note the field barely moves (9.97 → 10.19 kV/mm,
+the innermost duct now sitting at a smaller radius); essentially the whole error was the allowable. The **stick** column stays one
+solid `Pressboard(hilo)` layer deliberately — where a stick bridges the gap the path is board the whole way across, barrier and
+stick alike, so its allowable belongs at the full thickness. `AppendRadialSites` also now puts the **inner** coil's half-wrap on the
+front of the stack (and starts the stack half a wrap further in, at that coil's copper), which `HiloLayerStack`'s doc comment had
+promised the caller would do and no caller did; it is worth about 1%, and it is skipped when a radial shield stands in the gap.
+
 Two physics points that decide right from wrong answers:
 
 - **A continuous-disc gap sees twice the disc voltage and spans two node steps.** Disc A winds ID→OD, B winds OD→ID, joined at the

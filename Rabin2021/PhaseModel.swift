@@ -2728,9 +2728,23 @@ actor PhaseModel /*:Codable */ {
     /// because it barely moves the total; the stress cannot, because the whole question is how much field the oil is carrying and
     /// the paper takes a share of the volts. So the two half-wraps are put back on, the same way DiscToDiscLayerStack does it.
     ///
-    /// The barriers and sticks are lumped rather than placed where they actually are. For the laminar reduction that is exact - only
-    /// Σ(ℓ/ε) matters, and it is order-independent - and for the coaxial form it is a small error at hilo radii, where the
-    /// curvature correction is only a few percent to begin with.
+    /// THE OIL COLUMN IS RETURNED DUCT BY DUCT, NOT AS ONE LUMP, AND THAT DISTINCTION IS THE WHOLE POINT OF THIS ROUTINE.
+    ///
+    /// The capacitance model lumps the barriers and the oil (`CoilInnerShuntCapacitance` does exactly that) and is right to: a
+    /// series reduction is Σ(ℓ/ε), which is order-independent and does not care how a material is subdivided. The WITHSTAND is not
+    /// invariant that way. `StressAllowable.Strike` is a function of the layer's own thickness - `50·d^−0.36` for oil - so a hilo
+    /// handed over as a single thick oil gap is judged at an allowable it never has to meet. On this program's own STME-0999
+    /// fixture the 35.5 mm HV/LV hilo came out as one 27.4 mm oil layer at 15.2 kV/mm where the real 5.5 mm duct earns 27.1, and
+    /// the reported utilization was **1.78× the truth**. Every coil-to-coil finding on that report was manufactured by the lumping.
+    ///
+    /// So the gap is built the way it is stacked in the tank: `Npress` barriers of 0.08" with **oil against both winding surfaces**,
+    /// hence `Npress + 1` ducts sharing the remaining radial space. Ordering matters here too, though far less - `CoaxialField`
+    /// reports each layer's field at its own inner radius, so an oil duct placed at the wrong radius is wrong by the curvature
+    /// alone, a few percent across a hilo.
+    ///
+    /// The stick column stays a single solid layer, and that is not an oversight: where a stick bridges the gap the path is
+    /// pressboard from one winding to the other - barrier and stick alike - so its allowable belongs at the full hilo thickness.
+    /// Splitting it would hand the parts an allowable that the whole path does not earn.
     func HiloLayerStack(coil:Int) async throws -> (stick:[DielectricLayer], oil:[DielectricLayer], innerRadius:Double, stickFraction:Double) {
 
         guard let bottomCoilSeg = await self.SegmentAt(location: LocStruct(radial: coil, axial: 0)) else {
@@ -2747,10 +2761,14 @@ actor PhaseModel /*:Codable */ {
 
         let innerRadius = await bottomCoilSeg.r1 - hilo
 
-        // The same barrier/stick split CoilInnerShuntCapacitance uses.
-        let Npress = round(hilo / 0.0084 - 0.5)
+        // The same barrier/stick split CoilInnerShuntCapacitance uses. The 0.0084 m pitch is 0.08" of board plus 0.25" of oil.
+        let Npress = max(0.0, round(hilo / 0.0084 - 0.5))
         let tPress = min(hilo, 0.08 * meterPerInch * Npress)
         let tStick = hilo - tPress
+
+        // Oil against both winding surfaces, so the barriers sit BETWEEN the ducts and there is one more duct than barrier.
+        let ductCount = Npress + 1.0
+        let tDuct = tStick / ductCount
 
         let bs = bottomCoilSeg.basicSections[0]
         let rGap = innerRadius + hilo / 2.0
@@ -2763,19 +2781,23 @@ actor PhaseModel /*:Codable */ {
         // caller when the inner object is a coil.
         let outerPaper = DielectricLayer.Paper(bs.wdgData.turn.turnInsulation / 2.0)
 
-        var stick:[DielectricLayer] = []
+        // Where a stick bridges the gap the whole hilo is solid pressboard, so it is one layer of the full thickness.
+        var stick:[DielectricLayer] = [DielectricLayer.Pressboard(hilo)]
+
+        // Oil, barrier, oil, ... , barrier, oil - running outward from the inner surface.
         var oil:[DielectricLayer] = []
 
-        if tPress > 0.0 {
+        for i in 0..<Int(ductCount) {
 
-            stick.append(DielectricLayer.Pressboard(tPress))
-            oil.append(DielectricLayer.Pressboard(tPress))
-        }
+            if tDuct > 0.0 {
 
-        if tStick > 0.0 {
+                oil.append(DielectricLayer.Oil(tDuct))
+            }
 
-            stick.append(DielectricLayer.Pressboard(tStick))
-            oil.append(DielectricLayer.Oil(tStick))
+            if i < Int(Npress), tPress > 0.0 {
+
+                oil.append(DielectricLayer.Pressboard(tPress / Npress))
+            }
         }
 
         stick.append(outerPaper)
