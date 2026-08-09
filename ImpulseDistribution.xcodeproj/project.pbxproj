@@ -17,6 +17,8 @@
 		D39444F62718D9C700206019 /* GetNumber.xib in Resources */ = {isa = PBXBuildFile; fileRef = D39444F42718D9C700206019 /* GetNumber.xib */; };
 		D39444F72718D9C700206019 /* GetNumberDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D39444F52718D9C700206019 /* GetNumberDialog.swift */; };
 		D3A11C022E4F00A100206019 /* GetWoundInShieldDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A11C012E4F00A100206019 /* GetWoundInShieldDialog.swift */; };
+		D3A11CA12E5000A100206019 /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A11CA02E5000A100206019 /* Preferences.swift */; };
+		D3A11CA32E5000A100206019 /* PreferencesDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A11CA22E5000A100206019 /* PreferencesDialog.swift */; };
 		D3B7FF22270E320E002537D3 /* BasicSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B7FF21270E320E002537D3 /* BasicSection.swift */; };
 		D3BE820127330E9600EF964D /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D3BE820027330E9600EF964D /* Accelerate.framework */; platformFilter = maccatalyst; };
 		D3F020112B1BBF4200CBD0F0 /* ComplexModule in Frameworks */ = {isa = PBXBuildFile; productRef = D3F020102B1BBF4200CBD0F0 /* ComplexModule */; };
@@ -53,8 +55,6 @@
 		F5EBD03D2B7FABD00043CC4C /* ShowWaveFormsDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5EBD03C2B7FABD00043CC4C /* ShowWaveFormsDialog.swift */; };
 		F5EBD03F2B7FAC040043CC4C /* ShowWaveFormsView.xib in Resources */ = {isa = PBXBuildFile; fileRef = F5EBD03E2B7FAC040043CC4C /* ShowWaveFormsView.xib */; };
 		F5ED29ED270F1F9C003E84CB /* Segment.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED29EC270F1F9C003E84CB /* Segment.swift */; };
-		D3A11CA12E5000A100206019 /* Preferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A11CA02E5000A100206019 /* Preferences.swift */; };
-		D3A11CA32E5000A100206019 /* PreferencesDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3A11CA22E5000A100206019 /* PreferencesDialog.swift */; };
 		F5ED29EF271709B0003E84CB /* PhaseModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5ED29EE271709B0003E84CB /* PhaseModel.swift */; };
 /* End PBXBuildFile section */
 
@@ -71,6 +71,8 @@
 		D39444F42718D9C700206019 /* GetNumber.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = GetNumber.xib; sourceTree = "<group>"; };
 		D39444F52718D9C700206019 /* GetNumberDialog.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = GetNumberDialog.swift; sourceTree = "<group>"; };
 		D3A11C012E4F00A100206019 /* GetWoundInShieldDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GetWoundInShieldDialog.swift; sourceTree = "<group>"; };
+		D3A11CA02E5000A100206019 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
+		D3A11CA22E5000A100206019 /* PreferencesDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesDialog.swift; sourceTree = "<group>"; };
 		D3B7FF21270E320E002537D3 /* BasicSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BasicSection.swift; sourceTree = "<group>"; };
 		D3BE820027330E9600EF964D /* Accelerate.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Accelerate.framework; path = System/Library/Frameworks/Accelerate.framework; sourceTree = SDKROOT; };
 		D3FB7D692752B7A3009ACCB4 /* Connector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Connector.swift; sourceTree = "<group>"; };
@@ -98,8 +100,6 @@
 		F5EBD03C2B7FABD00043CC4C /* ShowWaveFormsDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShowWaveFormsDialog.swift; sourceTree = "<group>"; };
 		F5EBD03E2B7FAC040043CC4C /* ShowWaveFormsView.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = ShowWaveFormsView.xib; sourceTree = "<group>"; };
 		F5ED29EC270F1F9C003E84CB /* Segment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Segment.swift; sourceTree = "<group>"; };
-		D3A11CA02E5000A100206019 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
-		D3A11CA22E5000A100206019 /* PreferencesDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesDialog.swift; sourceTree = "<group>"; };
 		F5ED29EE271709B0003E84CB /* PhaseModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhaseModel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -482,7 +482,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3025FE1E;
+				CURRENT_PROJECT_VERSION = 302924C4;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -495,7 +495,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.9;
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.huberistech.Rabin2021;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -515,7 +515,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3025FE1E;
+				CURRENT_PROJECT_VERSION = 302924C4;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -528,7 +528,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.9;
+				MARKETING_VERSION = 1.0;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.huberistech.Rabin2021;
 				PRODUCT_NAME = "$(TARGET_NAME)";
