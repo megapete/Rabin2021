@@ -1,0 +1,93 @@
+# Segments: ordinals vs. coordinates, static rings, and live vs. pristine geometry
+
+Read this before touching anything that indexes Segments, sizes an array by them, locates a static ring or a radial shield, or
+changes radial geometry.
+
+## `axialPos` is a coordinate, never an index
+
+`Segment.axialPos` returns `basicSections[0].location.axial` — the *pristine design-file disc index* of the Segment's lowest
+BasicSection — and is **never renumbered**. It equals the Segment's ordinal position within its coil only while every Segment holds
+exactly one BasicSection, which the load path guarantees (`AppController:955` wraps each BasicSection in its own Segment) and which
+a combine, an interleave, or a wound-in-shield pairing destroys: 8 discs interleaved into 4 Segments leaves the coordinates at
+0/2/4/6. The **ordinal is a Segment's position in `PhaseModel.CoilSegments()`**, which is what `CreateFePhase` walks to build the
+FE sections, what `SimulationModel` sizes `vDropInd` by, and what the capacitance assembly indexes.
+
+Deriving one from the other — `GetHighestSection(coil:) + …`, or `+ segment.axialPos` — was a real bug at **four** sites (fixed
+2026-08-04/05): it crashed *Interleave* inside `PchFePhase.SetSeriesRmsCurrentForSection` with "Index out of range", and when the
+restructured coil was not the last one it instead wrote one coil's currents over the next coil's sections and returned a plausible,
+wrong inductance matrix with no error at all. The fourth was `ShowWaveFormsDialog`, which was handed `GetHighestSection` values and
+rebuilt the flat per-coil offsets itself; it now takes `coilRanges:[ClosedRange<Int>]` from `SegmentRange(coil:)`, which deletes
+that arithmetic rather than repairing it.
+
+**When something needs a range of `CoilSegments()` indices, get it from `SegmentRange(coil:)` — do not recompute it.**
+`GetHighestSection` is still correct where it is **compared against another `axialPos`** (`TransformerView`'s end-disc tests,
+`PhaseModel:1483/2189/2245`); it is never a count. `CreateFePhase` asserts the `(radialPos, axialPos)` sort that the ordinal
+depends on, and `recalculateModel` guards `window.sections.count == coilSegments.count`.
+
+## The other half of the same rule: `CoilSegments()` is not `segments`
+
+`PhaseModel.segments` is the whole store, *including* static rings and radial shields; `CoilSegments()` drops them
+(`radialPos < 0 || axialPos < 0`). The two are the same array only in a model that has no shielding element in it, which is every
+model until the user fits one — so an index or a count taken from one and used against the other is a bug that lies dormant until
+the first static ring. **Anything sized by, or indexed against, the FE sections or the inductance matrix must come from
+`CoilSegments()`.**
+
+Three sites had it backwards (fixed 2026-08-08): `recalculateModel`'s eddy-loss transfer walked `model.segments` while
+subscripting `fePhase.window.sections`, which is one entry per `CoilSegments()` entry — that is the reported **"Index out of range"
+when calculating inductances**, raised by the first recalculation after a static ring was added; `PhaseModel.AxiallyAdjacentSegments`
+subscripted `segments` with a `SegmentIndex` ordinal (and ran off the top of a coil into the next one); and `GetBmatrix` sized its
+rows from `segments.count`. Note the eddy loop's *quiet* failure mode, which is the worse one: a static ring sorts to the **front**
+of its coil's block, because its axial coordinate is negative, so before the loop overran it was writing each coil Segment's eddy
+losses onto its neighbour.
+
+## Static rings are located by GEOMETRY, not by their coordinates
+
+(Redesigned 2026-08-08.) `PhaseModel.StaticRingAbove(segment:)` / `StaticRingBelow(segment:)` return the nearest static ring in the
+same coil on the side asked for, provided no coil Segment stands between the two — see `NearestStaticRing`. A ring's own axial
+coordinate is now only an *identity*: negative, so the rest of the program can tell it from a disc, and unique within the coil, so
+`InsertSegment` accepts it. It is handed out by `NextStaticRingAxialPosition` and means nothing else.
+
+It used to be `-adjacentSegment.axialPos`, and adjacency was recovered by inverting that arithmetic, which failed three ways: a
+restructure renumbers nothing (see above), so interleaving a coil **orphaned** every ring already on it — the ring kept its space
+and kept being drawn while the discs either side measured their gaps straight through it; "above Segment k" and "below Segment k+1"
+are the *same ring* but were recovered by different routes, so an interior ring was visible from one side only; and the encoding
+could not represent a ring on each side of one Segment at all. The payoff beyond correctness is that a rebuild cannot lose a ring,
+which is why *Combine* no longer tears its end rings down and builds replacements (that path also silently reset a custom gap or
+thickness to the default).
+
+## `SegmentAt(location:)` searches the whole store, and must
+
+Restricting it to `CoilSegments()` — which is exactly the filter that removes shielding elements — did not hide them from *some*
+callers, it made **every** shielding-element lookup in the model return nil unconditionally: `StaticRingAbove`/`StaticRingBelow`,
+`RadialShieldInside`/`RadialShieldOutside`, the "there is already one there" guards in `AddStaticRing`/`AddRadialShieldInside`, and
+the shield branches of `HiloUnder` and `CoilInnerShuntCapacitance`. No static ring in a model had reached the capacitance
+calculation since. Nothing is lost by searching the whole store: a coil Segment's coordinates are both >= 0, so an ordinary
+`(coil, disc)` lookup cannot match a shielding element anyway.
+
+Two more that only a restructured coil reaches: `StandardAxialGap(coil:)` asked for the Segment at **axial 1**, which does not
+exist once a coil has been interleaved or combined (the coordinates run 0/2/4/…), and reported it as "the coil does not exist" —
+straight out of *Add Static Ring*, which calls it for its default gap. It now takes the gap between the two lowest **discs**,
+looking inside the bottom Segment's `basicSections` when it holds more than one. And `AddStaticRing` refuses up front a ring that
+would leave a Segment with one on **both** sides, rather than letting `CalculateCapacitanceMatrix` throw
+`.OnlyOneStaticRingAllowed` at the next recalculation — that configuration is unsupported physics (DV 12.78-81, TODO.md §1), and
+finding out afterwards left the user with a ring in the model, no undo, and nothing that would compute until it came out again.
+
+## Segment serial numbers
+
+Segments are `Equatable`/hashed **by serial number** — be very careful when assigning serial numbers, and note that **every Segment
+now gets a real one**: shielding elements used to share a dummy `-1`, which made all of them equal to each other, so
+`segmentStore.firstIndex(of: aStaticRing)` found whichever came first and *Remove Static Ring* on the second one removed the first
+(or a radial shield).
+
+## Live vs. pristine radial geometry
+
+A `BasicSection`'s rect holds the **pristine** radii read from the design file and is never rewritten; the **live** geometry is the
+owning `Segment`'s `rect`. `PhaseModel.ApplyRadialBuildUp()` recomputes every Segment's rect from pristine + the current
+wound-in-shield set, widening each shielded coil by its widest disc's requirement, pushing everything outside it straight out
+(preserving the hilos, which are withstand-driven minimums), and growing `core.legCenters` and `tankDepth` by twice the total.
+Because it works from pristine absolutes it is idempotent and exactly reversible, so `AppController.recalculateModel` just calls it
+unconditionally — which also repairs the geometry after a combine/split/interleave. `basicSections` stays a `let` deliberately:
+`validateMenuItem` reads it synchronously from the main actor and cannot `await`.
+
+`PhaseModel` also holds `voltsPerTurn`, set by `AppController.recalculateModel` from the design file. It is the one place the model
+knows an *actual* operating voltage rather than a per-unit one; only the wound-in-shield paper sizing uses it so far.
