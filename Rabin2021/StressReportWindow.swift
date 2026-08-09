@@ -137,7 +137,7 @@ class StressReportWindow:NSWindowController {
         // The "strike only" clause is not a disclaimer for its own sake. A reader who sees "N locations checked, 0 over allowable"
         // will take it as a clean bill of health, and creep - which is often what governs - is not among the N. See the header of
         // DielectricStress.swift.
-        summaryLabel.stringValue = "\(checks.count) locations checked — \(over) over allowable, \(close) within 20% of it. Allowables are DelVecchio ch. 13 impulse breakdown levels at each layer's own thickness, times a \(Int(DielectricStress.StressAllowable.designMargin * 100))% design margin. The corner column is an enhancement ratio, not a margin: ch. 13 has no criterion for a corner peak. Strike (breakdown through a gap) only — creep along insulation surfaces is not screened. Hover a column heading for what it holds."
+        summaryLabel.stringValue = "\(checks.count) locations checked — \(over) over allowable, \(close) within 20% of it. Allowables are DelVecchio ch. 13 impulse breakdown levels at each layer's own thickness, times a \(Int((DielectricStress.StressAllowable.designMargin * 100).rounded()))% design margin (set in Preferences). The corner column is an enhancement ratio, not a margin: ch. 13 has no criterion for a corner peak. Strike (breakdown through a gap) only — creep along insulation surfaces is not screened. Hover a column heading for what it holds."
         summaryLabel.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         summaryLabel.lineBreakMode = .byWordWrapping
         summaryLabel.maximumNumberOfLines = 3

@@ -16,6 +16,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         // Insert code here to initialize your application
 
+        // The factory defaults for the user preferences. Preferences.ValueOf() falls back on its own if this never runs, so
+        // nothing depends on the ordering here - it is done so that the values are visible to 'defaults read' and can be
+        // overridden for a single run from the command line. See Preferences.swift.
+        Preferences.RegisterFactoryDefaults()
+
         // A scripted test run, if one was asked for on the command line. This does nothing at all on a normal launch -
         // it needs the -PCH_SelfTest launch argument - and when it does run it terminates the app itself. See
         // SelfTest.swift for how to invoke it and where the report comes out.

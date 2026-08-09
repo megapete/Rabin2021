@@ -93,18 +93,20 @@ wants to discuss the approach before anything is changed here.
 Added 2026-08-05 (`DielectricStress.swift`, `TurnLadderModel.swift`). See `docs/dielectric-stress.md` for the method and its
 accuracy. Known gaps:
 
-### 7. Two open questions on the chapter 13 allowables
+### 7. One open question on the chapter 13 allowables
 
-`DielectricStress.StressAllowable` uses DelVecchio ch. 13 (see `docs/dielectric-stress.md` for the table and citations). Two things
-in it are not straight from the book:
+`DielectricStress.StressAllowable` uses DelVecchio ch. 13 (see `docs/dielectric-stress.md` for the table and citations). One thing
+in it is not straight from the book:
 
 - **`creepImpulseRatio` (2.8)** — the book gives creep breakdown only at power frequency (13.15, 13.16). The impulse creep figure
   here is 13.16 scaled by the oil impulse ratio, on the grounds that creep along a pressboard surface in oil is an oil-adjacent
   process. It is isolated as a named constant so it can be replaced if a real impulse creep source turns up. All four creep
   allowables are currently unused (item 12), so this affects no reported number today.
-- **`designMargin` (0.80)** — ch. 13's data are 50%-breakdown levels (p.368 says explicitly that a margin is needed). 0.80 comes
-  from the book's own Figure 13.5, which is drawn "with a 20% margin". This is the single number that decides how much of the
-  breakdown level a design is allowed to use, and it is the first thing to review against house practice.
+
+**`designMargin` is settled (2026-08-09): it is a user preference, factory default 0.65.** It was 0.80 on the strength of the
+book's Figure 13.5; re-reading ch. 13 showed that the only quantified margin in it is that one worked example in a different
+geometry, and that the disk–disk examples on p.383 carry none. Since it is a house rule and not a citation, it became a setting —
+see `docs/dielectric-stress.md` and `docs/ui-layer.md`.
 
 All eight coefficients were verified against the printed page on 2026-08-05 and the self-check pins each one. Do not re-derive them
 from `pdftotext`: the equations are set in a subsetted math font with no `ToUnicode` CMap, so the text layer drops decimal points

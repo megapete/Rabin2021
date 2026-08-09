@@ -78,5 +78,31 @@ read-only fields (insulation, stress, shield radial, build increase, C_s multipl
 count, and keeping that right in hand-maintained auto-layout is not worth it. It clamps `n` to `floor(N) − 1` and opens on
 `round(0.15·N)`.
 
+## Preferences (`Preferences.swift`, `PreferencesDialog.swift`)
+
+*ImpulseDistribution → Preferences…* (⌘,). `Preferences.swift` is the store — a `Preference` case per setting, whose raw value is
+its User Defaults key, and a `Definition` giving its title, its explanation, its `Kind` and its factory default.
+`PreferencesDialog` is an `NSAlert` with an accessory `NSGridView`, like `GetWoundInShieldDialog` and for a different reason: it
+**generates itself from `Preference.allCases`**, so adding a preference is one case plus one `Definition` and no UI work at all.
+The how-to is in the file header; keep it accurate, because the whole design is that nobody has to read the dialog to add a
+setting.
+
+Three things in there are deliberate:
+
+- **The dialog holds the live values in `edited`, not in its controls.** A text field still being edited when a modal alert's OK
+  button is hit has not necessarily committed to the cell, so reading the controls at the end silently drops the last keystrokes.
+- **There is no cache in front of `UserDefaults`.** The hottest reader is the dielectric screen, which asks once per layer per
+  site, and the reads come from **nonisolated** code (`DielectricStress.StressAllowable.Strike` runs wherever `Scan` was called
+  from). `UserDefaults` is thread-safe and keeps its own in-memory copy; a bare global would need synchronization and its own
+  invalidation.
+- **`runModal()` returns which preferences changed**, so `AppController.handleShowPreferences` can invalidate exactly what went
+  stale. Today that is the dielectric design margin: every utilization in the stress report is a fraction of an allowable
+  carrying that margin, so the cached `latestStressChecks` is cleared and an open report window is re-run (the screen is
+  milliseconds). Anything else added later that a preference invalidates belongs in that one method.
+
+`Preferences.VerifySelf()` checks the store the same way the other `VerifySelf()`s check their formulas — and it walks
+`Preference.allCases`, so a new preference is covered the moment it is added. Run it by calling it from
+`AppDelegate.applicationDidFinishLaunching` and reading `defaults read com.huberistech.rabin2021 PreferencesVerification`.
+
 The progress-indicator window (`rb2021_progressIndicatorWindow` in `AppController`) is `PchProgressIndicatorPackage`'s class;
 `PCH_GraphingView/Window` and the `old...`-prefixed files are dead — see the target-membership table in `CLAUDE.md`.

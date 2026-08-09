@@ -2668,8 +2668,41 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
     }
     
+    // MARK: Preferences
+
+    /// Show the preferences dialog (⌘,). The dialog builds itself from `Preference.allCases`, so adding a preference needs no
+    /// work here - see the header of Preferences.swift. What DOES belong here is anything that has to be invalidated when a
+    /// particular preference moves, which is why the dialog reports which ones the user actually changed.
+    @IBAction func handleShowPreferences(_ sender: Any) {
+
+        guard let changed = PreferencesDialog().runModal(), !changed.isEmpty else {
+
+            return
+        }
+
+        // Every utilization in the stress report is a fraction of an allowable that carries the design margin, so a report that
+        // is already on screen (and the checks cached behind it) became wrong the moment the margin moved. The screen is
+        // milliseconds - see doShowStressReport - so re-run it rather than leaving a stale table up or making the user
+        // remember to.
+        if changed.contains(.dielectricDesignMargin) {
+
+            self.latestStressChecks = []
+
+            if let reportWindow = self.stressReportWindow, reportWindow.window?.isVisible ?? false {
+
+                reportWindow.close()
+                self.stressReportWindow = nil
+
+                Task {
+
+                    await self.doShowStressReport()
+                }
+            }
+        }
+    }
+
     // MARK: Menu routines
-    
+
     @IBAction func handleWdgAsSingleSegment(_ sender: Any) {
         
         self.doWdgAsSingleSegment()

@@ -280,10 +280,26 @@ enum DielectricStress {
     /// actual design". See `designMargin`.
     enum StressAllowable {
 
-        /// The fraction of the 50%-breakdown level that is treated as allowable. DelVecchio's own Figure 13.5 is drawn with a 20%
-        /// margin, which is where 0.8 comes from. **This is the house rule most worth reviewing** - it is the single number that
-        /// decides how much of the book's breakdown level you are willing to use.
-        static let designMargin = 0.80
+        /// The fraction of the 50%-breakdown level that is treated as allowable. **This is a user preference**
+        /// (`Preference.dielectricDesignMargin`, factory default 0.65) rather than a constant, because it is the one number here
+        /// that is a house rule and not a citation.
+        ///
+        /// WHAT THE BOOK ACTUALLY SAYS, since this used to claim more than it should. Chapter 13 states clearly that a margin is
+        /// needed and never says how big it should be - p.368: "Generally, the breakdown voltages are those for which the
+        /// probability of breakdown is 50%. Thus, some margin below these levels would be needed in actual design." The only
+        /// number in the chapter is in one worked example, the cylinder-to-ground-plane calculation on p.382, whose Figure 13.5
+        /// is captioned "Breakdown kV with a 20% margin" - and the disk-disk examples on the very next page quote their results
+        /// (30.0, 34.0, 40.0 kV/mm impulse) with no margin at all. So 0.80 was one figure's choice in a different geometry, not
+        /// a recommendation.
+        ///
+        /// It is worth knowing what the setting does and does not affect. Every allowable is multiplied by it, so every
+        /// utilization in the report scales as 1/margin: it moves the PASS/FAIL LINE and cannot change the worst-first ranking,
+        /// which is what the screen is actually for. Set it to 1.0 and the report reads as a straight percentage of the book's
+        /// 50%-breakdown level.
+        static var designMargin:Double {
+
+            return Preferences.dielectricDesignMargin
+        }
 
         /// The impulse ratio applied to a power-frequency CREEP figure to get an impulse one.
         ///
@@ -1364,7 +1380,13 @@ enum DielectricStress {
         if !creepIsWeaker { failures += 1 }
         report.append(String(format: "%@ creep is weaker than strike at 4 mm (%.1f vs %.1f kV/mm)", creepIsWeaker ? "PASS" : "FAIL", creepAt4mm / 1.0E6, strikeAt4mm / 1.0E6))
 
+        // The design margin is a user preference now, so what has to hold is not a particular number but the LINK: whatever the
+        // user has set is what the allowable the screen judges against actually carries. Preferences.VerifySelf() covers the
+        // store itself.
+        check("Strike carries the design margin preference", StressAllowable.Strike(for: .oil, thickness: 0.004), StressAllowable.OilImpulse(gap: 0.004) * Preferences.dielectricDesignMargin, tolerance: 1.0E-12)
+
         report.insert(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED", at: 0)
+        report.append("design margin in force: \(DielectricStress.StressAllowable.designMargin)")
 
         UserDefaults.standard.set(report, forKey: "DielectricStressVerification")
     }

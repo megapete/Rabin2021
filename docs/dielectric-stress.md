@@ -70,7 +70,30 @@ is why a short creep path carrying a large voltage so often governs, and why the
 **power frequency vs. impulse** (ratio ≈2.8 for oil, 2.7 for
 paper, 3.0 for pressboard); **rms vs. peak** (the a.c. forms are rms, the impulse forms peak, and the simulation gives instantaneous
 volts, so the impulse forms compare like with like); and **50% breakdown vs. design level** (p.368 — the book's data are the former,
-so `StressAllowable.designMargin`, default 0.80 after the book's own Figure 13.5, brings it to the latter).
+so `StressAllowable.designMargin` brings it to the latter; see the next section).
+
+## The design margin is a preference, and the book barely supports a number
+
+`StressAllowable.designMargin` is **`Preference.dielectricDesignMargin`, a user setting (⌘,) whose factory default is 0.65** — see
+`docs/ui-layer.md` for the preferences mechanism. It is a preference because it is the one figure in this file that is a house rule
+rather than a citation, and the book was re-checked on 2026-08-09 to see how much it actually says:
+
+- **That a margin is needed: stated, unquantified.** p.368 — "Generally, the breakdown voltages are those for which the
+  probability of breakdown is 50%. Thus, some margin below these levels would be needed in actual design."
+- **The number 20%: one worked example.** p.382, the cylinder-to-ground-plane calculation, whose Figure 13.5 is captioned
+  "Breakdown kV with a 20% margin". That is the only number in the chapter, it is a different geometry, and the disk–disk
+  examples on the very next page (p.383: 30.0, 34.0, 40.0 kV/mm impulse) carry **no margin at all**.
+
+So the old 0.80 was one figure's choice, not a recommendation, and an earlier version of this file overstated it by calling
+Figure 13.5 its basis. For calibration: the author's long-standing empirical disc-to-disc formula — 43·(rs_t/0.11)^0.7 +
+25·(cp_t/0.02)^0.75 kV, dimensions in inches — lands at **0.67–0.90 of this screen's allowable** across the practical range (ducts
+2.5–12.7 mm, paper 0.25–2 mm total), an effective margin of roughly 0.6–0.8 on the book's 50% level, so 0.65 sits inside house
+practice rather than beside it.
+
+What the setting does and does not do is worth keeping straight: every allowable is multiplied by it, so **every utilization scales
+as 1/margin**. It moves the pass/fail line and **cannot change the worst-first ranking**, which is what the screen is for. At 1.00
+the report reads as a straight percentage of the book's 50%-breakdown level. `StressReportWindow`'s summary line prints the margin
+in force, so a screenshot of a report is self-describing.
 
 **`Segment.woundInShieldMaxWorkingStress` (2755 V/mm, 70 V/mil) must never be used here.** It is a *power-frequency working*
 turn-to-turn stress for sizing wound-in-shield paper, not an impulse allowable. An earlier version of this file cited it as the
