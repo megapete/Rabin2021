@@ -24,7 +24,8 @@ that was fixed once and must not come back.**
 | `AppController`, `TransformerView`, graphs, `AxisScale`, dialogs | `docs/ui-layer.md` |
 | Progress bars, `AsyncStream` plumbing, bounded parallelism, `assumeIsolated` | `docs/concurrency.md` |
 | Running the app end-to-end without a keyboard; the test fixtures | `docs/self-test.md` |
-| What is still known to deviate from the books | `TODO.md` |
+| What is still known to deviate from the books (open items) | `TODO.md` |
+| Why a question was settled the way it was — closed investigations | `docs/decisions.md` |
 
 ## Build & run
 

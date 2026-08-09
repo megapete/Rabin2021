@@ -146,7 +146,7 @@ so a "matched" geometry cannot silently fail to match.
 interleaved against 4.535·c_t shielded, and break-even is k = 4.97. That is why this fixture keeps producing photo
 finishes and why it is a poor place to ask "which method is better". At the shield fractions real designs use it is not
 close: 28% of the turns puts interleaving 66% ahead, 19% puts it 149% ahead. The first fixture, at n/N = 30%, gives
-interleaving **+47%** and is the more representative comparison. See TODO.md §2b for the whole cross-check.
+interleaving **+47%** and is the more representative comparison. See `docs/decisions.md` §2b for the whole cross-check.
 
 Note what the last three columns say regardless: at α ≈ 3 the initial distribution is already near enough to linear that
 more C_s has nothing left to flatten — line-end gradient 3.2 either way, envelope 1.002 p.u. either way. On this design
