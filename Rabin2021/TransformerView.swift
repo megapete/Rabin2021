@@ -2132,21 +2132,12 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 
                 if nextViewConnector.hitZone.contains(clickPoint) {
                     
+                    // The impulse goes on the lead the user clicked, and ONLY there. Everything jumpered to it is at the same
+                    // potential, but that is a fact about the jumpers rather than about those leads, and
+                    // PhaseModel.ResolveNodeConnectivity is what says so - see the long note there for what happened when this
+                    // routine wrote an impulse onto each of them instead and a later removal of the jumper left it behind.
                     await nextViewConnector.segments.from.AddConnector(segments: segmentArray, fromLocation: nextViewConnector.connector.fromLocation, toLocation: .impulse, toSegmentID: nil)
-                    
-                    for nextConnection in await nextViewConnector.segments.from.ConnectionDestinations(fromLocation: nextViewConnector.connector.fromLocation) {
-                        
-                        if let nextSegmentID = nextConnection.segmentID {
-                            
-                            guard let nextSegment = segmentArray.first(where: {$0.serialNumber == nextSegmentID}) else {
 
-                                ALog("Adding an impulse connection: segment \(nextSegmentID) is not in the model. A connection is naming a Segment that no longer exists - see UpdateConnectors' remap.")
-                                return
-                            }
-                            await nextSegment.AddConnector(segments: segmentArray, fromLocation: nextConnection.location, toLocation: .impulse, toSegmentID: nil)
-                        }
-                    }
-                    
                     var maskSegments:[Int] = []
                     for nextSegmentPath in self.segments {
                         
@@ -2188,22 +2179,12 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                     
                     if nextViewConnector.hitZone.contains(clickPoint) {
                         
+                        // The ground goes on the lead the user clicked, and ONLY there. See mouseDownWithAddImpulse above, and
+                        // PhaseModel.ResolveNodeConnectivity for why a ground copied onto every jumpered lead was a cache with no
+                        // invalidation: pulling the jumper afterwards left the copies behind, holding leads at zero that the user
+                        // had disconnected.
                         await nextViewConnector.segments.from.AddConnector(segments: segmentArray, fromLocation: nextViewConnector.connector.fromLocation, toLocation: .ground, toSegmentID: nil)
-                        
-                        for nextConnection in await nextViewConnector.segments.from.ConnectionDestinations(fromLocation: nextViewConnector.connector.fromLocation) {
-                            
-                            if let nextSegmentID = nextConnection.segmentID {
-                                
-                                guard let nextSegment = segmentArray.first(where: {$0.serialNumber == nextSegmentID}) else {
 
-                                    ALog("Adding a ground connection: segment \(nextSegmentID) is not in the model. A connection is naming a Segment that no longer exists - see UpdateConnectors' remap.")
-                                    return
-                                }
-                                
-                                await nextSegment.AddConnector(segments: segmentArray, fromLocation: nextConnection.location, toLocation: .ground, toSegmentID: nil)
-                            }
-                        }
-                        
                         var maskSegments:[Int] = []
                         for nextSegmentPath in self.segments {
                             

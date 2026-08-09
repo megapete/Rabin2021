@@ -929,7 +929,200 @@ actor PhaseModel /*:Codable */ {
         return newB
     }
     
+    /// Every node in the model, classified by what it is electrically tied to, with the jumpers resolved.
+    ///
+    /// # Why this exists, and why nothing may re-derive it
+    ///
+    /// A ground applied to one lead grounds everything jumpered to that lead. There are two possible places to record that: in
+    /// the connector store, by writing a `.ground` connector onto each of the other leads as well, or here, by closing the
+    /// directly-terminated nodes over the jumpers at the moment the answer is wanted.
+    ///
+    /// It used to be the first, and that is a cache with no invalidation. `TransformerView.mouseDownWithAddGround` wrote a ground
+    /// onto every Segment `ConnectionDestinations` reached, and those grounds had no link back to the jumper that justified them,
+    /// so **removing the jumper left them behind**. A designer re-wiring S0738's double-stacked tap winding from series to
+    /// parallel - ground the HV neutral in its own right, then pull the old jumper that used to carry it through the tap winding -
+    /// was left with a tap winding whose two outer ends were still grounded, held at exactly zero for the whole run, with nothing
+    /// on screen at the HV neutral to explain it. Doing the same two edits in the other order gave a different model from the same
+    /// picture, which is the tell for derived state that outlives its source. `SelfTest`'s `S0738-parallel-edited` and
+    /// `-edited-2` scenarios are those two orders, and they now agree node for node.
+    ///
+    /// So the connector store holds only what the user actually did, and this routine is the one place that answers "what is at
+    /// ground potential". It is a pure function of the connections - idempotent, order-independent, and impossible to leave stale.
+    ///
+    /// # The grouping is a union-find, and that is not a detail
+    ///
+    /// `SimulationModel.init` used to reduce the jumper graph itself with a single pass that absorbed, into each key, only those
+    /// other keys whose sets named that key. One hop of transitivity is enough for a star (a lead jumpered to three others, which
+    /// is what the cross-product in `TransformerView.mouseUp` produces) and is NOT enough for a path: A-B, B-C came out as the two
+    /// OVERLAPPING groups `A:{B,C}` and `C:{B}`. `FrequencyDomainSolver.Assemble` then folded rows in dictionary order, and an
+    /// order exists in which a node's charge equation is added to a row that has already been replaced by a constraint - the
+    /// group's charge balance is then simply wrong, silently, with a plausible answer at the end of it. Proper components make
+    /// each node an `eliminated` exactly once and never make a `kept` node an `eliminated`, which is the invariant that assembly
+    /// relies on.
+    struct NodeConnectivity {
+
+        /// Node numbers held at the applied impulse voltage, including through jumpers.
+        let impulsed:Set<Int>
+        /// Node numbers held at ground, including through jumpers.
+        let grounded:Set<Int>
+        /// Node numbers carrying a floating lead and nothing else - not grounded, not impulsed, and not jumpered to any other
+        /// node. These are the only nodes for which "floating" says anything the network does not already say.
+        let floating:Set<Int>
+        /// The remaining jumpered groups: nodes shorted to each other but tied to neither ground nor impulse. Disjoint, and no
+        /// member of any group appears in `impulsed` or `grounded`.
+        let mergedGroups:[(kept:Int, eliminated:[Int])]
+        /// True if some group carries both an impulse and a ground - the impulse source shorted out. The group is reported as
+        /// grounded so that the model still solves, but the answer is not one to trust.
+        let shortedSource:Bool
+    }
+
+    /// Resolve every jumper in the model and classify every node. See `NodeConnectivity`.
+    ///
+    /// - throws: `.UnresolvableConnector` if a jumper names a node that `SetNodes` did not create - the same failure
+    ///   `VerifyNodeTopology` catches, arriving here when a Segment has been replaced without its connections being remapped.
+    func ResolveNodeConnectivity() async throws -> NodeConnectivity {
+
+        let directImpulse = Set(await NodesOfType(connType: .impulse).map({ $0.number }))
+        let directGround = Set(await NodesOfType(connType: .ground).map({ $0.number }))
+        let directFloating = Set(await NodesOfType(connType: .floating).map({ $0.number }))
+
+        // Union-find over node numbers. The nodes are numbered 0..<nodeStore.count and that number is also the index into the
+        // capacitance matrix, so a flat array is the whole data structure.
+        var parent = Array(0..<self.nodeStore.count)
+
+        func find(_ node:Int) -> Int {
+
+            var root = node
+
+            while parent[root] != root {
+
+                root = parent[root]
+            }
+
+            // Path compression, so that a long chain of jumpers does not turn this into a quadratic walk.
+            var walk = node
+
+            while parent[walk] != root {
+
+                let next = parent[walk]
+                parent[walk] = root
+                walk = next
+            }
+
+            return root
+        }
+
+        func union(_ a:Int, _ b:Int) {
+
+            let rootA = find(a)
+            let rootB = find(b)
+
+            if rootA != rootB {
+
+                parent[rootB] = rootA
+            }
+        }
+
+        // The jumper edges. NonAdjacentConnections is the predicate SetNodes agrees with - it returns the connections that are
+        // NOT taken care of implicitly by two Segments sharing a node, which is exactly the set of jumpers - so taking the edges
+        // from anywhere else would put this routine and the node topology back out of step.
+        var jumpered:Set<Int> = []
+
+        for nextSegment in self.CoilSegments() {
+
+            for nextConnection in await NonAdjacentConnections(segment: nextSegment) {
+
+                guard let destinationID = nextConnection.segmentID else {
+
+                    continue
+                }
+
+                guard let fromNode = self.NodeAt(segment: nextSegment, useFrom: true, connector: nextConnection.connector),
+                      let toNode = self.NodeAt(segmentID: destinationID, useFrom: false, connector: nextConnection.connector) else {
+
+                    throw PhaseModelError(info: "segment \(nextSegment.serialNumber) has a jumper \(nextConnection.connector.fromLocation) -> \(nextConnection.connector.toLocation) to segment \(destinationID) that does not land on a node at both ends.", type: .UnresolvableConnector)
+                }
+
+                jumpered.insert(fromNode.number)
+                jumpered.insert(toNode.number)
+                union(fromNode.number, toNode.number)
+            }
+        }
+
+        // Close the direct terminations over the components.
+        var impulsedRoots:Set<Int> = []
+        var groundedRoots:Set<Int> = []
+
+        for node in directImpulse {
+
+            impulsedRoots.insert(find(node))
+        }
+
+        for node in directGround {
+
+            groundedRoots.insert(find(node))
+        }
+
+        // Ground wins a component that carries both, so that the classification is at least deterministic. It is reported rather
+        // than silently resolved: an impulse lead shorted to ground is a wiring mistake, not a modelling choice.
+        let shorted = !impulsedRoots.intersection(groundedRoots).isEmpty
+        impulsedRoots.subtract(groundedRoots)
+
+        var impulsed:Set<Int> = []
+        var grounded:Set<Int> = []
+        var groups:[Int:[Int]] = [:]
+
+        for node in 0..<self.nodeStore.count {
+
+            let root = find(node)
+
+            if groundedRoots.contains(root) {
+
+                grounded.insert(node)
+            }
+            else if impulsedRoots.contains(root) {
+
+                impulsed.insert(node)
+            }
+            else if jumpered.contains(node) {
+
+                groups[root, default: []].append(node)
+            }
+        }
+
+        // One representative per group keeps its own row (the summed charge equation) and every other member's row becomes the
+        // constraint V_member - V_kept = 0. A group of one cannot happen - a node only reaches here by carrying a jumper - but it
+        // would be harmless if it did.
+        var mergedGroups:[(kept:Int, eliminated:[Int])] = []
+
+        for (_, members) in groups {
+
+            let sorted = members.sorted()
+
+            guard let kept = sorted.first, sorted.count > 1 else {
+
+                continue
+            }
+
+            mergedGroups.append((kept: kept, eliminated: Array(sorted.dropFirst())))
+        }
+
+        // Sorted so that the assembly is bit-for-bit reproducible from one run to the next. A Set's iteration order is not, and a
+        // regression report that changes in the last digit because a dictionary rehashed is a report nobody reads twice.
+        mergedGroups.sort { $0.kept < $1.kept }
+
+        // A node is only meaningfully floating if nothing at all is tied to it. One that is jumpered to another node is described
+        // by the merge, and one whose group reached a ground or an impulse is described by that.
+        let floating = directFloating.subtracting(grounded).subtracting(impulsed).subtracting(jumpered)
+
+        return NodeConnectivity(impulsed: impulsed, grounded: grounded, floating: floating, mergedGroups: mergedGroups, shortedSource: shorted)
+    }
+
     /// Function to return all nodes in the model that are _directly_ connected to one of impulse, ground, or floating via a Segment.connection to one of those locations.
+    ///
+    /// - Note: DIRECTLY. This does not follow jumpers, so it is not the answer to "what is at ground potential" - see
+    ///   `ResolveNodeConnectivity`, which is. Callers that mean the latter and use this instead will miss every node that is
+    ///   grounded through a jumper rather than by its own lead.
     func NodesOfType(connType:Connector.Location) async -> [Node] {
         
         var result:[Node] = []

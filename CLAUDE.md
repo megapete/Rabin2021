@@ -78,18 +78,34 @@ Four mechanical points, each forced by something:
 for the lead the point names. Neither half of the pair is knowable from the design file: which Segment is at the bottom of a coil
 depends on how many there are, and its lead sits at `.inside_lower`, `.outside_lower` or `.center_lower` depending on winding type
 and disc count. A guessed one produces a connector `NodeAt` cannot resolve — which is the failure class this harness exists to
-catch, so it must not be able to manufacture it. Two kinds of point exist: `.coilEnd(coil:end:)`, and `.gapLead(coil:gap:side:)`
-for the two leads facing each other across an internal tapping/DV gap.
+catch, so it must not be able to manufacture it. Three kinds of point exist: `.coilEnd(coil:end:)`, `.gapLead(coil:gap:side:)`
+for the two leads facing each other across an internal tapping/DV gap, and `.discCrossover(coil:disc:)` for the series connector
+between two adjacent discs, named by the disc **below** it counting from 1 at the bottom of the coil. That last one is an
+*interior* point of the winding rather than a lead going anywhere, and it is a real place to jumper from — paralleling the two
+halves of a double-stacked tap winding is exactly a set of crossover-to-crossover jumpers. Whether a given crossover is at the OD
+or the ID is not a choice (it alternates disc by disc), so the run reports which side it turned out to be; and disc numbering is
+refused outright on a coil whose Segments have been folded, because a crossover inside a Segment is not a node.
 
 - **Terminations** hand the found location to `AddConnector`, which *replaces* a floating lead rather than appending to it —
-  exactly what `TransformerView`'s `mouseDownWithAddGround` / `mouseDownWithAddImpulse` do, minus the hit testing. The
-  `ConnectionDestinations` loop after it carries the ground to everything already jumpered to that lead, which is how "tie the two
-  centre leads together and ground them" is one termination and not two.
+  exactly what `TransformerView`'s `mouseDownWithAddGround` / `mouseDownWithAddImpulse` do, minus the hit testing. It terminates
+  **that lead and nothing else**: what is at the same potential through a jumper is `ResolveNodeConnectivity`'s answer and is not
+  written into the connector store (see *Connector / Segment.Connection*). Both this routine and the UI used to copy the ground
+  onto every jumpered lead as well, and both stopped on 2026-08-08.
 - **Jumpers** (`SelfTest.Jumper`, applied between the restructure and the terminations) are a port of `TransformerView.mouseUp`,
   **cross-product and all**: a lead that already carries jumpers is at the same potential as everything on their far ends, so a
   new jumper is registered on every (Segment, location) pair at each end. Doing less would build a model the UI cannot produce.
   The order is forced from both sides — a restructure sends `UpdateConnectors` through the connectors and would sweep a jumper
   away, and a termination replaces the floating lead a later jumper needs in order to find its end.
+- **`Scenario.edits`** is an ordered list applied *after* all of the above, and it is what lets a scenario describe a **session at
+  the keyboard** rather than a finished wiring: `.jumper`, `.terminate`, and `.remove` (a port of `mouseDownWithRemoveConnector`,
+  which sweeps the clicked jumper's whole equivalence class). A designer changes a connection scheme by editing the one already
+  there, and the interesting failures live in that sequence rather than in any single operation — see the `S0738-parallel` trio.
+
+**`Scenario.reportNodes`** turns on a table of every node of every coil with how the simulation model classified it, what the
+initial distribution put there and — with `-PCH_SelfTestTransient YES` — its min/max over the run. It also prints a one-line
+canonical **`Connectivity:`** fingerprint of the whole classification. Two scenarios that describe the same wiring by different
+routes must print that line identically; `grep -h Connectivity: SelfTestReport-S0738-parallel*.txt | sort -u` should give exactly
+one line, and more than one means derived state has outlived its source.
 
 **The run re-runs `SetNodes` itself, after the connections are on.** Nothing else does: the node topology a scenario is carrying
 was built during the restructure's recalculation, when the coil ends were still floating. That is harmless when every connection
@@ -252,6 +268,27 @@ zero from the row surgery, so there is nothing to tune between that and 0.65) an
 line-end gradient alone. Those two are what survive the model not applying, and the gradient is still the comparable number:
 **25.18× average plain against 0.615× interleaved**.
 
+#### The S0738 `-parallel` trio: the same wiring reached three ways
+
+`S0738-parallel`, `S0738-parallel-edited` and `S0738-parallel-edited-2` wire the *same* fixture the way a double-stacked tap
+winding is wired when **no taps are in circuit — the two halves paralleled**: the HV neutral goes straight to ground; coil 3's two
+centre leads are tied together and grounded; its two outer ends are tied to each other and to nothing else; and the outermost
+crossovers are tied across the gap in mirror pairs (2‑3↔30‑31, 4‑5↔28‑29 … 14‑15↔18‑19, i.e. disc *d* to disc 32−*d*). This is the
+first scenario with a jumper at an **interior** node of a winding, and the first whose tap winding does not carry the HV's return
+current — coil 3's outer ends are a genuinely floating pair at **0.165 p.u.** at t = 0+, swinging −114.6 / +181.3 kV.
+
+**All three describe the identical finished wiring and differ only in how it is reached**, which is the whole point:
+
+| | route |
+|---|---|
+| `S0738-parallel` | built in one pass from a freshly loaded model |
+| `S0738-parallel-edited` | the `S0738` series wiring, then *remove the old jumper* → *ground the HV neutral* → add the crossovers |
+| `S0738-parallel-edited-2` | the same three edits with the first two **swapped**: ground the neutral while the old jumper is still on it, *then* pull the jumper |
+
+The last one is the reported failure. With the ground copied onto every jumpered lead it came back with coil 3's outer ends in
+`groundedNodes`, pinned at exactly 0, and a line-end gradient of 27.34 against the other two runs' 25.31 — the same picture on
+screen, a different model underneath. All three now print an identical `Connectivity:` line, and that is the regression check.
+
 ## Dependencies (Swift Package Manager)
 
 Resolved packages live in `ImpulseDistribution.xcodeproj/.../swiftpm/Package.resolved`. Several are private/GitHub packages by the same author (megapete):
@@ -348,6 +385,30 @@ The physics model is layered from smallest to largest unit. Understanding this h
 
   `SelfTest`'s **`STRANDED`** run (`-PCH_SelfTest STRANDED`) puts a jumper on a node interleaving is about to swallow and checks all
   three: the guard sees it, neither end still names the other afterwards, and no node group ties the merged Segment's two terminals.
+
+  **A termination lives only on the lead the user clicked. What is at that potential *through a jumper* is derived, never stored**
+  (2026-08-08). `PhaseModel.ResolveNodeConnectivity()` is the single place that answers "which nodes are at ground / at the impulse
+  / genuinely floating / merely shorted to each other": it takes the *directly* terminated nodes from `NodesOfType` (which does
+  **not** follow jumpers — its doc says so), unions the jumper edges from `NonAdjacentConnections` with a real **union-find**, and
+  closes the terminations over the components. Everything that needs the answer uses it — `SimulationModel.init`, the SPICE export,
+  the initial-distribution picker, `SelfTest`.
+
+  It used to be the other way round. `TransformerView.mouseDownWithAddGround`/`AddImpulse` walked `ConnectionDestinations` and
+  wrote a `.ground` connector onto **every** jumpered lead as well, and those copies had no link back to the jumper that justified
+  them. That is a cache with no invalidation, and pulling the jumper left them behind. The reported failure: re-wiring S0738's
+  double-stacked tap winding from series to parallel — ground the HV neutral in its own right, then remove the old jumper that used
+  to carry it through the tap winding — left the tap winding's two outer ends **still grounded, pinned at exactly 0 for the whole
+  run**, with nothing on screen at the HV neutral to explain it. Doing the same two edits in the *other* order gave a different
+  model from the same picture, which is the tell. Note what the symptom is *not*: an exact zero is what the Dirichlet row surgery
+  writes, so a lead reading zero means the model has it in `groundedNodes` — it is never a floating node needing a bleed resistance
+  (see `SimulationModel.floatingResistanceToGround`, which is deliberately inert and says why).
+
+  The same change deleted `SimulationModel.init`'s own reduction of the jumper graph, which was **not** a union-find: it absorbed
+  into each key only those other keys whose sets named that key, which is enough for a star (what `mouseUp`'s cross-product makes)
+  and not for a path. A-B, B-C came out as the two *overlapping* groups `A:{B,C}` and `C:{B}`; `FrequencyDomainSolver.Assemble`
+  then folds merges in dictionary order, and an order exists in which a node's charge equation is added to a row already replaced
+  by a constraint — the group's charge balance is silently wrong. Proper components make each node an `eliminated` exactly once and
+  never make a `kept` node an `eliminated`, which is the invariant assembly relies on and which `Snapshot()` still asserts.
 
 - **`PhaseModel`** (`actor`, `PhaseModel.swift`) — the central model object. Owns the sorted `segmentStore`, the `nodeStore`, and the `core`. All model mutation/queries go through it. Throws `PhaseModelError`.
   - It also holds `voltsPerTurn`, set by `AppController.recalculateModel` from the design file. It is the one place the model knows an *actual* operating voltage rather than a per-unit one; only the wound-in-shield paper sizing uses it so far.

@@ -109,6 +109,15 @@ enum SelfTest {
         /// A lead at one side of a coil's internal tapping/DV gap. `gap` counts gaps from the bottom of the coil, and `side` says
         /// which of the two leads facing across it is wanted - `.bottom` for the one on the Segment below the gap.
         case gapLead(coil:Int, gap:Int, side:CoilEnd)
+        /// The crossover between two axially adjacent discs of a coil, named by the disc BELOW it, counting from 1 at the bottom
+        /// of the coil. This is an interior point of the winding rather than a lead going anywhere - the series connector
+        /// AppController's segment-building loop puts between every pair of discs - and it is a real place to jumper from: it is
+        /// drawn, it is hit-testable, and paralleling the two halves of a double-stacked tap winding is done by tying pairs of
+        /// them together.
+        ///
+        /// Whether a given crossover is at the OD or the ID is not a choice; it alternates disc by disc, so a scenario says which
+        /// disc it means and the run reports which side that turned out to be.
+        case discCrossover(coil:Int, disc:Int)
     }
 
     /// One terminal of the test connection: a lead, and what it is tied to.
@@ -129,6 +138,21 @@ enum SelfTest {
 
         let from:LeadPoint
         let to:LeadPoint
+    }
+
+    /// One edit made to an already-wired model, applied in order after the scenario's own jumpers and terminations.
+    ///
+    /// This exists because a model is not always built in one pass. A designer changes a connection scheme by editing the one
+    /// that is already there - removing a jumper, grounding what it used to feed - and the interesting failures live in exactly
+    /// that sequence rather than in any single operation. A scenario that can only describe a finished wiring cannot reach them.
+    enum Edit {
+
+        /// Drag a new jumper between two leads, as `Jumper` does.
+        case jumper(Jumper)
+        /// Click an existing jumper in *Remove Connector* mode. Named by the two leads it runs between.
+        case remove(Jumper)
+        /// Click a lead in *Add Ground* / *Add Impulse* mode.
+        case terminate(Termination)
     }
 
     /// A static ring fitted to one end of a coil, AFTER the restructure.
@@ -206,6 +230,9 @@ enum SelfTest {
         /// Segment-to-segment jumpers, applied in order, after the restructure and before the terminations.
         let jumpers:[Jumper]
         let terminations:[Termination]
+        /// Further edits, in order, made to the model once the jumpers and terminations above are all on. Empty for a scenario
+        /// that describes a wiring built in one pass.
+        var edits:[Edit] = []
         let waveFormType:SimulationModel.WaveForm.Types
         /// Impulse crest, in volts.
         let peakVoltage:Double
@@ -215,6 +242,10 @@ enum SelfTest {
         let bandwidth:Double
         /// The coil whose initial distribution is compared against the continuum model - the impulsed one.
         let continuumCoil:Int
+        /// Print every node of every coil with how the simulation model classified it and what the initial distribution put
+        /// there. Off by default because it is a page per hundred nodes; on for any scenario that is about the CONNECTIONS,
+        /// where "which nodes did the model decide are grounded" is the whole question.
+        var reportNodes:Bool = false
     }
 
     /// The STME-0999 fixture: a real two-winding core-form design, 4160Y/2400 V LV and 69 kV delta HV, 350 kV BIL on
@@ -314,8 +345,125 @@ enum SelfTest {
         "S0738" : S0738(name: "S0738", restructure: .interleave(coil: 2)),
 
         // The same connection with the HV left alone, so that a failure can be pinned on the restructure or acquitted of it.
-        "S0738-plain" : S0738(name: "S0738-plain", restructure: .none)
+        "S0738-plain" : S0738(name: "S0738-plain", restructure: .none),
+
+        // The SAME fixture wired the way a double-stacked tap winding is wired when there are no taps in circuit: the two halves
+        // PARALLELED rather than put in series with the HV. See S0738Parallel.
+        "S0738-parallel" : S0738Parallel(name: "S0738-parallel", restructure: .none),
+
+        "S0738-parallel-interleaved" : S0738Parallel(name: "S0738-parallel-interleaved", restructure: .interleave(coil: 2)),
+
+        // The SAME finished wiring as S0738-parallel, arrived at by EDITING the S0738 wiring rather than by building it in one
+        // pass - which is how a designer actually gets there, and which is the case that fails. See S0738ParallelEdited.
+        "S0738-parallel-edited" : S0738ParallelEdited(name: "S0738-parallel-edited", groundBeforeRemoving: false),
+
+        // The same three edits with the first two swapped: ground the bottom of coil 2 while the old jumper is still on it, THEN
+        // pull the jumper. Reading the connection scheme off the screen afterwards gives the same answer as the other two runs.
+        "S0738-parallel-edited-2" : S0738ParallelEdited(name: "S0738-parallel-edited-2", groundBeforeRemoving: true)
     ]
+
+    /// The S0738 tap winding re-wired from series to parallel by EDITING the model, the way it is done at the keyboard.
+    ///
+    /// The finished connection scheme is identical to `S0738Parallel`'s, node for node. The difference is entirely in how it is
+    /// reached: the model starts as `S0738` - coil 3's two ends tied to each other and to the bottom of coil 2, coil 3's centre
+    /// grounded, no ground of coil 2's own - and is then edited into the parallel scheme, which is three operations:
+    ///
+    ///   1. remove the jumper from coil 3's ends to the bottom of coil 2;
+    ///   2. ground the bottom of coil 2, which now has nowhere else to go;
+    ///   3. add the crossover jumpers that put the two halves of coil 3 in parallel.
+    ///
+    /// Comparing the two runs isolates the editing history from the wiring: any difference between them is a connection the model
+    /// is carrying that no longer corresponds to anything the user can see.
+    /// - parameter groundBeforeRemoving: Do step 2 before step 1 - ground the bottom of coil 2 while coil 3 is still hanging off
+    ///   it, then pull the jumper. Both orders leave the same picture on the screen, so both have to leave the same model.
+    private static func S0738ParallelEdited(name:String, groundBeforeRemoving:Bool) -> Scenario {
+
+        let pullTheJumper = Edit.remove(Jumper(from: .coilEnd(coil: 3, end: .top), to: .coilEnd(coil: 2, end: .bottom)))
+        let groundTheNeutral = Edit.terminate(Termination(point: .coilEnd(coil: 2, end: .bottom), type: .ground))
+
+        var edits:[Edit] = groundBeforeRemoving ? [groundTheNeutral, pullTheJumper] : [pullTheJumper, groundTheNeutral]
+
+        for disc in stride(from: 2, through: 14, by: 2) {
+
+            edits.append(.jumper(Jumper(from: .discCrossover(coil: 3, disc: disc), to: .discCrossover(coil: 3, disc: 32 - disc))))
+        }
+
+        return Scenario(name: name,
+                        restructure: .none,
+                        matchedBuild: nil,
+                        fixtureName: "S0738_AndIn.txt",
+                        notes: "The S0738 wiring EDITED into the parallel tap connection: the jumper from coil 3's ends to the bottom of coil 2 removed, the bottom of coil 2 grounded in its own right, and the crossovers of every second disc of coil 3 tied across the gap in mirror pairs. The finished scheme is identical to S0738-parallel's; only the route to it differs.",
+                        jumpers: [Jumper(from: .coilEnd(coil: 3, end: .top), to: .coilEnd(coil: 3, end: .bottom)),
+                                  Jumper(from: .coilEnd(coil: 3, end: .top), to: .coilEnd(coil: 2, end: .bottom)),
+                                  Jumper(from: .gapLead(coil: 3, gap: 0, side: .bottom), to: .gapLead(coil: 3, gap: 0, side: .top))],
+                        terminations: [Termination(point: .coilEnd(coil: 0, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 0, end: .top), type: .ground),
+                                       Termination(point: .coilEnd(coil: 1, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 1, end: .top), type: .ground),
+                                       Termination(point: .gapLead(coil: 3, gap: 0, side: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 2, end: .top), type: .impulse)],
+                        edits: edits,
+                        waveFormType: .FullWave,
+                        peakVoltage: 1050.0e3,
+                        displaySpan: 100.0e-6,
+                        bandwidth: 10.0e6,
+                        continuumCoil: 2,
+                        reportNodes: true)
+    }
+
+    /// The S0738 fixture wired with its tap winding's two halves PARALLELED - the usual connection when no taps are in circuit.
+    ///
+    /// The difference from `S0738` is entirely in coil 3, and it is the difference between a winding that carries the HV's return
+    /// current and one that does not:
+    ///
+    ///   * the HV's own neutral (coil 2, bottom) goes straight to ground, so coil 2 has a grounded end of its own;
+    ///   * coil 3's two centre leads are still tied together and grounded, but its two OUTER ends are tied only to each other -
+    ///     they are not tied to anything that is at a fixed potential;
+    ///   * the crossovers of every second disc are tied across the middle of the coil in pairs (2-3 to 30-31, 4-5 to 28-29, and
+    ///     so on down to 14-15 to 18-19), which is what puts the two halves in parallel turn for turn.
+    ///
+    /// That last group is the thing no other scenario here has: a jumper at an INTERIOR node of a winding, rather than at a lead.
+    /// The pairing is symmetric about the centre gap - disc d pairs with disc 32-d - so every pair joins two points that are the
+    /// same number of turns from the grounded centre.
+    ///
+    /// The outer ends are then a genuinely floating pair: nothing ties them to ground, to the impulse or to another coil, and
+    /// their potential is whatever the winding and the capacitive coupling to coil 2 put there. That is the case this scenario
+    /// exists to pin down.
+    private static func S0738Parallel(name:String, restructure:Restructure) -> Scenario {
+
+        // Coil 3 is 32 discs with its tapping gap between discs 16 and 17. Pair the crossover above disc d with the crossover
+        // above disc 32-d, which is its mirror image about the gap, for the even d from 2 up to 14.
+        var jumpers:[Jumper] = [// The tap winding's two outer ends, tied to each other and to nothing else.
+                                Jumper(from: .coilEnd(coil: 3, end: .top), to: .coilEnd(coil: 3, end: .bottom)),
+                                // The two leads facing each other across coil 3's centre gap.
+                                Jumper(from: .gapLead(coil: 3, gap: 0, side: .bottom), to: .gapLead(coil: 3, gap: 0, side: .top))]
+
+        for disc in stride(from: 2, through: 14, by: 2) {
+
+            jumpers.append(Jumper(from: .discCrossover(coil: 3, disc: disc), to: .discCrossover(coil: 3, disc: 32 - disc)))
+        }
+
+        return Scenario(name: name,
+                        restructure: restructure,
+                        matchedBuild: nil,
+                        fixtureName: "S0738_AndIn.txt",
+                        notes: "Four coils. Coils 0 and 1 grounded at both ends; coil 2 is the impulsed HV (1050 kV full wave on its top, neutral grounded); coil 3 is a double-stacked tap winding wired with its two halves in PARALLEL - centre leads tied together and grounded, outer ends tied to each other and to nothing else, and the crossovers of every second disc tied across the gap in mirror pairs. "
+                             + (restructure.isInterleave ? "Coil 2 interleaved in its entirety." : "Coil 2 as designed."),
+                        jumpers: jumpers,
+                        terminations: [Termination(point: .coilEnd(coil: 0, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 0, end: .top), type: .ground),
+                                       Termination(point: .coilEnd(coil: 1, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 1, end: .top), type: .ground),
+                                       Termination(point: .gapLead(coil: 3, gap: 0, side: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 2, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 2, end: .top), type: .impulse)],
+                        waveFormType: .FullWave,
+                        peakVoltage: 1050.0e3,
+                        displaySpan: 100.0e-6,
+                        bandwidth: 10.0e6,
+                        continuumCoil: 2,
+                        reportNodes: true)
+    }
 
     /// The S0738 fixture: a four-coil design whose HV is fed through a centre-grounded tap winding.
     ///
@@ -354,8 +502,9 @@ enum SelfTest {
                                        Termination(point: .coilEnd(coil: 0, end: .top), type: .ground),
                                        Termination(point: .coilEnd(coil: 1, end: .bottom), type: .ground),
                                        Termination(point: .coilEnd(coil: 1, end: .top), type: .ground),
-                                       // Grounding one of the two jumpered centre leads grounds both, through the same
-                                       // ConnectionDestinations loop the UI's mouseDownWithAddGround uses.
+                                       // Only ONE of the two jumpered centre leads is grounded, because that is all the user
+                                       // does. The other is at ground potential through the jumper, which
+                                       // PhaseModel.ResolveNodeConnectivity works out; the ground is not copied onto it.
                                        Termination(point: .gapLead(coil: 3, gap: 0, side: .bottom), type: .ground),
                                        Termination(point: .coilEnd(coil: 2, end: .top), type: .impulse)],
                         waveFormType: .FullWave,
@@ -652,6 +801,29 @@ enum SelfTest {
             return Report(text: text + "FAILED: a termination could not be applied - see above.\n", summary: "FAILED - could not apply the terminations")
         }
 
+        // The post-wiring edits, in the order the scenario lists them. See `Edit`: this is where a scenario stops describing a
+        // finished connection scheme and starts describing a session at the keyboard.
+        if !scenario.edits.isEmpty {
+
+            Stage("applying the post-wiring edits")
+
+            text += "EDITS TO THE WIRING\n"
+            text += String(repeating: "-", count: 110) + "\n"
+
+            for nextEdit in scenario.edits {
+
+                let outcome = await ApplyEdit(nextEdit, model: model)
+                text += "  \(outcome)\n"
+
+                guard !outcome.hasPrefix("FAILED") else {
+
+                    return Report(text: text, summary: "FAILED - " + outcome)
+                }
+            }
+
+            text += "\n"
+        }
+
         // REBUILD THE NODES WITH THE CONNECTIONS IN PLACE.
         //
         // Nothing above this line has re-run SetNodes since the terminations went on: the node topology the model is carrying was
@@ -701,6 +873,13 @@ enum SelfTest {
             return Report(text: text + "FAILED: the capacitive distribution could not be solved.\n", summary: "FAILED - no initial distribution")
         }
 
+        if scenario.reportNodes {
+
+            Stage("reporting the node classification")
+
+            text += await NodeReport(model: model, simModel: simModel, alpha: alpha)
+        }
+
         Stage("comparing against the continuum model")
 
         let comparison = await ContinuumComparison(model: model, alpha: alpha, coil: scenario.continuumCoil)
@@ -724,6 +903,11 @@ enum SelfTest {
             text += transient.text
 
             summary += "; " + transient.summary
+
+            if scenario.reportNodes {
+
+                text += await NodeTransientReport(model: model, results: results)
+            }
         }
         else {
 
@@ -1319,6 +1503,10 @@ enum SelfTest {
         case .gapLead(let coil, let gap, let side):
 
             return "coil \(coil) gap \(gap) \(side == .bottom ? "lower" : "upper") lead"
+
+        case .discCrossover(let coil, let disc):
+
+            return "coil \(coil) crossover \(disc)-\(disc + 1)"
         }
     }
 
@@ -1398,6 +1586,38 @@ enum SelfTest {
             }
 
             return .ok(segment: segment, location: location)
+
+        case .discCrossover(let coil, let disc):
+
+            let coilSegments = await model.CoilSegments().filter({ $0.radialPos == coil })
+
+            // Disc numbering only means anything while every Segment of the coil holds exactly one BasicSection, which is what
+            // the load path gives and what a combine or an interleave destroys. Refuse rather than guess: a crossover inside a
+            // folded Segment is not a node at all, so there is nothing there to jumper to.
+            for nextSegment in coilSegments {
+
+                guard nextSegment.basicSections.count == 1 else {
+
+                    return .failed("coil \(coil) has been restructured (segment \(nextSegment.serialNumber) holds \(nextSegment.basicSections.count) discs), so disc numbering is not meaningful")
+                }
+            }
+
+            guard disc >= 1, disc < coilSegments.count else {
+
+                return .failed("coil \(coil) has \(coilSegments.count) discs, so there is no crossover above disc \(disc)")
+            }
+
+            let segment = coilSegments[disc - 1]
+
+            // The outgoing series connector - the one that goes UP out of this disc into the next. There is exactly one, and its
+            // location is whichever of outside/inside the alternation landed on. Taking it from the model rather than computing
+            // it is the same discipline the two cases above follow.
+            guard let crossover = await segment.connections.first(where: { $0.segmentID != nil && $0.connector.fromIsUpper }) else {
+
+                return .failed("disc \(disc) of coil \(coil) (segment \(segment.serialNumber)) has no outgoing series connector, so the crossover above it is a break and not a crossover")
+            }
+
+            return .ok(segment: segment, location: crossover.connector.fromLocation)
         }
     }
 
@@ -1498,6 +1718,96 @@ enum SelfTest {
         return "\(label): \(madeCount) connector(s) from segment \(fromSegment.serialNumber) (\(fromLocation)) to segment \(toSegment.serialNumber) (\(toLocation))"
     }
 
+    /// The outcome of looking for the Segment a `LeadPoint` sits on, without asking what is on the lead.
+    private enum SegmentLookup {
+
+        case ok(Segment)
+        case failed(String)
+    }
+
+    /// The Segment a `LeadPoint` names, found the same way `FindLead` finds it but without the requirement that the lead still be
+    /// floating. Used by the removal path, which needs the Segment only.
+    private static func FindSegment(_ point:LeadPoint, model:PhaseModel) async -> SegmentLookup {
+
+        if case .ok(let segment, _) = await FindLead(point, model: model) {
+
+            return .ok(segment)
+        }
+
+        // FindLead refused, which for a coil end means the lead is no longer floating. The Segment is still knowable - it is the
+        // outermost one of the coil - so fall back to that. The other two cases are located by the connections they carry rather
+        // than by a termination, so FindLead's refusal there is real and is passed through.
+        guard case .coilEnd(let coil, let end) = point else {
+
+            if case .failed(let why) = await FindLead(point, model: model) {
+
+                return .failed(why)
+            }
+
+            return .failed("could not find \(Describe(point))")
+        }
+
+        let coilSegments = await model.CoilSegments().filter({ $0.radialPos == coil })
+
+        guard let segment = end == .bottom ? coilSegments.first : coilSegments.last else {
+
+            return .failed("coil \(coil) has no segments")
+        }
+
+        return .ok(segment)
+    }
+
+    /// Take a jumper back out, the way `TransformerView.mouseDownWithRemoveConnector` does.
+    ///
+    /// The UI hands `Segment.RemoveConnection` one of the connections the drawn line stands for, and that routine sweeps the whole
+    /// equivalence class - which is what makes clicking any one copy of a cross-product jumper take all of them. Here the copy is
+    /// found rather than clicked: whichever connection on the `from` lead's Segment names the `to` lead's Segment.
+    private static func ApplyRemoval(_ jumper:Jumper, model:PhaseModel) async -> String {
+
+        let label = "remove \(Describe(jumper.from)) <-> \(Describe(jumper.to))"
+
+        // Both ends are resolved to SEGMENTS only, not to (Segment, location) pairs. Clicking a drawn jumper does not care what
+        // else is on either lead, and in particular does not require the lead to still be floating - which `FindLead` does,
+        // because for its own purposes a coil-end lead IS the floating termination. A jumper is perfectly removable from a lead
+        // that has since been grounded, and that is the case worth being able to describe.
+        let fromSegmentLookup = await FindSegment(jumper.from, model: model)
+        let toSegmentLookup = await FindSegment(jumper.to, model: model)
+
+        guard case .ok(let fromSegment) = fromSegmentLookup, case .ok(let toSegment) = toSegmentLookup else {
+
+            let why = [fromSegmentLookup, toSegmentLookup].compactMap({ if case .failed(let reason) = $0 { return reason } else { return nil } }).joined(separator: "; ")
+            return "FAILED: \(label): \(why)"
+        }
+
+        guard let victim = await fromSegment.connections.first(where: { $0.segmentID == toSegment.serialNumber }) else {
+
+            return "FAILED: \(label): segment \(fromSegment.serialNumber) has no connection to segment \(toSegment.serialNumber)"
+        }
+
+        let affected = await fromSegment.RemoveConnection(segments: model.segments, connection: victim)
+
+        return "\(label): \(affected.count) segment(s) affected \(affected.sorted())"
+    }
+
+    /// Apply one post-wiring edit and describe what it did.
+    private static func ApplyEdit(_ edit:Edit, model:PhaseModel) async -> String {
+
+        switch edit {
+
+        case .jumper(let jumper):
+
+            return await ApplyJumper(jumper, model: model)
+
+        case .remove(let jumper):
+
+            return await ApplyRemoval(jumper, model: model)
+
+        case .terminate(let termination):
+
+            return await ApplyTermination(termination, model: model)
+        }
+    }
+
     // MARK: Terminations
 
     /// Tie one lead to ground or to the impulse generator.
@@ -1506,6 +1816,9 @@ enum SelfTest {
     /// lead, minus the hit testing: find the lead and hand its location to AddConnector, which REPLACES a floating
     /// lead rather than appending to it. Taking the location from the lead that is already there is the whole point -
     /// see `LeadPoint`.
+    ///
+    /// It terminates the named lead and nothing else. What is at the same potential through a jumper is
+    /// `PhaseModel.ResolveNodeConnectivity`'s answer, not something recorded in the connector store.
     private static func ApplyTermination(_ termination:Termination, model:PhaseModel) async -> String {
 
         let label = "\(Describe(termination.point)) -> \(termination.type)"
@@ -1524,21 +1837,12 @@ enum SelfTest {
 
         let allSegments = await model.segments
 
+        // ONE lead, the one named - which is what the UI now does too. Everything jumpered to it is at the same potential, but
+        // that is a property of the jumpers and is resolved by `PhaseModel.ResolveNodeConnectivity` when the answer is wanted.
+        // This routine used to copy the termination onto every jumpered lead as well, mirroring what
+        // `TransformerView.mouseDownWithAddGround` did at the time; both copies then outlived any removal of the jumper that
+        // justified them, which is the failure `S0738-parallel-edited-2` exists to hold down.
         await segment.AddConnector(segments: allSegments, fromLocation: fromLocation, toLocation: termination.type, toSegmentID: nil)
-
-        // If the lead's location also carries jumpers to other Segments, those Segments are at the same potential and
-        // have to be terminated too. A plain coil end carries none, so this loop is normally empty - it is here so
-        // that this routine behaves identically to the UI path on a model where it is not.
-        for nextDestination in await segment.ConnectionDestinations(fromLocation: fromLocation) {
-
-            guard let otherID = nextDestination.segmentID,
-                  let other = allSegments.first(where: { $0.serialNumber == otherID }) else {
-
-                continue
-            }
-
-            await other.AddConnector(segments: allSegments, fromLocation: nextDestination.location, toLocation: termination.type, toSegmentID: nil)
-        }
 
         return "\(label): applied at \(fromLocation) of segment \(segment.serialNumber)"
     }
@@ -1838,6 +2142,142 @@ enum SelfTest {
         return (direct: direct, toOtherCoils: toOtherCoils, withinCoil: withinCoil)
     }
 
+    // MARK: Node classification
+
+    /// Every node of every coil, with how `SimulationModel` classified it and what the initial distribution put there.
+    ///
+    /// This is the diagnostic for a scenario that is about the CONNECTIONS. The two things that can go wrong in wiring a model up
+    /// are invisible in any aggregate number: a node the model decided is grounded when the user did not ground it, and a set of
+    /// nodes the model shorted together that the user did not tie. Both show up here immediately - the first as a `GROUND` in the
+    /// class column against a lead the scenario never terminated, the second in the merge column - and both otherwise arrive as a
+    /// plausible distribution with a flat zero somewhere in it.
+    private static func NodeReport(model:PhaseModel, simModel:SimulationModel, alpha:[Double]) async -> String {
+
+        var text = "NODE CLASSIFICATION AND INITIAL DISTRIBUTION\n"
+        text += String(repeating: "-", count: 110) + "\n"
+
+        let grounded = Set(await simModel.groundedNodes.map({ $0.number }))
+        let impulsed = Set(await simModel.impulsedNodes.map({ $0.number }))
+        let floating = Set(await simModel.floatingNodes.map({ $0.number }))
+
+        // finalConnectedNodes maps a KEPT node to the set shorted to it. Invert it so a node can be looked up by number, and keep
+        // the kept node's own number so the report can say which way round the row surgery went.
+        var mergeGroup:[Int:Int] = [:]
+
+        for (kept, group) in await simModel.finalConnectedNodes {
+
+            mergeGroup[kept.number] = kept.number
+
+            for eliminated in group {
+
+                mergeGroup[eliminated.number] = kept.number
+            }
+        }
+
+        text += "  Grounded nodes: \(grounded.count)   impulsed: \(impulsed.count)   floating: \(floating.count)   merged into a group: \(mergeGroup.count)\n"
+
+        // A CANONICAL FORM OF THE WHOLE CLASSIFICATION, ON ONE LINE.
+        //
+        // The finished connection scheme is what a model IS; the sequence of clicks that produced it is not supposed to survive
+        // anywhere. Two scenarios that describe the same wiring by different routes - `S0738-parallel` built in one pass against
+        // `S0738-parallel-edited` and `-edited-2` built by editing the series connection into it, in either order - must therefore
+        // print this line identically, and the only way they could not is derived state outliving its source. That is exactly the
+        // failure these three scenarios exist for, so the check is one `grep Connectivity:` across the three reports.
+        //
+        // Sorted throughout, because a Set's iteration order is not stable between runs and a fingerprint that changes on its own
+        // is not a fingerprint.
+        let groups = await simModel.finalConnectedNodes.map({ (kept, group) in "\(kept.number)<-\(group.map({ $0.number }).sorted().map({ String($0) }).joined(separator: ","))" }).sorted()
+
+        text += "  Connectivity: ground[\(grounded.sorted().map({ String($0) }).joined(separator: ","))]"
+        text += " impulse[\(impulsed.sorted().map({ String($0) }).joined(separator: ","))]"
+        text += " float[\(floating.sorted().map({ String($0) }).joined(separator: ","))]"
+        text += " merge[\(groups.joined(separator: " "))]\n\n"
+
+        let coilCount = await model.CoilSegments().reduce(0, { max($0, $1.radialPos + 1) })
+
+        for coil in 0..<coilCount {
+
+            guard let profile = try? await model.CoilVoltageProfile(coil: coil) else {
+
+                text += "  Coil \(coil): no voltage profile\n\n"
+                continue
+            }
+
+            text += "  Coil \(coil)\n"
+            text += "    node        z (mm)   class      merged with   V/Vcrest (t = 0+)\n"
+
+            for nextPoint in profile {
+
+                let number = nextPoint.nodeIndex
+
+                let nodeClass = impulsed.contains(number) ? "IMPULSE" : (grounded.contains(number) ? "GROUND " : (floating.contains(number) ? "float  " : "-      "))
+                let merge = mergeGroup[number].map({ $0 == number ? "kept (\(number))" : "-> \($0)" }) ?? "-"
+                let value = number >= 0 && number < alpha.count ? String(format: "%18.6f", alpha[number]) : "                 ?"
+
+                text += String(format: "    %4d   %11.3f   %@   %-11@%@\n", number, nextPoint.z * 1000.0, nodeClass, merge as NSString, value)
+            }
+
+            text += "\n"
+        }
+
+        return text
+    }
+
+    /// Every node of every coil again, this time with what the whole transient did there.
+    ///
+    /// The companion to `NodeReport`: that one says what the model decided and where t = 0+ put each node, this one says whether
+    /// anything ever moved. A node the assembly has wrongly pinned reads an exact zero in both columns for the whole run, which
+    /// is not something a real node does - even a node with no series path to the source is driven capacitively.
+    private static func NodeTransientReport(model:PhaseModel, results:[SimulationModel.SimulationStepResult]) async -> String {
+
+        var text = "NODE EXTREMES OVER THE TRANSIENT\n"
+        text += String(repeating: "-", count: 110) + "\n"
+
+        guard !results.isEmpty else {
+
+            text += "  The solver returned no results.\n\n"
+            return text
+        }
+
+        let coilCount = await model.CoilSegments().reduce(0, { max($0, $1.radialPos + 1) })
+
+        for coil in 0..<coilCount {
+
+            guard let profile = try? await model.CoilVoltageProfile(coil: coil) else {
+
+                continue
+            }
+
+            text += "  Coil \(coil)\n"
+            text += "    node        z (mm)      min (kV)      max (kV)\n"
+
+            for nextPoint in profile {
+
+                let number = nextPoint.nodeIndex
+
+                var lowest = 0.0
+                var highest = 0.0
+
+                for nextStep in results {
+
+                    guard number >= 0, number < nextStep.volts.count else {
+
+                        continue
+                    }
+
+                    lowest = min(lowest, nextStep.volts[number])
+                    highest = max(highest, nextStep.volts[number])
+                }
+
+                text += String(format: "    %4d   %11.3f   %11.3f   %11.3f\n", number, nextPoint.z * 1000.0, lowest / 1000.0, highest / 1000.0)
+            }
+
+            text += "\n"
+        }
+
+        return text
+    }
+
     // MARK: The continuum comparison (DelVecchio 13.5.1)
 
     /// Compare the computed initial distribution against DelVecchio's uniform-capacitance continuum model.
@@ -1887,7 +2327,7 @@ enum SelfTest {
         // The computed distribution, as (x, V) with x running from the grounded end to the line end. CoilVoltageProfile
         // is sorted by ascending height; which end is driven is settled by looking at where the impulse actually is,
         // not by assuming the top, because a coil can be driven from either end.
-        let impulsedNodes = Set(await model.NodesOfType(connType: .impulse).map({ $0.number }))
+        let impulsedNodes = (try? await model.ResolveNodeConnectivity())?.impulsed ?? []
         let drivenAtTop = impulsedNodes.contains(profile.last?.nodeIndex ?? -1)
 
         guard let lowZ = profile.first?.z, let highZ = profile.last?.z, highZ > lowZ else {

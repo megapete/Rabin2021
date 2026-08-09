@@ -1831,11 +1831,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         let inVolts = peakVoltage != 0.0
         let scale = inVolts ? peakVoltage : 1.0
 
-        // The impulsed coils: those with a node carrying an impulse connector. On any other coil alpha is a small residual set by the
+        // The impulsed coils: those with a node held at the impulse. On any other coil alpha is a small residual set by the
         // shunt capacitances, which would be squashed flat beside the driven coil's curve - see the file header of
         // InitialDistributionWindow.
-        let impulsedNodes = await phModel.NodesOfType(connType: .impulse)
-        let impulsedNodeNumbers = Set(impulsedNodes.map({ $0.number }))
+        //
+        // Resolved through the jumpers rather than read off the connectors: a coil fed from a lead on another coil is driven just
+        // as hard as the one the impulse is clipped to, and leaving it out of the picker would hide it.
+        let impulsedNodeNumbers = (try? await phModel.ResolveNodeConnectivity())?.impulsed ?? []
+        let impulsedNodes = await phModel.nodes.filter({ impulsedNodeNumbers.contains($0.number) })
 
         var impulsedCoils:Set<Int> = []
 
@@ -3648,8 +3651,16 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return nil
         }
 
-        let grounded = Set(await model.NodesOfType(connType: .ground).map({ $0.number }))
-        let impulsed = Set(await model.NodesOfType(connType: .impulse).map({ $0.number }))
+        // The resolved sets, not NodesOfType's direct ones: a node grounded through a jumper is grounded, and writing it as a
+        // node of its own instead of collapsing it onto SPICE's node 0 would export a netlist that is not the model.
+        guard let connectivity = try? await model.ResolveNodeConnectivity() else {
+
+            DLog("The jumpers in this model do not resolve to nodes - see PhaseModel.VerifyNodeTopology.")
+            return nil
+        }
+
+        let grounded = connectivity.grounded
+        let impulsed = connectivity.impulsed
 
         guard !grounded.isEmpty, !impulsed.isEmpty else {
 

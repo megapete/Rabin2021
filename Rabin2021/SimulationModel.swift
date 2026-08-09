@@ -360,7 +360,22 @@ actor SimulationModel {
     var groundedNodes:Set<Node> = []
     var floatingNodes:Set<Node> = []
     
-    /// User-settable value to represent the resistance of a "floating" node (required to avoid problems with zeroes and infinities)
+    /// The very large resistance to ground that stands in for "this lead goes nowhere" (DelVecchio 3E, just after eq. 14.5).
+    ///
+    /// # It is deliberately inert, and it is not the fix for a node that reads zero
+    ///
+    /// At 1e50 the conductance it adds is 1e-50, which is nothing next to any admittance in the matrix. That is on purpose. The
+    /// reason DelVecchio adds Rs at all is that a node with no galvanic path leaves a time-domain formulation with nothing to
+    /// determine it; here every node carries its own row of the nodal capacitance matrix, and a floating lead is coupled to the
+    /// rest of the winding and to ground capacitively whether anything is tied to it or not. The system is non-singular without
+    /// Rs, and `Assemble` includes the term only so that the frequency-domain and RK45 paths are solving identical equations.
+    ///
+    /// So if a lead comes back at exactly zero, Rs is not what to reach for: an exact zero is what the Dirichlet row surgery
+    /// writes, which means the model has that node in `groundedNodes`. Ask `PhaseModel.ResolveNodeConnectivity` why - it is the
+    /// one place that decides, and `SelfTest`'s node-classification table prints its answer for every node in the model.
+    ///
+    /// Lowering this to something physical (a bleed resistor, say) would be a modelling change and not a numerical one: it would
+    /// put a real conductance on the node and move every result. Leave it alone unless that is what is wanted.
     var floatingResistanceToGround = 1.0E50
     
     var finalConnectedNodes:[Node:Set<Node>] = [:]
@@ -380,153 +395,75 @@ actor SimulationModel {
         self.baseC = await model.C!
         self.modelC = await model.C!
         
-        // We will need to find impulsed nodes (at least one required) and ground nodes (at least one required) and alter the 'modelC' matrix accordingly. We'll check for floating nodes but just raise a warning (DEBUG builds only)
-        impulsedNodes = await Set(model.NodesOfType(connType: .impulse))
-        groundedNodes = await Set(model.NodesOfType(connType: .ground))
-        floatingNodes = await Set(model.NodesOfType(connType: .floating))
-        
+        // WHO IS AT GROUND POTENTIAL IS THE MODEL'S QUESTION, NOT THIS ROUTINE'S.
+        //
+        // PhaseModel.ResolveNodeConnectivity resolves every jumper and returns the classification: which nodes are held at the
+        // impulse, which at ground, which are genuinely floating, and which remain shorted to each other without being tied to
+        // either. This used to be done here, with an ad-hoc reduction of the jumper graph that was not a union-find and produced
+        // OVERLAPPING groups for a chain of three or more nodes - see the long note on NodeConnectivity for what that did to the
+        // row surgery. It is a property of the model, several things besides this one need the answer, and there is exactly one
+        // right answer, so there is exactly one place that computes it.
+        let connectivity:PhaseModel.NodeConnectivity
+
+        do {
+
+            connectivity = try await model.ResolveNodeConnectivity()
+        }
+        catch {
+
+            // A jumper that does not land on a node at both ends means the node topology does not match the connectors, which in
+            // practice means a Segment was replaced without its connections being remapped (see UpdateConnectors). Fail the whole
+            // init rather than carry on: a simulation model built around a connection it cannot resolve returns a plausible
+            // wrong answer, and ALog only traps in DEBUG so a Release build would not even complain.
+            ALog("Cannot build the simulation model: \(error.localizedDescription)")
+            return nil
+        }
+
+        if connectivity.shortedSource {
+
+            DLog("An impulsed node is shorted to ground through the jumpers - the group has been taken as grounded.")
+        }
+
+        let nodesByNumber = await Dictionary(uniqueKeysWithValues: model.nodes.map({ ($0.number, $0) }))
+
+        func nodeSet(_ numbers:some Sequence<Int>) -> Set<Node> {
+
+            return Set(numbers.compactMap({ nodesByNumber[$0] }))
+        }
+
+        impulsedNodes = nodeSet(connectivity.impulsed)
+        groundedNodes = nodeSet(connectivity.grounded)
+        floatingNodes = nodeSet(connectivity.floating)
+
         finalConnectedNodes = [:]
-        
+
+        for nextGroup in connectivity.mergedGroups {
+
+            guard let kept = nodesByNumber[nextGroup.kept] else {
+
+                continue
+            }
+
+            finalConnectedNodes[kept] = nodeSet(nextGroup.eliminated)
+        }
+
         guard !impulsedNodes.isEmpty && !groundedNodes.isEmpty else {
-            
+
             DLog("Model requires at least one impulsed and one grounded node!")
             return nil
         }
-        
+
         if !floatingNodes.isEmpty {
-            
+
             DLog("There are floating nodes in the model!")
         }
-        
-        // Nodes that have connections to non-adjacent other nodes. We'll use a set to avoid copies
-        var connectedNodes:[Node:Set<Node>] = [:]
-        
+
         for nextSegment in await model.CoilSegments() {
-            
+
             let nextRes = await Resistance(dc: nextSegment.resistance(), effRadius: nextSegment.turnEffectiveRadius(), eddyPURadial: nextSegment.eddyLossRadialPU, eddyPUAxial: nextSegment.eddyLossAxialPU, strandRadial: nextSegment.strandRadial, strandAxial: nextSegment.strandAxial)
             R.append(nextRes)
-            
-            let nonAdjConns = await model.NonAdjacentConnections(segment: nextSegment)
-            if !nonAdjConns.isEmpty {
-                
-                for nextConnection in nonAdjConns {
-                    
-                    //let srcTest = await model.NodeAt(segment: nextSegment, useFrom: true, connector: nextConnection.connector)
-                    //let destIDtest = nextConnection.segmentID
-                    //let destTest = await model.NodeAt(segmentID: destIDtest!, useFrom: false, connector: nextConnection.connector)
-                    // get the source and dest nodes of the connection
-                    // Reported leg by leg: the guard has three of them and "which one" is the whole diagnosis. A nil srcNode or
-                    // destNode means the node topology SetNodes() built does not match what this connector describes, which in
-                    // practice means a Segment was replaced without its connections being remapped (see UpdateConnectors).
-                    let srcNodeTest = await model.NodeAt(segment: nextSegment, useFrom: true, connector: nextConnection.connector)
-                    let destSegmentIDTest = nextConnection.segmentID
-                    let destNodeTest = destSegmentIDTest == nil ? nil : await model.NodeAt(segmentID: destSegmentIDTest!, useFrom: false, connector: nextConnection.connector)
-
-                    guard let srcNode = srcNodeTest, let destSegmentID = destSegmentIDTest, let destNode = destNodeTest else {
-
-                        let failure = srcNodeTest == nil ? "no node at the FROM end (\(nextConnection.connector.fromLocation))" : (destSegmentIDTest == nil ? "the connection has no target segment" : "no node at the TO end (\(nextConnection.connector.toLocation)) of segment \(destSegmentIDTest!)")
-
-                        ALog("Cannot resolve the connection from segment \(nextSegment.serialNumber) (\(nextConnection.connector.fromLocation) -> \(nextConnection.connector.toLocation), target \(destSegmentIDTest.map({ String($0) }) ?? "none")): \(failure).")
-
-                        // Fail the whole init rather than break. Breaking left the simulation model built around a connection it
-                        // could not resolve - and ALog only traps in DEBUG, so a Release build carried on silently.
-                        return nil
-                    }
-                    
-                    // if the source and/or destination node is in the 'floatingNodes' set, remove it/them
-                    if floatingNodes.contains(srcNode) {
-                        
-                        floatingNodes.remove(srcNode)
-                    }
-                    if floatingNodes.contains(destNode) {
-                        
-                        floatingNodes.remove(destNode)
-                    }
-                    
-                    if connectedNodes.keys.contains(srcNode) {
-                        
-                        connectedNodes[srcNode]!.insert(destNode)
-                    }
-                    else {
-                        
-                        connectedNodes[srcNode] = [destNode]
-                    }
-                }
-            }
         }
-        
-        // At this point, we have a bunch of nodal connections. We want to reduce these to the minimum possible before going on.
-        // First we need to get an array of the keys
-        var connKeys:[Node] = Array(connectedNodes.keys)
-        
-        while !connectedNodes.isEmpty {
-            
-            let nextNewKey = connKeys.removeFirst()
-            var removeKeys:[Node] = []
-            if var nextConnSet = connectedNodes.removeValue(forKey: nextNewKey) {
-                
-                for (nextKey, nextSet) in connectedNodes {
-                    
-                    if nextSet.contains(nextNewKey) {
-                        
-                        nextConnSet.formUnion(nextSet)
-                        nextConnSet.insert(nextKey)
-                        nextConnSet.remove(nextNewKey)
-                        removeKeys.append(nextKey)
-                    }
-                }
-                
-                finalConnectedNodes[nextNewKey] = nextConnSet
-            }
-            
-            for nextBadKey in removeKeys {
-                
-                connectedNodes.removeValue(forKey: nextBadKey)
-            }
-        }
-        
-        connectedNodes = finalConnectedNodes
-        connKeys = Array(connectedNodes.keys)
-        // If any of the nodes (including the key) in a finalConnectedNode is connected to ground (or impulse), all of the nodes (including the key) are added to the groundedNodes (impulsedNodes) Set and the key is removed from finalConnectedNodes
-        while !connectedNodes.isEmpty {
-            
-            let nextNewKey = connKeys.removeFirst()
-            if var nextConnSet = connectedNodes.removeValue(forKey: nextNewKey) {
-                
-                nextConnSet.insert(nextNewKey)
-                
-                var foundGround = false
-                var foundImpulse = false
-                for nextNode in nextConnSet {
-                    
-                    if groundedNodes.contains(nextNode) {
-                        
-                        foundGround = true
-                        break
-                    }
-                    
-                    if impulsedNodes.contains(nextNode) {
-                        
-                        foundImpulse = true
-                        break
-                    }
-                }
-                
-                if foundGround {
-                    
-                    groundedNodes = groundedNodes.union(nextConnSet)
-                    
-                    finalConnectedNodes.removeValue(forKey: nextNewKey)
-                }
-                else if foundImpulse {
-                    
-                    impulsedNodes = impulsedNodes.union(nextConnSet)
-                    
-                    finalConnectedNodes.removeValue(forKey: nextNewKey)
-                }
-            }
-        }
-        
+
         vDropInd = await Array(repeating: (-1,-1), count: model.CoilSegments().count)
         iDropInd = await Array(repeating: (-1,-1), count: model.nodes.count)
         
