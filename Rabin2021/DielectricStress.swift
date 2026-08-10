@@ -109,18 +109,140 @@ enum DielectricStress {
 
     // MARK: Constants
 
-    /// The corner radius of the bare copper of a rectangular conductor, in metres. 0.81 mm is about
-    /// 1/32", the usual figure for rectangular magnet wire.
+    /// The corner radius used when the strand dimensions are not known, in metres. 0.81 mm is about
+    /// 1/32", and it is the Essex/ASTM value for the middle of the range of strand sizes a disc winding
+    /// actually uses, so it is the right thing to fall back to.
     ///
-    /// This is an assumption, not a measurement: BasicSectionWindingData.TurnData carries no corner
-    /// radius (its 'effectiveRadius' is a derived equal-AREA radius, which is a different thing and must
-    /// not be substituted here), and neither does the Excel design file. It is the dominant uncertainty
-    /// in every peak-field number this file produces.
+    /// It is a fallback and nothing more. `CornerRadius(thickness:width:)` below reads the real figure
+    /// off the manufacturer's table from the bare strand's own dimensions; this constant is what a
+    /// StressSite gets when those dimensions are zero - a static ring, a radial shield, or a design file
+    /// that did not carry a cable definition.
     ///
-    /// Sensitivity: the corner enhancement goes roughly as sqrt(gap/r), so a factor-of-2 error in this
-    /// constant is about a factor of 1.4 in the peak column. Change it if your shop practice differs -
-    /// that is why it is here rather than buried in a routine.
-    static let cornerRadiusOnCopper = 0.81E-3
+    /// Sensitivity: the corner enhancement goes roughly as sqrt(gap/r), so a factor-of-2 error in the
+    /// radius is about a factor of 1.4 in the peak column.
+    static let defaultCornerRadiusOnCopper = 0.81E-3
+
+    // MARK: The manufacturer's corner-radius table
+
+    /// The corner radius of the bare copper of a rectangular conductor, in metres, from the specified
+    /// dimensions of the strand.
+    ///
+    /// SOURCE: Essex *Magnet Wire / Winding Wire Engineering Data*, p. 54, "RECTANGULAR, BARE WIRE -
+    /// DIMENSIONAL LIMITS", the table headed "RADII IN INCHES AND MM (In Inches of Corners of Square and
+    /// Rectangular Wire)". Essex in turn cites ASTM B 48 (soft rectangular and square bare copper wire),
+    /// so these are the industry limits rather than one supplier's practice. The document is
+    /// `~/Documents/MyProjects/Claude/EssexCornerRadius.pdf`.
+    ///
+    /// The table is two-dimensional - the radius depends on BOTH strand dimensions, and strongly. A
+    /// 4 x 10 mm strand gets 0.81 mm while a 6 x 10 mm strand gets 1.02 mm and a 12 x 25 mm strand gets
+    /// 3.18 mm, which is a factor of four across sizes that all appear in ordinary disc coils. That is
+    /// why this cannot be one constant: the peak column moves as 1/sqrt(r).
+    ///
+    /// THICKNESS IS THE SMALLER DIMENSION. The table's rows are the thickness and its columns the width,
+    /// and rectangular wire is specified thickness-by-width, so the two arguments are sorted here rather
+    /// than trusting the caller to know which of strandRadial/strandAxial is which.
+    ///
+    /// Two entries in the table are not radii:
+    ///
+    ///  - **"Rounded Edge"** - too thin to hold a specified corner, so the edge is a full half-round.
+    ///    The page's own note says such an edge has "corner radii that are essentially half the thickness
+    ///    of the wire", which is what is returned.
+    ///  - **blank** - thickness bands above 0.226 in. have no entry under the narrowest width band,
+    ///    because that would be a wire thicker than it is wide. Unreachable once the arguments are
+    ///    sorted; treated as a full round if it ever is reached.
+    ///
+    /// The footnote on the 0.096 in. row is a separate rule for SQUARE wire and is applied first: "Square
+    /// wire 0.072 in. (1.83 mm) and under shall have a corner radius of 0.012 in. (.30 mm) +/- 25%."
+    ///
+    /// INCHES OR MM: the table prints both, and the two disagree slightly in two cells - it gives
+    /// 0.039 in. as 1.02 mm (exactly 0.99) and 0.031 in. as 0.81 mm (exactly 0.79). The printed MILLIMETRE
+    /// values are used for the radii, since this program is metric throughout and 0.81 mm is the figure
+    /// the whole file was built on; the exact inch conversions are used for the band BOUNDARIES, where
+    /// the two agree to within 0.005 mm everywhere except the 0.189 in. edge (printed 4.79, exactly 4.80).
+    ///
+    /// - Parameter thickness: one bare-copper dimension of the strand, in metres.
+    /// - Parameter width: the other, in metres. Order does not matter.
+    /// - Returns: the corner radius in metres, or `defaultCornerRadiusOnCopper` if either dimension is
+    /// missing or nonsensical.
+    static func CornerRadius(thickness:Double, width:Double) -> Double {
+
+        guard thickness > 0.0, width > 0.0, thickness.isFinite, width.isFinite else {
+
+            return defaultCornerRadiusOnCopper
+        }
+
+        let t = min(thickness, width)
+        let w = max(thickness, width)
+
+        // The square-wire footnote, which overrides the table. The tolerance is there because a design
+        // file's two dimensions for a square strand are separate numbers and need not be bit-identical;
+        // 1% is far tighter than the gap to the next standard size and far looser than float noise.
+        if w <= t * 1.01, t <= 0.072 * meterPerInch {
+
+            return 0.30E-3
+        }
+
+        for row in cornerRadiusTable where t < row.underThickness {
+
+            switch w >= 0.751 * meterPerInch ? row.wide : (w >= 0.189 * meterPerInch ? row.medium : row.narrow) {
+
+            case .radius(let r): return r
+            case .roundedEdge, .notTabulated: return t / 2.0
+            }
+        }
+
+        // Unreachable: the last row's bound is infinite.
+        return defaultCornerRadiusOnCopper
+    }
+
+    /// One cell of the corner-radius table.
+    private enum CornerRadiusEntry {
+
+        /// A specified radius, in metres.
+        case radius(Double)
+        /// Too thin for a specified corner - the edge is a full half-round of the thickness.
+        case roundedEdge
+        /// No entry, because the thickness band exceeds the width band. See CornerRadius.
+        case notTabulated
+    }
+
+    /// One row of the corner-radius table: a thickness band and its three width columns.
+    private struct CornerRadiusRow {
+
+        /// The row applies to thicknesses strictly BELOW this. The table's rows read "Under X to Y Incl.",
+        /// so each band is closed at the bottom and open at the top, and the rows are stored in ascending
+        /// order so that the first match is the right one.
+        let underThickness:Double
+        /// Width 0.751 in. (19.08 mm) and over.
+        let wide:CornerRadiusEntry
+        /// Width 0.189 to 0.750 in. (4.79 to 19.07 mm) incl.
+        let medium:CornerRadiusEntry
+        /// Width up to 0.188 in. (4.78 mm) incl.
+        let narrow:CornerRadiusEntry
+    }
+
+    /// The Essex p.54 table verbatim, thinnest row first. See CornerRadius for the source and the reading.
+    ///
+    ///     thickness (in.)          >= 0.751     0.189-0.750   <= 0.188
+    ///     0.689 and over           0.188        0.188         -
+    ///     under 0.689 to 0.439     0.125        0.094         -
+    ///     under 0.439 to 0.226     0.094        0.039         -
+    ///     under 0.226 to 0.166     0.063        0.039         0.039
+    ///     under 0.166 to 0.126     0.063        0.031         0.031
+    ///     under 0.126 to 0.096     rounded      0.031         0.026
+    ///     under 0.096 to 0.061     rounded      0.031         0.020
+    ///     under 0.061              rounded      rounded       rounded
+    private static let cornerRadiusTable:[CornerRadiusRow] = [
+
+        CornerRadiusRow(underThickness: 0.061 * meterPerInch, wide: .roundedEdge,      medium: .roundedEdge,     narrow: .roundedEdge),
+        CornerRadiusRow(underThickness: 0.096 * meterPerInch, wide: .roundedEdge,      medium: .radius(0.81E-3), narrow: .radius(0.51E-3)),
+        CornerRadiusRow(underThickness: 0.126 * meterPerInch, wide: .roundedEdge,      medium: .radius(0.81E-3), narrow: .radius(0.66E-3)),
+        CornerRadiusRow(underThickness: 0.166 * meterPerInch, wide: .radius(1.60E-3),  medium: .radius(0.81E-3), narrow: .radius(0.81E-3)),
+        CornerRadiusRow(underThickness: 0.226 * meterPerInch, wide: .radius(1.60E-3),  medium: .radius(1.02E-3), narrow: .radius(1.02E-3)),
+        CornerRadiusRow(underThickness: 0.439 * meterPerInch, wide: .radius(2.39E-3),  medium: .radius(1.02E-3), narrow: .notTabulated),
+        CornerRadiusRow(underThickness: 0.689 * meterPerInch, wide: .radius(3.18E-3),  medium: .radius(2.39E-3), narrow: .notTabulated),
+        CornerRadiusRow(underThickness: .infinity,            wide: .radius(4.78E-3),  medium: .radius(4.78E-3), narrow: .notTabulated)
+    ]
 
     // MARK: The two field reductions
 
@@ -220,10 +342,10 @@ enum DielectricStress {
 
     /// The peak field in each layer at a conductor CORNER, in V/m.
     ///
-    /// The corner is treated locally as a cylinder of radius 'cornerRadiusOnCopper' carrying the same
-    /// concentric dielectric layers that the flat part of the gap carries - which is precisely the
-    /// geometry CoaxialField already solves, so there is no separate model and no tabulated enhancement
-    /// factor here.
+    /// The corner is treated locally as a cylinder of radius 'cornerRadius' carrying the same concentric
+    /// dielectric layers that the flat part of the gap carries - which is precisely the geometry
+    /// CoaxialField already solves, so there is no separate model and no tabulated enhancement factor
+    /// here. The RADIUS is tabulated, by the wire manufacturer; see CornerRadius(thickness:width:).
     ///
     /// Note what the caller must get right: the paper FOLLOWS the corner, so the copper corner radius is
     /// where the paper's field is read and the paper's outer radius is where the oil's field is read.
@@ -231,7 +353,7 @@ enum DielectricStress {
     ///
     /// Worked example, kept here as a regression anchor. A 4 mm oil duct between two discs each wrapped
     /// with 0.4 mm of paper per face (that is, a two-sided turnInsulation of 0.8 mm), εPaper 3.5,
-    /// εOil 2.2, so the stack is paper 0.4 / oil 4.0 / paper 0.4:
+    /// εOil 2.2, so the stack is paper 0.4 / oil 4.0 / paper 0.4, at the 0.81 mm default radius:
     ///
     ///     laminar:  Σ(ℓ/ε) = 0.4/3.5 + 4.0/2.2 + 0.4/3.5 = 2.0468 mm,  E_oil = V/4.5029 per mm
     ///     corner:   radii 0.81 -> 1.21 -> 5.21 -> 5.61 mm,  Σ(1/ε)ln(r/r) = 0.79942
@@ -247,9 +369,13 @@ enum DielectricStress {
     /// make the true field lower than this model says. Over-predicting is the right direction for a
     /// screen, so do NOT "correct" the conservatism - the number is used to decide where to look, and
     /// the cost of a false alarm is one FE run while the cost of a miss is a failed coil.
-    static func CornerField(volts:Double, layers:[DielectricLayer]) -> [Double] {
+    ///
+    /// - Parameter cornerRadius: the strand's corner radius in metres, normally from
+    /// CornerRadius(thickness:width:). Defaults to the fallback constant so that the doc comment's
+    /// worked example above, and VerifySelf's anchor on it, keep meaning what they say.
+    static func CornerField(volts:Double, layers:[DielectricLayer], cornerRadius:Double = defaultCornerRadiusOnCopper) -> [Double] {
 
-        return CoaxialField(volts: volts, layers: layers, innerRadius: cornerRadiusOnCopper)
+        return CoaxialField(volts: volts, layers: layers, innerRadius: cornerRadius)
     }
 
     // MARK: Allowables
@@ -529,6 +655,10 @@ enum DielectricStress {
         let usesCornerModel:Bool
         /// The total gap thickness, for the report. Metres.
         let gapLength:Double
+        /// The corner radius of the strand whose corner faces this gap, in metres - the reference electrode's, since that is the
+        /// surface CornerField reads the first layer's field at. From DielectricStress.CornerRadius(thickness:width:) wherever the
+        /// design file gives strand dimensions; the fallback constant otherwise. Ignored when usesCornerModel is false.
+        var cornerRadius:Double = defaultCornerRadiusOnCopper
 
         /// For a site that belongs to a voltage-versus-height profile, the name of the profile it belongs to (which coil against
         /// which) and its height. Nil for sites that are not part of a profile.
@@ -583,6 +713,9 @@ enum DielectricStress {
         /// Always nil at present: there is no sourced allowable for a corner peak. Kept so that the report can carry one if a
         /// defensible peak criterion is ever adopted.
         let peakUtilization:Double?
+        /// The strand corner radius the peak field was computed at, in metres. Carried so the report can say which one it used -
+        /// it is the dominant assumption behind the corner columns, and it now varies from coil to coil.
+        var cornerRadius:Double = defaultCornerRadiusOnCopper
 
         /// How much the conductor corner concentrates the field over the average, or nil where the corner model does not apply.
         var cornerEnhancement:Double? {
@@ -647,8 +780,9 @@ enum DielectricStress {
                 ? CoaxialField(volts: volts, layers: column, innerRadius: site.innerRadius!)
                 : LaminarField(volts: volts, layers: column)
 
-            // The peak field at a conductor corner, from the same stack - see CornerField.
-            let peakFields = site.usesCornerModel ? CornerField(volts: volts, layers: column) : []
+            // The peak field at a conductor corner, from the same stack and at the strand's own tabulated corner radius - see
+            // CornerField and CornerRadius.
+            let peakFields = site.usesCornerModel ? CornerField(volts: volts, layers: column, cornerRadius: site.cornerRadius) : []
 
             for (i, layer) in column.enumerated() {
 
@@ -693,6 +827,7 @@ enum DielectricStress {
                            peakField: bestPeak,
                            averageUtilization: bestUtilization,
                            peakUtilization: nil,
+                           cornerRadius: site.cornerRadius,
                            profileName: site.profileName,
                            profileHeight: site.profileHeight)
     }
@@ -847,6 +982,10 @@ enum DielectricStress {
                 continue
             }
 
+            // The corner facing an axial gap is the corner of one elementary STRAND, not of the whole turn or cable: a CTC or a
+            // multi-strand cable presents each strand's own corner to the gap, and it is the smallest radius that governs.
+            let cornerRadius = CornerRadius(thickness: bs.wdgData.turn.strandRadial, width: bs.wdgData.turn.strandAxial)
+
             // ---- the gaps INSIDE this Segment, between the discs it holds ----
             //
             // A multi-disc Segment (a combine, or an interleaved pair) has no node between its discs, so the voltage there is not
@@ -874,7 +1013,8 @@ enum DielectricStress {
                                              columns: [stacks.keySpacer, stacks.oil],
                                              innerRadius: nil,
                                              usesCornerModel: true,
-                                             gapLength: gap))
+                                             gapLength: gap,
+                                             cornerRadius: cornerRadius))
                 }
             }
 
@@ -945,7 +1085,8 @@ enum DielectricStress {
                                      // A static ring presents a smoothly wrapped surface to the gap, not a conductor corner, so the
                                      // corner model does not apply on that side. That is the whole point of fitting one.
                                      usesCornerModel: !facesStaticRing,
-                                     gapLength: gap))
+                                     gapLength: gap,
+                                     cornerRadius: cornerRadius))
         }
     }
 
@@ -1033,7 +1174,10 @@ enum DielectricStress {
                                      columns: [column],
                                      innerRadius: nil,
                                      usesCornerModel: true,
-                                     gapLength: tp))
+                                     gapLength: tp,
+                                     // Radially adjacent turns face each other corner to corner, and it is the same strand on both
+                                     // sides of the paper, so one radius describes the site.
+                                     cornerRadius: CornerRadius(thickness: bs.wdgData.turn.strandRadial, width: bs.wdgData.turn.strandAxial)))
         }
     }
 
@@ -1078,6 +1222,18 @@ enum DielectricStress {
             var oilColumn = stack.oil
             var stackInnerRadius = stack.innerRadius
 
+            // The corner the hilo model reads is the one on the REFERENCE electrode, since CornerField evaluates the stack from its
+            // innermost surface outwards. Where that surface is the inner coil's copper it is that coil's strand; where it is a core,
+            // a tank or a radial shield there is no conductor corner at all, and this coil's own strand is the nearest thing to a
+            // meaningful figure. (Whether the corner model belongs on those sites is a separate question - see usesCornerModel.)
+            var cornerRadius = defaultCornerRadiusOnCopper
+
+            if let ownSeg = await model.SegmentAt(location: LocStruct(radial: coil, axial: 0)),
+               let ownBS = await ownSeg.basicSections.first {
+
+                cornerRadius = CornerRadius(thickness: ownBS.wdgData.turn.strandRadial, width: ownBS.wdgData.turn.strandAxial)
+            }
+
             if kind == .radialCoilToCoil,
                (try? await model.RadialShieldInside(coil: coil)) ?? nil == nil,
                let innerSeg = await model.SegmentAt(location: LocStruct(radial: coil - 1, axial: 0)),
@@ -1090,6 +1246,8 @@ enum DielectricStress {
                     stickColumn.insert(innerPaper, at: 0)
                     oilColumn.insert(innerPaper, at: 0)
                     stackInnerRadius -= innerPaper.thickness
+
+                    cornerRadius = CornerRadius(thickness: innerBS.wdgData.turn.strandRadial, width: innerBS.wdgData.turn.strandAxial)
                 }
             }
 
@@ -1140,6 +1298,7 @@ enum DielectricStress {
                                          innerRadius: stackInnerRadius,
                                          usesCornerModel: true,
                                          gapLength: stickColumn.reduce(0.0) { $0 + $1.thickness },
+                                         cornerRadius: cornerRadius,
                                          profileName: "Coil \(coil) to \(innerName)",
                                          profileHeight: point.z))
             }
@@ -1176,6 +1335,8 @@ enum DielectricStress {
                                              innerRadius: r2,
                                              usesCornerModel: true,
                                              gapLength: tOil + tSolid,
+                                             // Here the reference electrode IS this coil - the stack starts with its own half-wrap.
+                                             cornerRadius: CornerRadius(thickness: bs.wdgData.turn.strandRadial, width: bs.wdgData.turn.strandAxial),
                                              profileName: "Coil \(outermost.radialPos) to tank",
                                              profileHeight: point.z))
                 }
@@ -1339,6 +1500,37 @@ enum DielectricStress {
             if !monotone { failures += 1 }
             report.append("\(monotone ? "PASS" : "FAIL") corner field is not below laminar field")
         }
+
+        // 4b. The Essex p.54 corner-radius table. One cell per row of it, plus the rules around its edges: a mistyped bound shows up
+        //     as a neighbouring cell's value, which is exactly what these pin. Dimensions are given in inches and converted here so
+        //     that they can be read straight off the printed page.
+        func inches(_ x:Double) -> Double { return x * meterPerInch }
+
+        check("table 0.750 x 1.000 in.", CornerRadius(thickness: inches(0.750), width: inches(1.000)), 4.78E-3, tolerance: 1.0E-12)
+        check("table 0.500 x 1.000 in.", CornerRadius(thickness: inches(0.500), width: inches(1.000)), 3.18E-3, tolerance: 1.0E-12)
+        check("table 0.300 x 1.000 in.", CornerRadius(thickness: inches(0.300), width: inches(1.000)), 2.39E-3, tolerance: 1.0E-12)
+        check("table 0.200 x 1.000 in.", CornerRadius(thickness: inches(0.200), width: inches(1.000)), 1.60E-3, tolerance: 1.0E-12)
+        check("table 0.300 x 0.500 in.", CornerRadius(thickness: inches(0.300), width: inches(0.500)), 1.02E-3, tolerance: 1.0E-12)
+        check("table 0.140 x 0.500 in.", CornerRadius(thickness: inches(0.140), width: inches(0.500)), 0.81E-3, tolerance: 1.0E-12)
+        check("table 0.110 x 0.150 in.", CornerRadius(thickness: inches(0.110), width: inches(0.150)), 0.66E-3, tolerance: 1.0E-12)
+        check("table 0.080 x 0.150 in.", CornerRadius(thickness: inches(0.080), width: inches(0.150)), 0.51E-3, tolerance: 1.0E-12)
+
+        // The band boundaries are closed at the bottom and open at the top ("Under 0.226 to 0.166 Incl."), so 0.166 belongs to the
+        // 0.166-0.226 row and anything below it to the next one down.
+        check("table boundary 0.166 in. (inclusive low end)", CornerRadius(thickness: inches(0.166), width: inches(0.500)), 1.02E-3, tolerance: 1.0E-12)
+        check("table boundary just under 0.166 in.", CornerRadius(thickness: inches(0.1659), width: inches(0.500)), 0.81E-3, tolerance: 1.0E-12)
+
+        // A wide-but-thin strand gets a full rounded edge: half the thickness, not a tabulated radius.
+        check("rounded edge, 0.090 x 1.000 in.", CornerRadius(thickness: inches(0.090), width: inches(1.000)), inches(0.090) / 2.0, tolerance: 1.0E-12)
+        check("rounded edge, 0.050 x 0.500 in.", CornerRadius(thickness: inches(0.050), width: inches(0.500)), inches(0.050) / 2.0, tolerance: 1.0E-12)
+
+        // The square-wire footnote overrides the table below 0.072 in., and does NOT apply above it.
+        check("square wire 0.060 in. footnote", CornerRadius(thickness: inches(0.060), width: inches(0.060)), 0.30E-3, tolerance: 1.0E-12)
+        check("square wire 0.080 in. is table, not footnote", CornerRadius(thickness: inches(0.080), width: inches(0.080)), 0.51E-3, tolerance: 1.0E-12)
+
+        // Order must not matter, and a missing dimension must fall back rather than return zero.
+        check("table is symmetric in its arguments", CornerRadius(thickness: inches(0.500), width: inches(0.140)), CornerRadius(thickness: inches(0.140), width: inches(0.500)), tolerance: 1.0E-12)
+        check("no strand data falls back", CornerRadius(thickness: 0.0, width: 0.010), defaultCornerRadiusOnCopper, tolerance: 1.0E-12)
 
         // 5. The chapter 13 allowables, spot-checked at 1 mm where every power law reduces to its coefficient. This guards the
         //    transcription of the equations themselves - a mistyped coefficient or a sign error on an exponent shows up here.

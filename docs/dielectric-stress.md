@@ -105,10 +105,31 @@ peak. That is precisely where the book says (p.16) "there is usually some judgme
 The one figure here that is an extrapolation rather than a citation is `creepImpulseRatio` (the book gives creep only at power
 frequency); it is isolated as a named constant for that reason, and is on the unused creep path.
 
-**The corner model is geometry, not a tabulated factor.** `CoaxialField` does double duty: at r ≈ 0.3 m it is the hilo, at
-r = `cornerRadiusOnCopper` (0.81 mm, ≈ 1/32″, a documented editable constant) it *is* the corner. The paper follows the corner, so
-the paper's field is read at the copper radius and the oil's at the paper's outer radius. Anchor to re-check after any edit: a 4 mm
-duct with 0.4 mm paper per face gives **2.12×** over laminar.
+**The corner model is geometry, not a tabulated factor — but the radius it turns on *is* tabulated.** `CoaxialField` does double
+duty: at r ≈ 0.3 m it is the hilo, at the strand's corner radius it *is* the corner. The paper follows the corner, so the paper's
+field is read at the copper radius and the oil's at the paper's outer radius. Anchor to re-check after any edit: a 4 mm duct with
+0.4 mm paper per face, at the 0.81 mm fallback radius, gives **2.12×** over laminar.
+
+`DielectricStress.CornerRadius(thickness:width:)` reads the radius off **Essex *Magnet Wire / Winding Wire Engineering Data* p. 54**
+("RECTANGULAR, BARE WIRE — DIMENSIONAL LIMITS"), which cites **ASTM B 48**, so it is the industry limit rather than one shop's
+practice. The PDF is `~/Documents/MyProjects/Claude/EssexCornerRadius.pdf`. It takes the **bare strand's own two dimensions**
+(`TurnData.strandRadial`/`strandAxial`) — not the turn, not the cable: a CTC presents each strand's corner to the gap. `StressSite`
+and `StressCheck` both carry the radius that was used, and the report shows it as a tooltip on the two corner columns.
+
+The table is genuinely two-dimensional and the spread is large — 0.81 mm for a 4 × 10 mm strand, 1.02 mm at 6 × 10 mm, 3.18 mm at
+12 × 25 mm — a factor of four across sizes that all appear in ordinary disc coils, and the peak field goes as 1/√r. That is why one
+constant would not do. Four things in the reading are easy to get wrong, and `VerifySelf` pins all of them:
+
+- **Thickness is the smaller dimension**; the arguments are sorted, not trusted.
+- Bands are **closed at the bottom, open at the top** ("Under 0.226 to 0.166 Incl." means 0.166 ≤ t < 0.226).
+- **"Rounded Edge" is not a radius.** The page's own note — an edge with "corner radii that are essentially half the thickness of
+  the wire" — is what those cells return.
+- **The square-wire footnote overrides the table** and is applied first: square wire ≤ 0.072 in. (1.83 mm) gets 0.012 in. (0.30 mm).
+
+The printed **mm** values are used for the radii (the page's inch and mm columns disagree slightly in two cells — 0.039 in. printed
+as 1.02 mm, 0.031 in. as 0.81 mm) and exact **inch** conversions for the band boundaries. `defaultCornerRadiusOnCopper` (0.81 mm)
+survives only as the fallback for a site with no strand data — a static ring, a radial shield, a design file with no cable
+definition.
 
 ## A hilo is a stack of ducts, and lumping it is only legal for the capacitance (2026-08-09)
 

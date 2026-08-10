@@ -92,7 +92,7 @@ class StressReportWindow:NSWindowController {
                 return "The field at a conductor corner, kV/mm, from the same dielectric stack. Informational: ch. 13's data are uniform-gap measurements, so there is no sourced allowable to judge a corner peak against."
 
             case .peakMargin:
-                return "How much the conductor corner concentrates the field over the average - a ratio, NOT a margin. This column is where a finite-element run earns its keep."
+                return "How much the conductor corner concentrates the field over the average - a ratio, NOT a margin. The corner radius comes from the strand's own dimensions via the Essex/ASTM B 48 table; hover a cell to see the one used. This column is where a finite-element run earns its keep."
             }
         }
     }
@@ -374,6 +374,17 @@ extension StressReportWindow:NSTableViewDelegate {
 
         default:
             field.textColor = NSColor.labelColor
+        }
+
+        // The corner radius is the dominant assumption behind both corner columns and it now varies from coil to coil, so say which
+        // one this row used rather than making the reader guess. Per-cell, because there is no column-wide answer any more.
+        switch column {
+
+        case .peakField, .peakMargin:
+            field.toolTip = check.peakField == nil ? nil : String(format: "Strand corner radius %.2f mm (Essex/ASTM B 48 table)", check.cornerRadius * 1000.0)
+
+        default:
+            field.toolTip = nil
         }
 
         return cell
