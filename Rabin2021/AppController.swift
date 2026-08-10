@@ -173,7 +173,12 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
     /// The currently-running inductance calculation, if any. Held so that it can be cancelled.
     var runningInductanceTask:Task<Void, Error>? = nil
-    
+
+    /// The recalculation currently in flight, if any. See recalculateModel() for what this is for - in short, a recalculation is
+    /// minutes long and full of suspension points, so without a handle on it nothing stops a second one from being started on top
+    /// of the first and clobbering every piece of state the two of them share.
+    private var runningRecalculationTask:Task<Void, Never>? = nil
+
     struct SimulationResults {
         
         let waveForm:SimulationModel.WaveForm
@@ -439,15 +444,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     // MARK: Long-running function completion routine(s)
     
-    func didFinishInductanceCalculation() async {
-        
-        // the '===' operator compares references
-        guard let fePhase = self.currentFePhase else {
-            
-            DLog("PchFePhase does not match the one in memory!")
-            return
-        }
-        
+    /// - Parameter phase: the PchFePhase the finished calculation ran on. It is passed in rather than read back out of
+    /// `currentFePhase` because that property says only which phase is *newest*, not which one this call is reporting on. While
+    /// recalculateModel could be re-entered, those were two different things: a run that finished while a second recalculation was
+    /// under way read the second run's half-built phase here, found no inductance matrix on it, turned the light red and returned
+    /// before setting inductanceIsValid - having already zeroed and hidden the progress bar the still-running calculation was
+    /// using. The gate in recalculateModel makes that overlap impossible; taking the phase as an argument makes it unstateable.
+    func didFinishInductanceCalculation(phase fePhase:PchFePhase) async {
+
         DLog("Got inductance completion message!")
         self.inductanceLight.textColor = await fePhase.inductanceMatrix != nil ? .green : .red
         
@@ -519,7 +523,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// - Parameter xFile: The ExcelDesignFile that was inputted. If this is non-nil and 'reinitialize' is set to true, the existing model is overwtitten using the contents of the file.
     /// - Parameter reinitialize: Boolean value set to true if the entire memory should be reinitialized. If xlFile is non-nil, the it is used to overwrite the exisitng model. Otherwise, the model is reinitialized using the BasicSections in the AppController's currentSections array.
     func updateModel(oldSegments:[Segment], newSegments:[Segment], xlFile:PCH_ExcelDesignFile?, reinitialize:Bool) async {
-        
+
+        // Ask any recalculation already in flight to stop BEFORE the store is touched, not after. recalculateModel() supersedes it
+        // anyway at the bottom of this routine, but by then the segment swap below has already happened and the old run - which
+        // suspends at every await - could have woken up in the middle of it and read a store that is half old and half new.
+        // Signalling first means its next checkpoint sees the cancellation instead.
+        self.CancelRecalculationInFlight()
+
         if reinitialize {
             
             if let file = xlFile {
@@ -582,7 +592,65 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// place. The inductance is the expensive step by orders of magnitude, and it is also the one that anything exploring geometry
     /// variations (a wound-in-shield grading search, say) does not need on every trial: the geometry moves by millimetres on a coil
     /// of a hundred, so the sane pattern is to hold the inductance fixed through the search and recompute it once at the end.
+    ///
+    /// - important: This is the **gate**, not the work - the work is PerformRecalculation(). At most one recalculation runs at a
+    /// time, and a new request supersedes whatever is in flight. Everything below the gate is single-run state: currentFePhase,
+    /// runningInductanceTask, indCalcProgInd, inductanceIsValid/capacitanceIsValid, and the PhaseModel itself. AppController is
+    /// @MainActor but this routine is minutes long and is `await`ed at every step of the way, so before the gate existed every one
+    /// of those suspension points was an opening for a second run to start on top of the first: interleaving one coil and then
+    /// interleaving a second one before the first calculation finished left two recalculations alive, each overwriting the other's
+    /// fePhase and inductance-task handle (so Cancel Inductance could no longer reach either), both driving the one progress bar
+    /// from their own InductanceProgress stream and each zeroing it as it began - the progress indicator appearing to restart over
+    /// and over - and the older of the two finally writing an inductance matrix computed for a geometry the newer one had already
+    /// replaced.
+    ///
+    /// Superseding rather than blocking is the right semantics because the in-flight result is *stale*, not merely late: the
+    /// caller has already changed the geometry it was computed for. The user is never locked out of the editing commands.
     func recalculateModel(reinitialize:Bool, includeInductance:Bool = true) async {
+
+        self.CancelRecalculationInFlight()
+
+        let superseded = self.runningRecalculationTask
+
+        let recalculation = Task { @MainActor in
+
+            // Task<Void, Never>, so this cannot throw and is not itself a cancellation point - it just waits out the unwind.
+            await superseded?.value
+
+            // A request that was itself superseded while queued here never runs at all: the only work worth doing is the newest.
+            guard !Task.isCancelled else {
+
+                return
+            }
+
+            await self.PerformRecalculation(reinitialize: reinitialize, includeInductance: includeInductance)
+        }
+
+        self.runningRecalculationTask = recalculation
+
+        await recalculation.value
+
+        // Only clear it if we are still the newest request - a later caller has already put its own task here.
+        if self.runningRecalculationTask == recalculation {
+
+            self.runningRecalculationTask = nil
+        }
+    }
+
+    /// Ask the recalculation currently in flight, if any, to stop. Cancellation is cooperative all the way down (the checkpoints in
+    /// PerformRecalculation and, below those, the ones in the package's InductanceForMesh), so this only signals - use
+    /// recalculateModel(), which waits for the unwind before it starts anything, rather than calling this and pressing on.
+    ///
+    /// The inductance task is cancelled explicitly as well as the wrapper because it is unstructured: the wrapper's cancellation
+    /// does reach it, through the withTaskCancellationHandler in PerformRecalculation, but only once the wrapper has got that far.
+    private func CancelRecalculationInFlight() {
+
+        self.runningInductanceTask?.cancel()
+        self.runningRecalculationTask?.cancel()
+    }
+
+    /// The body of recalculateModel(). Call the gate, not this - see its `important` note for why.
+    private func PerformRecalculation(reinitialize:Bool, includeInductance:Bool) async {
 
         guard let model = self.currentModel, let excelFile = self.currentXLfile else {
 
@@ -596,6 +664,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         // BasicSections and would otherwise silently drop the build-up.
         await model.ApplyRadialBuildUp()
         self.tankDepth = await model.tankDepth
+
+        // Nothing below this point is worth doing if a newer request is already waiting on us, and the geometry it is waiting to
+        // recalculate is not the geometry the rest of this routine is about to read.
+        guard !Task.isCancelled else {
+
+            return
+        }
 
         capacitanceIsValid = false
 
@@ -623,8 +698,15 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         inductanceIsValid = false
 
         guard let fePhase = await CreateFePhase(xlFile: excelFile, model: model) else {
-            
-            PCH_ErrorAlert(message: "Could not create finite element model!")
+
+            // A superseded run reports nothing. Its caller has already changed the geometry out from under it, so a complaint here
+            // is about a model that no longer exists and the newer run is the one that gets to have an opinion. Same reasoning at
+            // the FE-section-count guard below, and on the error paths at the end.
+            if !Task.isCancelled {
+
+                PCH_ErrorAlert(message: "Could not create finite element model!")
+            }
+
             return
         }
         
@@ -759,7 +841,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
         guard feSectionCount == coilSegments.count else {
 
-            PCH_ErrorAlert(message: "The finite-element model does not match the phase model!", info: "\(feSectionCount) FE sections for \(coilSegments.count) Segments.")
+            // A superseded run reaches this legitimately: the caller that superseded it added or removed Segments after fePhase was
+            // built from the old store, so the two disagreeing here is the expected outcome rather than a broken model.
+            if !Task.isCancelled {
+
+                PCH_ErrorAlert(message: "The finite-element model does not match the phase model!", info: "\(feSectionCount) FE sections for \(coilSegments.count) Segments.")
+            }
+
             return
         }
 
@@ -794,12 +882,23 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             try await fePhase.SetEddyLosses()
         }
         catch {
-            
-            let alert = NSAlert(error: error)
-            let _ = alert.runModal()
+
+            if !Task.isCancelled {
+
+                let alert = NSAlert(error: error)
+                let _ = alert.runModal()
+            }
+
             return
         }
-        
+
+        // The FE solve above is the last long stretch before the inductance calculation, and none of it checks for cancellation.
+        // Bail here rather than light up the progress bar and start minutes of work for a geometry that has already been replaced.
+        guard !Task.isCancelled else {
+
+            return
+        }
+
         
         
         
@@ -850,7 +949,17 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
         do {
 
-            try await inductanceTask.value
+            // Task {} is UNSTRUCTURED, so inductanceTask does not inherit this task's cancellation - being superseded would
+            // otherwise leave the calculation grinding away to completion with nobody waiting for the answer. The handler forwards
+            // it; the Cancel Inductance menu item goes at runningInductanceTask directly and lands in the same catch below.
+            try await withTaskCancellationHandler {
+
+                try await inductanceTask.value
+
+            } onCancel: {
+
+                inductanceTask.cancel()
+            }
 
             self.runningInductanceTask = nil
             indProgressContinuation.finish()
@@ -864,7 +973,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
             await model.SetInductanceMatrices(unfactoreM: indMatrix, M: try await indMatrix.FactorizedAs(.Cholesky))
 
-            await didFinishInductanceCalculation()
+            await didFinishInductanceCalculation(phase: fePhase)
 
             try await model.CalculateCapacitanceMatrix()
             capacitanceIsValid = true
@@ -877,12 +986,15 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             self.runningInductanceTask = nil
             indProgressContinuation.finish()
             await indProgressTask.value
-            await didFinishInductanceCalculation()
+            await didFinishInductanceCalculation(phase: fePhase)
 
             // A user-requested cancellation is not a failure, so no alert. The matrix is incomplete either way, so the model has to be marked invalid - didFinishInductanceCalculation() only sets the flag on the success path, and a previous run could have left it true.
             inductanceIsValid = false
 
-            if error is CancellationError {
+            // Task.isCancelled covers the supersede case, where the error can be anything: the package throws CancellationError
+            // from its own checkpoints, but a run cut off part way can just as well surface as a mesh or solver failure. Neither is
+            // something to bother the user with when the run was abandoned on purpose.
+            if error is CancellationError || Task.isCancelled {
 
                 DLog("Inductance calculation cancelled")
             }

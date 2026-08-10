@@ -26,6 +26,34 @@ throttled report site — a long run of rejected steps would otherwise never rea
 every `points/200` completed solves; unlike the RK45 bar, its progress is genuinely **linear in wall-clock time**, because every
 contour point costs the same.
 
+## `@MainActor` is not mutual exclusion — `recalculateModel` is gated
+
+`AppController` is `@MainActor`, and that guarantees nothing about a long `async` method running only once at a time. `@MainActor`
+serialises *steps*, not *calls*: every `await` is a suspension point at which the main actor is free to run something else, and
+`recalculateModel` is minutes long and `await`s at nearly every line. Any menu action that spawns a `Task { … }` — which is all of
+them — could therefore start a second full recalculation on top of the first.
+
+The symptom, when it happened, was interleaving one coil and then interleaving a *second* coil before the first inductance
+calculation had finished. Two recalculations then ran at once over state that is inherently single-run, and each one clobbered the
+other's:
+
+| Shared state | What the overlap did |
+|---|---|
+| `currentFePhase` | The newer run overwrote it. `didFinishInductanceCalculation()` read it back and so reported on the *other* run's half-built phase: no inductance matrix on it yet, so it turned the light red and returned before ever setting `inductanceIsValid`. |
+| `runningInductanceTask` | Each run overwrote the other's handle and then nil'd it on completion, so **Cancel Inductance could no longer reach the calculation that was actually running**. |
+| `indCalcProgInd` | Two `InductanceProgress` streams drove the one bar from different fractions, and each run zeroed it as it started — the bar appeared to climb part-way and restart, over and over. |
+| the `PhaseModel` | The older run's `fePhase` was built from the pre-edit segment store. It kept walking `CoilSegments()` for eddy losses and FE currents while the newer run swapped Segments underneath it, and then wrote an inductance matrix computed for a winding that no longer existed. |
+
+`recalculateModel` is now a **gate**; the work lives in `PerformRecalculation`. A new request calls
+`CancelRecalculationInFlight()`, then queues a task that waits out the old run's unwind before touching anything. Points worth
+keeping:
+
+- **Supersede, don't block.** The in-flight result is *stale*, not merely late — its caller has already changed the geometry it was computed for. Disabling the editing menu items instead (the way `simulateMenuItem` gates on `runningSimulationTask == nil`) would lock the user out for the length of a full inductance run to protect an answer that is already garbage.
+- **`Task {}` is unstructured and does not inherit cancellation**, so cancelling the gate does *not* reach the inner `inductanceTask` on its own. `withTaskCancellationHandler` forwards it. The Cancel Inductance menu item still cancels `runningInductanceTask` directly and lands in the same `catch`.
+- **A superseded run must stay silent.** It legitimately reaches the `feSectionCount == coilSegments.count` guard (the store changed under it) and can fail anywhere in the FE solve, so every alert on those paths is guarded by `!Task.isCancelled`, and the `catch` treats `Task.isCancelled` the same as a `CancellationError` — a cut-off run surfaces as a mesh or solver failure just as readily.
+- **Cancel before mutating.** `updateModel` signals cancellation at the *top*, before the segment swap, so the old run's next checkpoint sees it rather than waking up in a store that is half old and half new.
+- **`didFinishInductanceCalculation` takes its phase as a parameter.** Reading `currentFePhase` told it which phase was *newest*, not which one it was reporting on. The gate makes the overlap impossible; the parameter makes it unstateable.
+
 ## Bounded parallelism in the frequency sweep
 
 The frequency sweep bounds its own parallelism to one task per core (primed, then topped up as each completes) rather than
