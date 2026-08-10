@@ -199,10 +199,10 @@ either side of a ring agree about it. The interleaved variant is the reported fa
 full recalculation.
 
 Fitting the rings is not cosmetic, and the numbers say why: on the plain HV the two end discs go from **0.294 of the mean section
-Cs to 0.712**, and the line-end gradient from **30.31× to 15.96×** with the worst section voltage from 65.4 kV to 50.7 kV. That is
+Cs to 0.702**, and the line-end gradient from **30.31× to 16.14×** with the worst section voltage from 65.4 kV to 51.3 kV. That is
 `SeriesCapacitance`'s static-ring branch (DV 12.62) replacing its end-disc branch (12.63-64): an end disc with no ring has a
 neighbour on one side only and loses its outward C_dd entirely, while a ring gives it a facing electrode across 1.96 mm of oil plus
-the ring's own 3 mm/side wrap. It does not recover *all* of it — the wrap is thick — hence 0.71 and not 1.0. **None of this was
+the ring's own 3.18 mm/side wrap. It does not recover *all* of it — the wrap is thick — hence 0.70 and not 1.0. **None of this was
 reachable before 2026-08-08**, because `SegmentAt` could not find a static ring at all (see `docs/segments-and-geometry.md`), so the
 ring was in the picture and out of the physics.
 

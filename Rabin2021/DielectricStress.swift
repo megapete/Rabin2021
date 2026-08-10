@@ -655,10 +655,15 @@ enum DielectricStress {
         let usesCornerModel:Bool
         /// The total gap thickness, for the report. Metres.
         let gapLength:Double
-        /// The corner radius of the strand whose corner faces this gap, in metres - the reference electrode's, since that is the
-        /// surface CornerField reads the first layer's field at. From DielectricStress.CornerRadius(thickness:width:) wherever the
-        /// design file gives strand dimensions; the fallback constant otherwise. Ignored when usesCornerModel is false.
+        /// The corner radius of the electrode this stack STARTS at, in metres - the surface CornerField reads the first layer's
+        /// field at. From DielectricStress.CornerRadius(thickness:width:) wherever the design file gives strand dimensions; the
+        /// fallback constant otherwise. Ignored when usesCornerModel is false.
         var cornerRadius:Double = defaultCornerRadiusOnCopper
+        /// The corner radius of the electrode at the FAR end of the stack, in metres, or nil where the far side has no corner worth
+        /// modelling. A gap has two electrodes and either may be the sharper one - see Evaluate, which reads the stack from both
+        /// ends and keeps the worse. Nil is not the same as "smooth": it means the far electrode is not represented at all, which is
+        /// the honest answer for a core or a tank wall whose surface this model does not know.
+        var farCornerRadius:Double? = nil
 
         /// For a site that belongs to a voltage-versus-height profile, the name of the profile it belongs to (which coil against
         /// which) and its height. Nil for sites that are not part of a profile.
@@ -772,6 +777,7 @@ enum DielectricStress {
         var bestMaterial = DielectricLayer.Material.oil
         var bestThickness = site.gapLength
         var bestPeak:Double? = nil
+        var bestPeakRadius:Double? = nil
 
         for column in site.columns {
 
@@ -780,9 +786,21 @@ enum DielectricStress {
                 ? CoaxialField(volts: volts, layers: column, innerRadius: site.innerRadius!)
                 : LaminarField(volts: volts, layers: column)
 
-            // The peak field at a conductor corner, from the same stack and at the strand's own tabulated corner radius - see
+            // The peak field at a conductor corner, from the same stack and at the electrode's own tabulated corner radius - see
             // CornerField and CornerRadius.
+            //
+            // A GAP HAS TWO ELECTRODES, and the corner model is read from whichever one is being stood on: the field falls as 1/r
+            // away from it, so the layer against it sees the concentration and the layer at the far end does not. Reading the
+            // REVERSED stack at the far electrode's radius is the same calculation seen from the other side, and mapping it back
+            // gives a second field per layer; the worse of the two is the peak that layer actually sees.
+            //
+            // For an ordinary disc-to-disc gap the stack is symmetric and the two views agree exactly, so this changes nothing.
+            // It earns its keep where the gap is NOT symmetric - a disc facing a static ring, where 0.4 mm of turn paper on a
+            // 0.8 mm strand corner faces 3.18 mm of Kraft on a 1.6 mm foil corner, and the ring's own covering is the layer at
+            // risk. Nothing in the one-sided model could see that: it read the ring's Kraft at the far end of the gap, which is
+            // where its field is lowest.
             let peakFields = site.usesCornerModel ? CornerField(volts: volts, layers: column, cornerRadius: site.cornerRadius) : []
+            let farPeakFields:[Double] = site.usesCornerModel ? (site.farCornerRadius.map { Array(CornerField(volts: volts, layers: column.reversed(), cornerRadius: $0).reversed()) } ?? []) : []
 
             for (i, layer) in column.enumerated() {
 
@@ -800,7 +818,22 @@ enum DielectricStress {
                     bestField = average
                     bestMaterial = layer.material
                     bestThickness = layer.thickness
-                    bestPeak = i < peakFields.count ? peakFields[i] : nil
+
+                    let near = i < peakFields.count ? peakFields[i] : nil
+                    let far = i < farPeakFields.count ? farPeakFields[i] : nil
+
+                    // Keep the worse of the two views, and the radius that produced it, so the report can say which electrode the
+                    // number belongs to.
+                    if let near = near, let far = far {
+
+                        bestPeak = max(near, far)
+                        bestPeakRadius = far > near ? site.farCornerRadius : site.cornerRadius
+                    }
+                    else {
+
+                        bestPeak = near ?? far
+                        bestPeakRadius = near != nil ? site.cornerRadius : site.farCornerRadius
+                    }
                 }
             }
         }
@@ -827,7 +860,7 @@ enum DielectricStress {
                            peakField: bestPeak,
                            averageUtilization: bestUtilization,
                            peakUtilization: nil,
-                           cornerRadius: site.cornerRadius,
+                           cornerRadius: bestPeakRadius ?? site.cornerRadius,
                            profileName: site.profileName,
                            profileHeight: site.profileHeight)
     }
@@ -1014,8 +1047,47 @@ enum DielectricStress {
                                              innerRadius: nil,
                                              usesCornerModel: true,
                                              gapLength: gap,
-                                             cornerRadius: cornerRadius))
+                                             cornerRadius: cornerRadius,
+                                             // The same disc on both sides, so the two views of the stack agree.
+                                             farCornerRadius: cornerRadius))
                 }
+            }
+
+            // ---- the gaps to an adjacent STATIC RING ----
+            //
+            // These used to produce nothing at all, which left the end of a coil - the very place a ring is fitted - unchecked. A
+            // ring above the topmost disc has no coil Segment beyond it, so the "gap above" loop below simply ran off the end; a
+            // ring BETWEEN two discs was worse, because that loop measured the gap from disc to disc straight THROUGH the ring and
+            // handed the whole span to DiscToDiscLayerStack as though it were oil.
+            //
+            // The ring is bonded by its lead to the OUTERMOST TURN of the disc it is fitted against (see the static ring constants
+            // in Segment.swift), so it sits at that turn's potential: the difference across the gap is zero at the OD and the
+            // disc's whole span at the ID, and the worst case is one node step. The far electrode is the ring's foil, at R1 = R2.
+            for ringIsAbove in [true, false] {
+
+                guard let ring = (try? await (ringIsAbove ? model.StaticRingAbove(segment: segment) : model.StaticRingBelow(segment: segment))).flatMap({ $0 }) else {
+
+                    continue
+                }
+
+                let ringGap = ringIsAbove ? await ring.z1 - segment.z2 : await segment.z1 - ring.z2
+
+                guard ringGap > 0.0 else {
+
+                    continue
+                }
+
+                let stacks = Segment.DiscToDiscLayerStack(basicSection: bs, gap: ringGap, facesStaticRing: true)
+
+                result.append(StressSite(kind: .discToDisc,
+                                         location: "Coil \(coil), segment \(await segment.axialPos) to static ring \(ringIsAbove ? "above" : "below"), worst at ID",
+                                         voltageTerms: [VoltageTerm(nodeIndex: nodes.above, weight: 1.0), VoltageTerm(nodeIndex: nodes.below, weight: -1.0)],
+                                         columns: [stacks.keySpacer, stacks.oil],
+                                         innerRadius: nil,
+                                         usesCornerModel: true,
+                                         gapLength: ringGap,
+                                         cornerRadius: cornerRadius,
+                                         farCornerRadius: Segment.staticRingCornerRadius))
             }
 
             // ---- the gap ABOVE this Segment ----
@@ -1040,9 +1112,16 @@ enum DielectricStress {
                 continue
             }
 
-            let facesStaticRing = (try? await model.StaticRingAbove(segment: segment)) .flatMap { $0 } != nil
+            // A static ring standing in this gap means the gap is not disc-to-disc at all: it is disc-to-ring plus ring-to-disc, and
+            // the two sites above have already covered both, at their real spacings and against the ring's own covering. Measuring
+            // straight through the ring would double count them and would hand DiscToDiscLayerStack a span that is mostly ring.
+            guard ((try? await model.StaticRingAbove(segment: segment)).flatMap { $0 }) == nil else {
+
+                continue
+            }
+
             let isTappingGap = await model.IsTappingGap(segment1: segment, segment2: above)
-            let stacks = Segment.DiscToDiscLayerStack(basicSection: bs, gap: gap, facesStaticRing: facesStaticRing)
+            let stacks = Segment.DiscToDiscLayerStack(basicSection: bs, gap: gap, facesStaticRing: false)
 
             // THE TWO-NODE SPAN. In a continuous disc winding the two discs facing each other across a gap are joined at one end -
             // the crossover - and the potential difference across the gap rises linearly from zero there to TWICE the per-disc
@@ -1063,7 +1142,7 @@ enum DielectricStress {
             let terms:[VoltageTerm]
             let spanNote:String
 
-            if plainContinuous && !facesStaticRing && !isTappingGap {
+            if plainContinuous && !isTappingGap {
 
                 terms = [VoltageTerm(nodeIndex: aboveNodes.above, weight: 1.0), VoltageTerm(nodeIndex: nodes.below, weight: -1.0)]
                 // The crossover alternates from gap to gap, so the far end alternates with it.
@@ -1072,7 +1151,7 @@ enum DielectricStress {
             else {
 
                 terms = [VoltageTerm(nodeIndex: aboveNodes.below, weight: 1.0), VoltageTerm(nodeIndex: nodes.above, weight: -1.0)]
-                spanNote = facesStaticRing ? ", at static ring" : (isTappingGap ? ", across tapping gap" : ", single node step")
+                spanNote = isTappingGap ? ", across tapping gap" : ", single node step"
             }
 
             let location = "Coil \(coil), gap above segment \(await segment.axialPos)\(spanNote)"
@@ -1082,11 +1161,11 @@ enum DielectricStress {
                                      voltageTerms: terms,
                                      columns: [stacks.keySpacer, stacks.oil],
                                      innerRadius: nil,
-                                     // A static ring presents a smoothly wrapped surface to the gap, not a conductor corner, so the
-                                     // corner model does not apply on that side. That is the whole point of fitting one.
-                                     usesCornerModel: !facesStaticRing,
+                                     usesCornerModel: true,
                                      gapLength: gap,
-                                     cornerRadius: cornerRadius))
+                                     cornerRadius: cornerRadius,
+                                     // Two discs of the same winding, so the far corner is the same strand's.
+                                     farCornerRadius: cornerRadius))
         }
     }
 
@@ -1176,8 +1255,9 @@ enum DielectricStress {
                                      usesCornerModel: true,
                                      gapLength: tp,
                                      // Radially adjacent turns face each other corner to corner, and it is the same strand on both
-                                     // sides of the paper, so one radius describes the site.
-                                     cornerRadius: CornerRadius(thickness: bs.wdgData.turn.strandRadial, width: bs.wdgData.turn.strandAxial)))
+                                     // sides of the paper, so one radius describes both ends of the site.
+                                     cornerRadius: CornerRadius(thickness: bs.wdgData.turn.strandRadial, width: bs.wdgData.turn.strandAxial),
+                                     farCornerRadius: CornerRadius(thickness: bs.wdgData.turn.strandRadial, width: bs.wdgData.turn.strandAxial)))
         }
     }
 
@@ -1228,10 +1308,15 @@ enum DielectricStress {
             // meaningful figure. (Whether the corner model belongs on those sites is a separate question - see usesCornerModel.)
             var cornerRadius = defaultCornerRadiusOnCopper
 
+            // The OUTER electrode of a hilo is always this coil's own copper, whatever is on the inside of the gap, so the far view
+            // is unambiguous here in a way the near one is not.
+            var farCornerRadius:Double? = nil
+
             if let ownSeg = await model.SegmentAt(location: LocStruct(radial: coil, axial: 0)),
                let ownBS = await ownSeg.basicSections.first {
 
                 cornerRadius = CornerRadius(thickness: ownBS.wdgData.turn.strandRadial, width: ownBS.wdgData.turn.strandAxial)
+                farCornerRadius = cornerRadius
             }
 
             if kind == .radialCoilToCoil,
@@ -1299,6 +1384,7 @@ enum DielectricStress {
                                          usesCornerModel: true,
                                          gapLength: stickColumn.reduce(0.0) { $0 + $1.thickness },
                                          cornerRadius: cornerRadius,
+                                         farCornerRadius: farCornerRadius,
                                          profileName: "Coil \(coil) to \(innerName)",
                                          profileHeight: point.z))
             }
@@ -1336,7 +1422,10 @@ enum DielectricStress {
                                              usesCornerModel: true,
                                              gapLength: tOil + tSolid,
                                              // Here the reference electrode IS this coil - the stack starts with its own half-wrap.
+                                             // The far electrode is the tank wall, whose surface this model does not know, so there
+                                             // is no far view: nil rather than a guessed radius.
                                              cornerRadius: CornerRadius(thickness: bs.wdgData.turn.strandRadial, width: bs.wdgData.turn.strandAxial),
+                                             farCornerRadius: nil,
                                              profileName: "Coil \(outermost.radialPos) to tank",
                                              profileHeight: point.z))
                 }
@@ -1531,6 +1620,52 @@ enum DielectricStress {
         // Order must not matter, and a missing dimension must fall back rather than return zero.
         check("table is symmetric in its arguments", CornerRadius(thickness: inches(0.500), width: inches(0.140)), CornerRadius(thickness: inches(0.140), width: inches(0.500)), tolerance: 1.0E-12)
         check("no strand data falls back", CornerRadius(thickness: 0.0, width: 0.010), defaultCornerRadiusOnCopper, tolerance: 1.0E-12)
+
+        // 4c. The two-sided corner model. A gap is read from BOTH electrodes and the worse view kept - see Evaluate.
+        //
+        //     Symmetric gap: the far view is the near view mirrored, so it must add nothing at all. This is the check that says the
+        //     reversal and the index mapping are right, because any slip shows up as a changed answer on a case whose answer is known.
+        let nearView = CornerField(volts: 1000.0, layers: flatStack, cornerRadius: 0.81E-3)
+        let farView = Array(CornerField(volts: 1000.0, layers: flatStack.reversed(), cornerRadius: 0.81E-3).reversed())
+
+        if nearView.count == 3, farView.count == 3 {
+
+            check("symmetric gap: far view equals near view, oil", farView[1], nearView[1], tolerance: 1.0E-12)
+            check("symmetric gap: far view equals near view, near paper", farView[0], nearView[2], tolerance: 1.0E-12)
+        }
+        else {
+
+            failures += 1
+            report.append("FAIL two-sided views returned \(nearView.count)/\(farView.count) fields")
+        }
+
+        //     Static ring gap: 0.4 mm of turn paper on a strand corner, a 4 mm duct, then the ring's 3.18 mm of Kraft on its
+        //     1.6 mm foil corner. The ring's covering is read at the FAR end by the near view - where its field is lowest - and at
+        //     its own corner by the far view. The far view must be the larger, or the model would still be blind to the ring's
+        //     own paper, which is the whole reason for reading both ends.
+        let ringStack = [DielectricLayer.Paper(0.0004), DielectricLayer.Oil(0.004), DielectricLayer.Paper(Segment.staticRingInsulationPerSide)]
+        let ringNear = CornerField(volts: 1000.0, layers: ringStack, cornerRadius: 0.81E-3)
+        let ringFar = Array(CornerField(volts: 1000.0, layers: ringStack.reversed(), cornerRadius: Segment.staticRingCornerRadius).reversed())
+
+        if ringNear.count == 3, ringFar.count == 3 {
+
+            let governed = ringFar[2] > ringNear[2]
+            if !governed { failures += 1 }
+            report.append(String(format: "%@ static ring Kraft is governed by the ring's own corner (%.3f vs %.3f kV/mm)", governed ? "PASS" : "FAIL", ringFar[2] / 1.0E6, ringNear[2] / 1.0E6))
+        }
+        else {
+
+            failures += 1
+            report.append("FAIL static ring stack returned \(ringNear.count)/\(ringFar.count) fields")
+        }
+
+        // 4d. The static ring geometry itself, from Weidmann EHV00112-2: T + 2·T1 is the 5/8" finished thickness the program has
+        //     always used, to within the drawing's own rounding. A change to any of the three that breaks that sum means one of
+        //     them was read wrong.
+        check("static ring T + 2*T1 is the 5/8 in. finished thickness", Segment.stdStaticRingThickness, 0.625 * meterPerInch, tolerance: 1.0E-3)
+        check("static ring core thickness T", Segment.staticRingCoreThickness, 9.51E-3, tolerance: 1.0E-12)
+        check("static ring covering T1 per side", Segment.staticRingInsulationPerSide, 3.18E-3, tolerance: 1.0E-12)
+        check("static ring corner radius R1 = R2", Segment.staticRingCornerRadius, 1.6E-3, tolerance: 1.0E-12)
 
         // 5. The chapter 13 allowables, spot-checked at 1 mm where every power law reduces to its coefficient. This guards the
         //    transcription of the equations themselves - a mistyped coefficient or a sign error on an exponent shows up here.

@@ -23,6 +23,7 @@ are one formula because 12.63's `Cs·α/tanh α` **is** 12.53 at Ya = 1, Yb = 0.
 | average field across a laminar gap | **2–5%**; the reduction is analytically exact, the error is the finite disc width |
 | peak field at a conductor corner | **20–30%, biased high** (conservative — do not "fix" it) |
 | end regions with no static ring | genuinely 2-D; weakest case, flagged rather than valued |
+| peak field at a static ring's corner | as above, and the ring's own Kraft is the layer at risk — see below |
 | **ranking gaps worst-first** | **reliable** — this is what the feature is for |
 
 ## The allowables are DelVecchio chapter 13
@@ -128,8 +129,55 @@ constant would not do. Four things in the reading are easy to get wrong, and `Ve
 
 The printed **mm** values are used for the radii (the page's inch and mm columns disagree slightly in two cells — 0.039 in. printed
 as 1.02 mm, 0.031 in. as 0.81 mm) and exact **inch** conversions for the band boundaries. `defaultCornerRadiusOnCopper` (0.81 mm)
-survives only as the fallback for a site with no strand data — a static ring, a radial shield, a design file with no cable
-definition.
+survives only as the fallback for a site with no strand data — a radial shield, a design file with no cable definition.
+
+## A gap has two electrodes, and either may be the sharper one (2026-08-10)
+
+`Evaluate` reads each stack from **both ends**: once from the near electrode at `StressSite.cornerRadius`, and once from the
+**reversed** stack at `farCornerRadius`, mapping the result back. The worse of the two is the layer's peak, and `StressCheck`
+carries whichever radius produced it, so the report's tooltip names the electrode the number belongs to.
+
+For a plain disc-to-disc gap the stack is symmetric and **the far view adds nothing** — `VerifySelf` pins that, because any slip in
+the reversal or the index mapping shows up as a changed answer on a case whose answer is already known. It earns its keep where the
+gap is asymmetric, and the case it was built for is the static ring below.
+
+`farCornerRadius` is **nil where the far electrode has no corner this model knows** — a tank wall, a core. Nil is not "smooth"; it
+means not represented, which is the honest answer.
+
+## Static rings are Weidmann EHV00112-2, and they are not smooth (2026-08-10)
+
+The drawing is `~/Documents/MyProjects/Claude/EHV00112_REV_2-SHT_1(Static_Rings).pdf` ("NOTCHED STATIC RING"). It leaves the
+dimensions to the engineer; the house values live as constants in `Segment.swift`, since no design file carries them:
+
+| | | |
+|---|---|---|
+| **T** | 9.51 mm | pressboard core thickness, inside the foil |
+| **T1** | 3.18 mm (1/8″) | Kraft paper covering, **per side** |
+| **R1 = R2** | 1.6 mm (1/16″) | corner radius of the core, which the foil follows |
+| **FT** | T + 2·T1 = 15.87 mm | finished thickness — 5/8″ to within 5 µm, which is what `stdStaticRingThickness` always was |
+
+ID and OD match the adjacent disc (`Segment.StaticRing` copies its rect in x). **LR and LV are ignored** — the lead notch is a local
+feature at one azimuth and this is a rotationally symmetric model.
+
+Three consequences, and they are the reason the drawing matters at all:
+
+- **The core is wrapped in aluminium foil, so the foil is the electrode.** The core's pressboard is inside it, at one potential
+  throughout, and therefore never appears as a dielectric layer in any gap — only T1 of Kraft over it does. That is what
+  `DiscToDiscLayerStack` builds, and now the reason is written down. `staticRingInsulationPerSide` was 3.0 mm and is now T1's
+  3.18 mm; on STME-0999 with rings that moves the end sections' Cs by −1.4% and the coil's by −0.06%.
+- **A ring has a corner.** The old code switched the corner model off at a static ring — "a smoothly wrapped surface, not a
+  conductor corner". The drawing says otherwise: R1 = R2 = 1.6 mm, about twice a strand's, which is generous but finite. The gap is
+  now read from both ends, and the ring's own Kraft turns out to be governed by the ring's corner and not by the disc's — on the
+  reference stack in `VerifySelf`, by a factor of **five** over what the one-sided model saw. That layer was previously read at the
+  far end of the gap, where its field is lowest.
+- **The lead L bonds the ring to the outermost turn of the adjacent disc**, so the ring sits at that turn's potential: the voltage
+  across a disc-to-ring gap is zero at the OD and the disc's whole span at the ID. One node step, worst at the ID.
+
+**The disc-to-ring gaps used to produce no sites at all.** A ring above the topmost disc has no coil Segment beyond it, so
+`AppendAxialSites`' "gap above" loop ran off the end of the coil — leaving the end of the winding, the very place a ring is fitted,
+unchecked. A ring *between* two discs was worse: that loop measured disc to disc straight **through** the ring and handed the whole
+span to `DiscToDiscLayerStack` as though it were oil. Both are now covered by explicit disc-to-ring sites at their real spacings,
+and the lumped site is suppressed when a ring stands in the gap.
 
 ## A hilo is a stack of ducts, and lumping it is only legal for the capacitance (2026-08-09)
 

@@ -80,13 +80,42 @@ actor Segment: Equatable /*, Hashable */ {
         }
     } */
     
-    /// A class constant for the thickness of a standard static ring. This is the OVERALL (wrapped) dimension - the conductor plus
-    /// 'staticRingInsulationPerSide' of wrap on each face - so a static ring's rect covers its insulation the same way a disc's does.
-    static let stdStaticRingThickness = 0.625 * meterPerInch
+    // MARK: Static ring geometry (Weidmann drawing EHV00112-2 rev 2, "NOTCHED STATIC RING")
+    //
+    // The drawing is ~/Documents/MyProjects/Claude/EHV00112_REV_2-SHT_1(Static_Rings).pdf. It leaves ID, OD, T, T1, R1, R2, L, LR
+    // and LV to the engineer; the four constants below are the house values, and they are treated as fixed rather than as
+    // per-design inputs because nothing in a design file carries them.
+    //
+    // WHAT A STATIC RING ACTUALLY IS, because it decides what the dielectric code may assume. A pressboard core of thickness T is
+    // wrapped in VERY THIN ALUMINIUM FOIL, and the foil is then covered with T1 of Kraft paper per side. So:
+    //
+    //  - The electrode is the FOIL, at the core's own surface. The core's pressboard is inside it and is at one potential
+    //    throughout, so it never appears as a dielectric layer in any gap - only the T1 of Kraft over it does. That is what
+    //    DiscToDiscLayerStack builds, and why it puts Paper(T1) and not Pressboard(T) on the far face.
+    //  - The foil follows the core's edge, so the ring HAS a corner, of radius R1 = R2. It is not a smooth surface; it is simply a
+    //    much more generous corner than a strand's. See DielectricStress.CornerRadius for what a strand gets.
+    //  - The lead L bonds the ring to the OUTERMOST TURN of the adjacent disc, so the ring sits at that turn's potential. The
+    //    voltage across a disc-to-ring gap is therefore zero at the OD and the disc's whole span at the ID.
+    //
+    // ID and OD match the adjacent disc, which is what Segment.StaticRing builds (it copies the disc's rect in x). LR and LV, the
+    // notch dimensions for the lead, are deliberately ignored: the notch is a local feature at one azimuth and this is a
+    // rotationally symmetric model.
 
-    /// The insulation wrap on ONE side of a static ring. Static rings are always wrapped with 3mm per side. Note that this is a
-    /// per-side figure, unlike BasicSectionWindingData.TurnData.turnInsulation, which is a two-sided total.
-    static let staticRingInsulationPerSide = 0.003
+    /// T: the thickness of the pressboard core of a static ring, inside the foil. 9.51 mm (0.374", the drawing's T).
+    static let staticRingCoreThickness = 9.51E-3
+
+    /// T1: the Kraft paper covering on ONE side of a static ring, over the foil. 3.18 mm (0.125"). Note that this is a per-side
+    /// figure, unlike BasicSectionWindingData.TurnData.turnInsulation, which is a two-sided total.
+    static let staticRingInsulationPerSide = 3.18E-3
+
+    /// R1 = R2: the corner radius of a static ring's core, which the foil follows. 1.6 mm (the drawing's .063", ie: 1/16").
+    /// Twice a typical strand's corner, which is the whole point of fitting a ring - but not infinite, so the corner model
+    /// applies to a ring's own surface as much as to a conductor's.
+    static let staticRingCornerRadius = 1.6E-3
+
+    /// FT: the finished (wrapped) thickness of a standard static ring, T + 2·T1 = 15.87 mm, which is 5/8" to within 5 µm. This is
+    /// the OVERALL dimension, so a static ring's rect covers its insulation the same way a disc's does.
+    static let stdStaticRingThickness = staticRingCoreThickness + 2.0 * staticRingInsulationPerSide
 
     // MARK: Wound-in shields (DelVecchio ch. 12, section 12.11)
 
@@ -1495,8 +1524,9 @@ actor Segment: Equatable /*, Hashable */ {
     ///
     /// The gap passed in is measured between the *insulated* surfaces (a disc's z1/z2 are over-paper, and a static ring's rect is its
     /// overall wrapped thickness), so it is pure key spacer or oil and every solid layer has to be added in separately. Against
-    /// another disc the far solid is that disc's half-wrap; against a static ring it is the ring's own wrap, which at 3 mm per side
-    /// is substantial and dominates the term.
+    /// another disc the far solid is that disc's half-wrap; against a static ring it is the ring's own T1 of Kraft, which at
+    /// 3.18 mm per side is substantial and dominates the term. The ring's pressboard CORE is not in the stack because the foil
+    /// under that Kraft is the electrode - see the static ring constants above.
     static func DiscToDiscLayerStack(basicSection:BasicSection, gap:Double, facesStaticRing:Bool) -> (keySpacer:[DielectricLayer], oil:[DielectricLayer]) {
 
         let tp = basicSection.wdgData.turn.turnInsulation

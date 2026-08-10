@@ -29,7 +29,7 @@ DelVecchio's τ_p is the **two-sided** paper thickness of a turn (his worked exa
 `tp` in `DiscToDiscSeriesCapacitance`, `tau` in `CapacitanceTurnToTurn`, and the `height - tp` that turns disc height into bare
 copper height in the same function. C_tt goes as 1/τ_p, so a stray factor of 2 moves **every** disc capacitance in the model by
 2×. Both sites carried a commented-out `2.0 *` for years; do not put it back. Two exceptions, each deliberate and noted at its
-declaration: `Segment.staticRingInsulationPerSide` is a **per-side** figure (3 mm), and `woundInShieldMinInsulationPerSide`
+declaration: `Segment.staticRingInsulationPerSide` is a **per-side** figure (3.18 mm, the T1 of the static-ring drawing — see `docs/dielectric-stress.md`), and `woundInShieldMinInsulationPerSide`
 likewise (0.006") — everything downstream of it doubles it. `WoundInShieldWire.insulation` is two-sided like the rest.
 
 Note the interaction with `CapacitanceTurnToTurn(effectiveInsulation:)`: that parameter overrides the **gap** (τ_avg = ½(τ_p + τ_w),
