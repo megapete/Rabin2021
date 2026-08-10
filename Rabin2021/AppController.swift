@@ -4182,14 +4182,39 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         return true
     }
     
+    /// Tell the user that something did not work, and why.
+    ///
+    /// This is the app's only way of reporting a refusal: 52 call sites, most of them a guard that has decided an operation cannot
+    /// be done - a selection that spans a tapping gap, a coil that is already interleaved, a model that is not there yet. It used
+    /// to come from `PchBasePackage` and put a real alert up; when it was dropped from the package this stub replaced it and only
+    /// called `DLog`, which is compiled out entirely in Release. Every one of those refusals therefore became **silent**, and a
+    /// menu command that declines to act while saying nothing is indistinguishable from a broken one. That is what "Interleave
+    /// Section does nothing on the tap winding" was: the tapping-gap guard firing into a log nobody was reading.
+    ///
+    /// The log line stays, because it is what a self-test run leaves behind, and it is the only report in a headless run: a modal
+    /// alert with nobody at the keyboard hangs the run forever (see `docs/self-test.md`).
     func PCH_ErrorAlert(message: String, info: String? = nil) {
-        
+
         var dlogMsg = message
         if let info = info {
             dlogMsg += ": \(info)"
         }
-        
+
         DLog(dlogMsg)
+
+        guard !SelfTest.isRunningHeadless else {
+
+            return
+        }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = message
+        if let info = info {
+            alert.informativeText = info
+        }
+        alert.addButton(withTitle: "OK")
+        let _ = alert.runModal()
     }
     
 }

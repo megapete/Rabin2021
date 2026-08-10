@@ -86,6 +86,21 @@ enum SelfTest {
     /// The last stage the run reached, flushed before each step so that a hang can be located.
     static let stageKey = "PCH_SelfTestStage"
 
+    /// True when the app was launched to run a scenario, ie: when there is nobody at the keyboard.
+    ///
+    /// `AppController.PCH_ErrorAlert` asks this before it puts a modal alert up: a run with nobody watching cannot dismiss one and
+    /// would hang forever (the whole reason `stageKey` exists). It is written the same way `RunIfRequested` reads the argument -
+    /// `NSUserDefaults` parses `-PCH_SelfTest <name>` itself - so a normal launch answers false with no plumbing anywhere.
+    static var isRunningHeadless:Bool {
+
+        guard let scenarioName = UserDefaults.standard.string(forKey: scenarioKey) else {
+
+            return false
+        }
+
+        return !scenarioName.isEmpty
+    }
+
     // MARK: Scenario description
 
     /// Which end of a coil a lead comes off.

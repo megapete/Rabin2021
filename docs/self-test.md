@@ -33,7 +33,10 @@ Four mechanical points, each forced by something:
   (`defaults read com.huberistech.Rabin2021 PCH_SelfTestSummary`). A page of report through `defaults read` is one
   enormous escaped line.
 - **`PCH_SelfTestStage` is written and flushed before each step.** The pipeline raises `NSAlert`s on failure and a modal
-  alert with nobody watching hangs the run forever, so that key is the only evidence of where a hung run stopped.
+  alert with nobody watching hangs the run forever, so that key is the only evidence of where a hung run stopped. The one
+  alert path that *is* headless-aware is `AppController.PCH_ErrorAlert`, which asks **`SelfTest.isRunningHeadless`** (true
+  whenever `-PCH_SelfTest <name>` was given) and falls back to the log line. Anything else that learns to put an alert up
+  should ask the same question.
 
 **A scenario names its connections as `SelfTest.LeadPoint`s, never as (Segment, location) pairs**, and `FindLead` goes and looks
 for the lead the point names. Neither half of the pair is knowable from the design file: which Segment is at the bottom of a coil
