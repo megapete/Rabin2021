@@ -11,6 +11,12 @@ series-dielectric reduction; `Segment.DiscToDiscSeriesCapacitance` forms Σ(ℓ/
 **D** turns that straight into the field: `E_i = V/(ε_i·Σ(ℓⱼ/εⱼ))`. So the screen reuses the same geometry, and a full run is
 milliseconds against hours for an FE solve per time step.
 
+**Everything that wants the findings goes through `AppController.StressChecks()`**, which runs the screen if the cache is empty
+and **shows nothing**. Each menu item then opens its own window and only its own. It was not always so: "Show Radial Stress
+Profiles" filled the cache by calling `doShowStressReport()`, so the first use of it put the report table on the screen as well.
+The cache is what keeps the graph and the table from disagreeing about a model, so a caller that wants the numbers must not have
+to open a window to get them.
+
 Two extractions exist purely so the stress and the capacitance can never disagree about what is in a gap — the same discipline
 `FrequencyDomainSolver.CapacitiveDistribution` follows for the assembly. **`Segment.DiscToDiscLayerStack`** returns the layers in
 physical order and `DiscToDiscSeriesCapacitance` builds its Σ(ℓ/ε) from it; **`Segment.SteinParameters`** holds α/Ya/Yb and

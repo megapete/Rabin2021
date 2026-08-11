@@ -43,7 +43,28 @@ class StressReportWindow:NSWindowController {
     private var checks:[DielectricStress.StressCheck]
 
     private let tableView = NSTableView()
-    private let summaryLabel = NSTextField(labelWithString: "")
+    private let summaryLabel = WrappingLabel(labelWithString: "")
+
+    /// A label that wraps to the width it is given instead of asking for the width its text would like.
+    ///
+    /// An `NSTextField` computes its intrinsic width from its whole string unless `preferredMaxLayoutWidth` says otherwise, and
+    /// that width is a constraint the window has to satisfy - which is how the notes came to decide how wide this window opened.
+    /// Tracking the field's own bounds is the standard AppKit answer, and it has to be re-done on every layout because the width
+    /// changes as the user drags the window. The guard is what stops it: setting `preferredMaxLayoutWidth` invalidates the
+    /// intrinsic size, which schedules another layout pass, so it must be set only when the width has actually moved.
+    private class WrappingLabel:NSTextField {
+
+        override func layout() {
+
+            if abs(self.preferredMaxLayoutWidth - self.bounds.width) > 0.5 {
+
+                self.preferredMaxLayoutWidth = self.bounds.width
+                self.invalidateIntrinsicContentSize()
+            }
+
+            super.layout()
+        }
+    }
 
     /// The columns, in display order. The identifier doubles as the sort key.
     private enum Column:String, CaseIterable {
@@ -74,6 +95,18 @@ class StressReportWindow:NSWindowController {
         static var displayed:[Column] {
 
             return Column.allCases.filter { !$0.isCornerColumn || Preferences.showCornerStresses }
+        }
+
+        /// How wide the column is built. This is also what the window sizes itself from, so a change here moves the window that
+        /// opens - see `StressReportWindow.ContentSize()`.
+        var width:Double {
+
+            switch self {
+
+            case .location: return 400.0    // free text, and the longest of it ("...worst at ID" on a named disc pair) runs long
+            case .kind: return 140.0
+            default: return 115.0
+            }
         }
 
         /// Right-align everything numeric.
@@ -124,24 +157,55 @@ class StressReportWindow:NSWindowController {
         }
     }
 
+    /// AppKit's own default, set explicitly on the table because `ContentSize()` adds it up.
+    private static let intercellSpacing = NSSize(width: 3.0, height: 2.0)
+    /// Room for the vertical scroller, which sits inside the scroll view's width and would otherwise cover the last column.
+    private static let scrollerAllowance = 16.0
+    /// The height the window opens at, if the screen has room for it.
+    private static let preferredHeight = 600.0
+
+    /// The size the window opens at: **as wide as it takes to show every displayed column**, or the widest that fits on the
+    /// screen, whichever is smaller. Nothing else gets a say - in particular the notes wrap to this width rather than setting it
+    /// (see the file header), and turning the corner columns off makes the window narrower by exactly those two columns.
+    private static func ContentSize() -> NSSize {
+
+        let columns = Column.displayed
+        let needed = columns.reduce(0.0) { $0 + $1.width } + intercellSpacing.width * Double(columns.count) + scrollerAllowance
+
+        // visibleFrame, not frame: the menu bar and the Dock are not ours to open a window under.
+        guard let visible = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame else {
+
+            return NSSize(width: needed, height: preferredHeight)
+        }
+
+        return NSSize(width: min(needed, visible.width), height: min(preferredHeight, visible.height))
+    }
+
     init(checks:[DielectricStress.StressCheck], title:String) {
 
         // Already worst-first out of DielectricStress.Scan, but sort again so this class does not depend on that.
         self.checks = checks.sorted { $0.worstUtilization > $1.worstUtilization }
 
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 600),
+        let contentSize = StressReportWindow.ContentSize()
+
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: contentSize),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered,
                               defer: false)
         window.title = title
-        // Deliberately not the old "StressReportWindow" key: it holds frames that were saved back when the run-together notes
-        // forced the window to open several thousand points wide, and restoring one of those would undo the fix for anyone who
-        // had already opened a report. Changing the key drops those saved frames once.
-        window.setFrameAutosaveName("StressReportWindowV2")
+        window.contentMinSize = NSSize(width: 480.0, height: 240.0)
 
+        // No frame autosave name. There was one, and it never did anything: -[NSWindow setFrameAutosaveName:] only WRITES the
+        // frame to the defaults system - restoring it takes an explicit setFrameUsingName:, which nothing here called - so the
+        // window has always opened at the size this initializer gives it. Restoring one now would be wrong anyway: the width the
+        // window wants is computed from the columns that are actually displayed, so it changes the moment the corner-stress
+        // preference is toggled, and a frame saved before the toggle would reinstate the old width.
         super.init(window: window)
 
         BuildContent()
+
+        // Bottom-left is where an unplaced window lands, and this one can be as wide as the screen.
+        window.center()
     }
 
     required init?(coder: NSCoder) {
@@ -183,15 +247,19 @@ class StressReportWindow:NSWindowController {
         summaryLabel.stringValue = notes.joined(separator: "\n")
         summaryLabel.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         summaryLabel.lineBreakMode = .byWordWrapping
-        // Enough lines for one note each, plus room for any one of them to wrap if the window is dragged narrower than it opens.
-        summaryLabel.maximumNumberOfLines = notes.count + 2
+        // No line limit: the label re-wraps to whatever width the window is (see WrappingLabel), so a count fixed here would clip
+        // the notes as soon as one of them wrapped.
+        summaryLabel.maximumNumberOfLines = 0
+        // The label yields width to the window rather than demanding it. Without this the notes are back to deciding how wide the
+        // window may be, which is the whole bug - see the file header.
+        summaryLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         summaryLabel.translatesAutoresizingMaskIntoConstraints = false
 
         for column in Column.displayed {
 
             let tableColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(column.rawValue))
             tableColumn.title = column.rawValue
-            tableColumn.width = column == .location ? 400 : (column == .kind ? 140 : 115)
+            tableColumn.width = column.width
             tableColumn.minWidth = 60
             tableColumn.headerToolTip = column.explanation
             tableColumn.sortDescriptorPrototype = NSSortDescriptor(key: column.rawValue, ascending: false)
@@ -200,6 +268,8 @@ class StressReportWindow:NSWindowController {
 
         tableView.dataSource = self
         tableView.delegate = self
+        // Explicit, because ContentSize() adds it up to decide how wide the window opens.
+        tableView.intercellSpacing = StressReportWindow.intercellSpacing
         tableView.usesAlternatingRowBackgroundColors = true
         tableView.allowsColumnResizing = true
         tableView.columnAutoresizingStyle = .noColumnAutoresizing

@@ -79,6 +79,16 @@ read-only fields (insulation, stress, shield radial, build increase, C_s multipl
 count, and keeping that right in hand-maintained auto-layout is not worth it. It clamps `n` to `floor(N) − 1` and opens on
 `round(0.15·N)`.
 
+**`StressReportWindow` sizes itself from its columns, and nothing else may have a say.** It opens exactly as wide as the columns
+that are displayed (their widths live on `Column.width`, plus the table's intercell spacing and room for the scroller), or as wide
+as the screen's `visibleFrame` if that is narrower — so turning the corner columns off makes the window narrower by those two
+columns. The notes above the table are a `WrappingLabel`, an `NSTextField` that tracks its own bounds in `preferredMaxLayoutWidth`
+and has **low horizontal compression resistance**: an ordinary label's intrinsic width is its whole string, and since the label is
+pinned to both edges of the content view that width becomes a constraint the window has to satisfy. That is what once opened this
+window 1768 pt wide on a 1728 pt screen. Keep the notes one per line, keep the low compression resistance, and do not give the
+window a frame autosave name — `setFrameAutosaveName` only writes the frame (restoring takes an explicit `setFrameUsingName`), and
+a restored frame would reinstate a width that the corner-column preference may since have changed.
+
 ## Preferences (`Preferences.swift`, `PreferencesDialog.swift`)
 
 *ImpulseDistribution → Preferences…* (⌘,). `Preferences.swift` is the store — a `Preference` case per setting, whose raw value is

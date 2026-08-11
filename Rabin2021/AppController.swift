@@ -2035,17 +2035,28 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
     }
 
-    /// Run the dielectric stress screen over the latest simulation result and show the ranked table.
+    /// The dielectric stress findings, run if they are not already cached, and **without putting anything on the screen**.
+    ///
+    /// Everything that wants the findings goes through here - the table, the radial profiles, anything added later - so that no
+    /// caller has to open one window in order to get the numbers for another. It used to: "Show Radial Stress Profiles" called
+    /// `doShowStressReport()` to fill the cache, so the first use of that menu item opened the report table as well.
     ///
     /// The screen is cheap - the geometry is measured once and the time scan is a linear combination of node voltages per site, so
     /// a full run is milliseconds - which is why there is no progress bar and no cancel handle here, unlike the inductance and
-    /// simulation paths.
-    func doShowStressReport() async {
+    /// simulation paths. It still caches, because the table and the profile graph must not be able to disagree.
+    ///
+    /// - Returns: the findings, worst first, or an empty array if there are none (having said so in an alert).
+    func StressChecks() async -> [DielectricStress.StressCheck] {
+
+        guard self.latestStressChecks.isEmpty else {
+
+            return self.latestStressChecks
+        }
 
         guard let phModel = self.currentModel, let simResult = self.latestSimulationResult else {
 
             PCH_ErrorAlert(message: "You must run the simulation first!")
-            return
+            return []
         }
 
         // The t = 0+ capacitive distribution. The frequency-domain solver's uniform grid starts some tens of nanoseconds in, by
@@ -2067,27 +2078,41 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         guard !checks.isEmpty else {
 
             PCH_ErrorAlert(message: "The stress screen produced no findings.", info: "This usually means the model has no disc windings, or the simulation result is empty. Note that both solvers return an empty array for cancellation as well as for failure.")
-            return
+            return []
         }
 
         self.latestStressChecks = checks
 
-        let reportWindow = StressReportWindow(checks: checks, title: "Dielectric Stress Report")
+        return checks
+    }
+
+    /// Run the dielectric stress screen if need be, and show the ranked table.
+    func doShowStressReport() async {
+
+        let checks = await self.StressChecks()
+
+        guard !checks.isEmpty else {
+
+            return
+        }
+
+        let reportWindow = StressReportWindow(checks: checks, title: AppController.stressReportTitle)
         self.stressReportWindow = reportWindow
         reportWindow.showWindow(self)
     }
+
+    /// The report window's title, in one place because `handleShowPreferences` rebuilds the window too.
+    static let stressReportTitle = "Dielectric Stress Report"
 
     @IBAction func handleShowRadialStressProfiles(_ sender: Any) {
 
         Task {
 
-            // Reuse the findings from the table if they are already to hand, so the graph and the table can never disagree.
-            if self.latestStressChecks.isEmpty {
+            // The findings, without the table: this menu item is about the graph. They are cached, so the graph and the table
+            // cannot disagree about a model.
+            let checks = await self.StressChecks()
 
-                await doShowStressReport()
-            }
-
-            guard !self.latestStressChecks.isEmpty else {
+            guard !checks.isEmpty else {
 
                 return
             }
@@ -2097,7 +2122,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 return
             }
 
-            guard let profileWindow = StressProfileWindow(checks: self.latestStressChecks,
+            guard let profileWindow = StressProfileWindow(checks: checks,
                                                           peakTestVoltage: simResult.peakVoltage,
                                                           title: "Radial Voltage Difference vs. Height") else {
 
@@ -2824,7 +2849,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             }
             else {
 
-                let rebuilt = StressReportWindow(checks: cachedChecks, title: "Dielectric Stress Report")
+                let rebuilt = StressReportWindow(checks: cachedChecks, title: AppController.stressReportTitle)
                 self.stressReportWindow = rebuilt
                 rebuilt.showWindow(self)
             }
