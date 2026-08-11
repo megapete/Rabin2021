@@ -344,11 +344,100 @@ enum AxisScale {
         return majorTickLength + labelGap + labelLineHeight
     }
 
+    /// Every multiple of 'interval' inside [minimum, maximum].
+    ///
+    /// This is the x-axis counterpart of ``Ticks(minimum:maximum:quantity:peakTestVoltage:minimumSeparation:)`` and it is
+    /// deliberately much simpler: it takes the interval rather than choosing one. The axis it exists for is a coil height in
+    /// millimetres, where a round 100 mm grid is what a designer measures against, and a "nice" interval computed from the span
+    /// would give a different grid for every coil.
+    static func TickValues(minimum:Double, maximum:Double, interval:Double) -> [Double] {
+
+        guard minimum.isFinite, maximum.isFinite, maximum > minimum, interval > 0.0 else {
+
+            return []
+        }
+
+        let first = ceil(minimum / interval)
+        let last = floor(maximum / interval)
+
+        guard last >= first, last - first < 1000 else {
+
+            return []
+        }
+
+        return (0...Int(last - first)).map { (first + Double($0)) * interval }
+    }
+
+    /// Draw a horizontal axis with a labelled tick at each of 'values'.
+    ///
+    /// Labels are thinned rather than dropped or overlapped: if consecutive labels would not fit side by side, every second one
+    /// is labelled, then every third, and so on - the ticks themselves all stay, so the grid a reader is measuring against does
+    /// not change with the width of the window.
+    ///
+    /// - parameter viewX: converts an x value (in the data's units) into a view x coordinate
+    /// - parameter pointSize: one typographic point expressed in view coordinates, exactly as in ``DrawYAxis(...)``
+    static func DrawXAxis(values:[Double], format:String = "%.0f", axisY:CGFloat, plotLeft:CGFloat, plotRight:CGFloat, pointSize:CGFloat, axisColor:NSColor, viewX:(Double) -> CGFloat) {
+
+        let axis = NSBezierPath()
+        axis.lineWidth = pointSize
+        axis.move(to: NSPoint(x: plotLeft, y: axisY))
+        axis.line(to: NSPoint(x: plotRight, y: axisY))
+        axisColor.setStroke()
+        axis.stroke()
+
+        guard !values.isEmpty else {
+
+            return
+        }
+
+        let font = NSFont.monospacedDigitSystemFont(ofSize: labelFontSize * pointSize, weight: .regular)
+        let labels = values.map { NSAttributedString(string: String(format: format, $0), attributes: [.font:font, .foregroundColor:axisColor]) }
+
+        // How many ticks apart a labelled one has to be for the labels to clear each other.
+        var stride = 1
+
+        if values.count > 1 {
+
+            let spacing = abs(viewX(values[1]) - viewX(values[0]))
+            let widest = labels.map { $0.size().width }.max() ?? 0.0
+
+            if spacing > 0.0 {
+
+                stride = max(1, Int(ceil((widest + labelGap * 2.0 * pointSize) / spacing)))
+            }
+        }
+
+        let tickLength = majorTickLength * pointSize
+
+        for (index, value) in values.enumerated() {
+
+            let x = viewX(value)
+
+            axisColor.setStroke()
+
+            let tickPath = NSBezierPath()
+            tickPath.lineWidth = pointSize
+            tickPath.move(to: NSPoint(x: x, y: axisY))
+            tickPath.line(to: NSPoint(x: x, y: axisY - tickLength))
+            tickPath.stroke()
+
+            guard index % stride == 0 else {
+
+                continue
+            }
+
+            let label = labels[index]
+            let size = label.size()
+            label.draw(at: NSPoint(x: x - size.width / 2.0, y: axisY - tickLength - labelGap * pointSize - size.height))
+        }
+    }
+
     /// Mark and name the two ends of a horizontal axis - nothing in between.
     ///
     /// This is for an axis whose ENDS are what matter and whose intermediate values do not: the axial position along a coil, where
-    /// "top" and "bottom" say everything a reader needs and a millimetre scale would only add clutter. It is deliberately not a
-    /// general x-axis tick generator; if one is ever wanted, it belongs beside ``Ticks(...)`` rather than here.
+    /// "top" and "bottom" say everything a reader needs and a millimetre scale would only add clutter. Where the intermediate
+    /// values DO matter - the axial stress profile, which is read off against a height in millimetres - use
+    /// ``TickValues(minimum:maximum:interval:)`` with ``DrawXAxis(values:format:axisY:plotLeft:plotRight:pointSize:axisColor:viewX:)``.
     ///
     /// - parameter axisY: the view y coordinate of the axis line the labels hang below (the zero line, in both graph views)
     /// - parameter pointSize: one typographic point expressed in view coordinates, exactly as in ``DrawYAxis(...)``

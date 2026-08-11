@@ -13,7 +13,13 @@ cp <design file>.txt ~/Library/Containers/com.huberistech.Rabin2021/Data/Documen
 cat ~/Library/Containers/com.huberistech.Rabin2021/Data/Documents/SelfTestReport-STME0999.txt
 ```
 
-Add `-PCH_SelfTestTransient YES` for the frequency-domain sweep as well. A full run of the STME-0999 fixture — parse,
+Add `-PCH_SelfTestTransient YES` for the frequency-domain sweep as well, and `-PCH_SelfTestGraphs YES` (which needs the transient)
+to **render the result graphs to PNGs** beside the report — `SelfTestGraph-<scenario>-axialStress.png` today. That flag exists
+because the numbers behind a graph can be asserted and the drawing cannot: a curve running off its axis, an annotation box sitting
+on the line it describes, or a tick label overwriting its neighbour are invisible to any check worth writing, and are exactly what
+goes wrong when a plot is edited. The window is built the way the menu item builds it and drawn with `cacheDisplay(in:to:)`, so it
+is never ordered front and the run stays headless. All three of those faults were found this way on the first render of
+`AxialStressProfileWindow`. A full run of the STME-0999 fixture — parse,
 radial build-up, FE phase, eddy losses, inductance, capacitance, terminations, initial distribution and a 2048-step
 transient — is **37 seconds**, so there is no reason not to run it.
 
@@ -64,6 +70,12 @@ refused outright on a coil whose Segments have been folded, because a crossover 
   the keyboard** rather than a finished wiring: `.jumper`, `.terminate`, and `.remove` (a port of `mouseDownWithRemoveConnector`,
   which sweeps the clicked jumper's whole equivalence class). A designer changes a connection scheme by editing the one already
   there, and the interesting failures live in that sequence rather than in any single operation — see the `S0738-parallel` trio.
+
+**`AxialProfileReport`** (transient runs only) prints the disc-to-disc profile of the continuum coil gap by gap — height, stress,
+allowable, ΔV, allowable ΔV — with the count of tagged gaps, and fails loudly if a disc-to-disc check of that coil carries no
+height. It is the numeric half of `AxialStressProfileWindow`: a shape hides a gap tagged at the wrong height, and one dropped out
+of the picture entirely leaves a curve that still looks plausible. That is how item 10's missing external gaps were measured — the
+plain STME-0999 coil reports 69 gaps, the same coil interleaved reports 35.
 
 **`Scenario.reportNodes`** turns on a table of every node of every coil with how the simulation model classified it, what the
 initial distribution put there and — with `-PCH_SelfTestTransient YES` — its min/max over the run. It also prints a one-line

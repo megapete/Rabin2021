@@ -361,6 +361,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// that created them returns.
     var stressReportWindow:StressReportWindow? = nil
     var stressProfileWindow:StressProfileWindow? = nil
+    var axialStressProfileWindow:AxialStressProfileWindow? = nil
 
     /// The capacitive initial distribution graph, held for the same reason.
     var initialDistributionWindow:InitialDistributionWindow? = nil
@@ -2131,6 +2132,28 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             }
 
             self.stressProfileWindow = profileWindow
+            profileWindow.showWindow(self)
+        }
+    }
+
+    @IBAction func handleShowAxialStressProfile(_ sender: Any) {
+
+        Task {
+
+            let checks = await self.StressChecks()
+
+            guard !checks.isEmpty else {
+
+                return
+            }
+
+            guard let profileWindow = AxialStressProfileWindow(checks: checks, title: "Disc-to-Disc Stress vs. Height") else {
+
+                PCH_ErrorAlert(message: "There is no axial stress profile to show.", info: "The profile is built from the disc-to-disc checks, which need at least one disc or helical winding with a node above and below it.")
+                return
+            }
+
+            self.axialStressProfileWindow = profileWindow
             profileWindow.showWindow(self)
         }
     }
@@ -4302,9 +4325,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return self.currentModel != nil && self.currentSimModel != nil && self.latestSimulationResult != nil
         }
 
-        // The two stress items are matched on their action rather than on an outlet. They need exactly the same state as the three
-        // above, and matching the selector saves adding two more @IBOutlets and two more xib connections for no benefit.
-        if menuItem.action == #selector(handleShowStressReport(_:)) || menuItem.action == #selector(handleShowRadialStressProfiles(_:)) {
+        // The three stress items are matched on their action rather than on an outlet. They need exactly the same state as the three
+        // above, and matching the selector saves adding three more @IBOutlets and three more xib connections for no benefit.
+        if menuItem.action == #selector(handleShowStressReport(_:)) || menuItem.action == #selector(handleShowRadialStressProfiles(_:)) || menuItem.action == #selector(handleShowAxialStressProfile(_:)) {
 
             return self.currentModel != nil && self.currentSimModel != nil && self.latestSimulationResult != nil
         }

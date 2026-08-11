@@ -67,6 +67,28 @@ Distribution*. Three things about it are deliberate:
 - **It reads the same α the stress report does**, rather than computing an initial distribution of its own — so this graph and the report's `0+ (initial)` rows cannot disagree.
 - **The x axis runs top-to-bottom, left-to-right**, which is why `Distribution.points` carries a *depth below the top of the coil* and not a height above the yoke. That is the textbook orientation and it puts the line end on the left in the usual case, but it is the **opposite** of `CoilResultsDisplayView`'s other two users, whose x is a height — hence the end labels, which exist so the two graphs cannot be confused. "Impulsed coil" means a coil with a node carrying an impulse connector; if there is more than one they all go in the picker. Coils that are not driven are left out on purpose — α there is a small shunt-capacitance residual that would flatten the driven curve into the floor of the plot.
 
+## `AxialStressProfileWindow.swift`
+
+The disc-to-disc stress of one coil against height, with the allowable drawn across it. *Simulate → Show Axial Stress Profile…*.
+Four things about it are deliberate:
+
+- **It does not use `CoilResultsDisplayView`.** It needs a second series, a labelled x axis on a fixed 100 mm grid and an
+  annotation block inside the plot, none of which that view has and none of which its two existing users want. It draws in plain
+  view coordinates (bounds == frame), which is what lets it hand `AxisScale` a `pointSize` of 1 and reuse `DrawYAxis` unchanged.
+  The x-axis machinery it needed — `AxisScale.TickValues` and `AxisScale.DrawXAxis` — went into `AxisScale`, where that file's own
+  comment had said a general x tick generator belongs.
+- **The allowable is a series, not a rule.** With one duct size and one paper thickness the length of a coil every point of it is
+  equal and it draws as the horizontal line it is meant to be, but a widened duct or a gap facing a static ring genuinely has a
+  different allowable, and one rule at the smallest of them would understate the margin everywhere else. Where it varies the note
+  under the picker says so. Measured on the STME-0999 fixture: constant at 19.87 kV/mm plain, 19.87–25.50 kV/mm with static rings.
+- **The y axis starts at zero and reaches past the allowable**, because the picture is how much room is left. Its ticks are a
+  round grid plus the two values the graph is read for — the worst stress and the allowable — each with a guide line across the
+  plot. `AxisScale`'s own extreme ticks are dropped (except zero): they mark the ends of the range they are handed, and the top of
+  this one is headroom rather than anything the coil reached.
+- **The annotation box is placed by measurement.** Four positions are scored by how many plotted gaps they would cover, with a
+  flat penalty for hiding the allowable line, and the cheapest wins. The window opens on the coil with the worst gap, not the
+  first one in the picker.
+
 ## Dialogs / windows
 
 (`*.swift` + matching `*.xib`): `GetNumberDialog`, `GetSimDetailsDialog`, `ShowCoilResultsDialog`, `ShowWaveFormsDialog`,

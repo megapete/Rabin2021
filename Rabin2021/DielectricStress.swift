@@ -614,6 +614,24 @@ enum DielectricStress {
         case radialCoilToCoil = "Coil to coil (radial)"
         case coilToCore = "Coil to core"
         case coilToTank = "Coil to tank"
+
+        /// Whether the gap this checks is a RADIAL one. Both profile graphs plot against height, and both assemble themselves from
+        /// `profileName`/`profileHeight`, so this is what keeps the radial graph from picking up the axial profiles and vice versa.
+        var isRadial:Bool {
+
+            switch self {
+
+            case .radialCoilToCoil, .coilToCore, .coilToTank: return true
+            case .discToDisc, .turnToTurn: return false
+            }
+        }
+    }
+
+    /// The name of the disc-to-disc-versus-height profile for one coil. In one place because the sites are tagged with it in
+    /// `AppendAxialSites` and `AxialStressProfileWindow` groups on it.
+    static func AxialProfileName(coil:Int) -> String {
+
+        return "Coil \(coil) — disc to disc"
     }
 
     /// One term of the linear combination of node potentials that drives a site.
@@ -1049,7 +1067,12 @@ enum DielectricStress {
                                              gapLength: gap,
                                              cornerRadius: cornerRadius,
                                              // The same disc on both sides, so the two views of the stack agree.
-                                             farCornerRadius: cornerRadius))
+                                             farCornerRadius: cornerRadius,
+                                             profileName: AxialProfileName(coil: coil),
+                                             // The MIDDLE of the gap, which is where the stress being reported actually is. The
+                                             // profile is a value per gap, not per disc, so a gap's own centre is the only height
+                                             // that does not silently shift the curve half a gap up or down the coil.
+                                             profileHeight: (basicSections[gapIndex].z2 + basicSections[gapIndex + 1].z1) / 2.0))
                 }
             }
 
@@ -1070,7 +1093,9 @@ enum DielectricStress {
                     continue
                 }
 
-                let ringGap = ringIsAbove ? await ring.z1 - segment.z2 : await segment.z1 - ring.z2
+                let ringGapBottom = ringIsAbove ? await segment.z2 : await ring.z2
+                let ringGapTop = ringIsAbove ? await ring.z1 : await segment.z1
+                let ringGap = ringGapTop - ringGapBottom
 
                 guard ringGap > 0.0 else {
 
@@ -1087,7 +1112,9 @@ enum DielectricStress {
                                          usesCornerModel: true,
                                          gapLength: ringGap,
                                          cornerRadius: cornerRadius,
-                                         farCornerRadius: Segment.staticRingCornerRadius))
+                                         farCornerRadius: Segment.staticRingCornerRadius,
+                                         profileName: AxialProfileName(coil: coil),
+                                         profileHeight: (ringGapBottom + ringGapTop) / 2.0))
             }
 
             // ---- the gap ABOVE this Segment ----
@@ -1098,7 +1125,9 @@ enum DielectricStress {
             }
 
             let above = segments[i + 1]
-            let gap = await above.z1 - segment.z2
+            let gapBottom = await segment.z2
+            let gapTop = await above.z1
+            let gap = gapTop - gapBottom
 
             guard gap > 0.0 else {
 
@@ -1165,7 +1194,9 @@ enum DielectricStress {
                                      gapLength: gap,
                                      cornerRadius: cornerRadius,
                                      // Two discs of the same winding, so the far corner is the same strand's.
-                                     farCornerRadius: cornerRadius))
+                                     farCornerRadius: cornerRadius,
+                                     profileName: AxialProfileName(coil: coil),
+                                     profileHeight: (gapBottom + gapTop) / 2.0))
         }
     }
 

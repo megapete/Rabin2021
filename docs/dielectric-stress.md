@@ -11,6 +11,22 @@ series-dielectric reduction; `Segment.DiscToDiscSeriesCapacitance` forms Σ(ℓ/
 **D** turns that straight into the field: `E_i = V/(ε_i·Σ(ℓⱼ/εⱼ))`. So the screen reuses the same geometry, and a full run is
 milliseconds against hours for an FE solve per time step.
 
+**There are two profile graphs, and `StressCheckKind.isRadial` is what keeps them apart.** Both plot against height and both
+assemble themselves from the `profileName`/`profileHeight` a site carries, so the filter is the only thing stopping each from
+showing the other's curves: `StressProfileWindow` (radial, coil-to-coil/core/tank) takes the radial kinds, and
+`AxialStressProfileWindow` (disc-to-disc against height, one coil at a time, with the allowable drawn across it) takes
+`.discToDisc`. The axial sites are tagged in `AppendAxialSites` at the **middle of each gap** — a value per gap, not per disc, so
+the gap's own centre is the only height that does not shift the curve half a gap along the coil. All three kinds of axial gap are
+tagged: the ones inside a multi-disc Segment, the ones facing a static ring, and the ordinary gap between Segments.
+
+Nothing in that window is recomputed from the geometry. The allowable at a point is `averageField / averageUtilization` and the
+allowable ΔV is `deltaV / averageUtilization`, both **exact** rather than a second evaluation of the allowable, because the field
+is linear in the driving voltage — the same property `Scan` is built on. `SelfTest.AxialProfileReport` prints the profile gap by
+gap and `-PCH_SelfTestGraphs YES` renders the window itself to a PNG, which is how the curve gets checked without a keyboard.
+
+Note what item 10 in `TODO.md` says about interleaved and multi-disc Segments: their **external** disc-to-disc gaps produce no
+finding at all today, so they are missing from the table, the ranking and this curve alike.
+
 **Everything that wants the findings goes through `AppController.StressChecks()`**, which runs the screen if the cache is empty
 and **shows nothing**. Each menu item then opens its own window and only its own. It was not always so: "Show Radial Stress
 Profiles" filled the cache by calling `doShowStressReport()`, so the first use of it put the report table on the screen as well.

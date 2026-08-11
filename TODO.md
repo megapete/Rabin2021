@@ -131,6 +131,22 @@ Interleaved Segments, and Segments holding more than one disc, fall back to the 
 string says which was used). The 2V crossover argument does not carry over unchanged to those winding orders. Gaps *inside* a
 multi-disc Segment are driven at 2·ΔV_segment/n, which is the same argument applied to the Segment's own span.
 
+**That fallback currently measures nothing, and so drops the gap entirely (found 2026-08-11).** Its terms are
+`+1·V[aboveNodes.below] − 1·V[nodes.above]`, and for two series-connected Segments those are **the same node**: the node between
+them has `belowSegment == segment` and `aboveSegment == above`, so `AdjacentNodes` returns that one index as this Segment's
+`.above` and as the next one's `.below`. The driving voltage is therefore identically zero at every step, `Evaluate` refuses a site
+with no volts across it, and **no finding is produced for any external disc-to-disc gap of a coil whose Segments hold more than one
+disc or are interleaved.** Measured on the STME-0999 fixture: the plain coil reports 69 gaps, the same coil interleaved into 35
+two-disc Segments reports 35 — exactly its internal gaps, at twice the disc pitch, with all 34 external gaps missing. The table,
+the ranking and `AxialStressProfileWindow`'s curve are all short by those gaps.
+
+The tapping-gap case is **not** affected: a tapping gap breaks the node chain, so the two terms name different nodes.
+
+Fixing it is a physics choice, not a typo, which is why it is recorded rather than patched: what a designer wants across that gap
+for an interleaved winding depends on the interleaving pattern (the facing conductors are deliberately *not* electrically
+adjacent), and for a plain multi-disc Segment the honest one-step measure is the drop across one of the two Segments rather than
+zero. Whatever is chosen has to be defensible from ch. 12/13 — do not put an invented span in there to make rows appear.
+
 ### 11. Coil-end radial fields are flagged, not valued
 
 Past the end of a shorter adjacent coil the field is genuinely two-dimensional. The screen holds the nearest inner potential and

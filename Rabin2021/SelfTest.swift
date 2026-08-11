@@ -81,6 +81,9 @@ enum SelfTest {
     static let scenarioKey = "PCH_SelfTest"
     /// Set this to run the frequency-domain sweep as well as the initial distribution.
     static let transientKey = "PCH_SelfTestTransient"
+    /// Set this to render the result graphs to PNGs beside the report, so that a drawing change can be LOOKED at without a
+    /// keyboard. Needs the transient, since the graphs are of its findings.
+    static let graphsKey = "PCH_SelfTestGraphs"
     /// A one-line summary of the run, in UserDefaults.
     static let summaryKey = "PCH_SelfTestSummary"
     /// The last stage the run reached, flushed before each step so that a hang can be located.
@@ -918,6 +921,15 @@ enum SelfTest {
             text += transient.text
 
             summary += "; " + transient.summary
+
+            text += await AxialProfileReport(model: model, results: results, alpha: alpha, scenario: scenario)
+
+            if UserDefaults.standard.bool(forKey: graphsKey) {
+
+                Stage("rendering the graphs")
+
+                text += await RenderGraphs(model: model, results: results, alpha: alpha, scenario: scenario)
+            }
 
             if scenario.reportNodes {
 
@@ -2684,6 +2696,159 @@ enum SelfTest {
         }
 
         return (low + high) / 2.0
+    }
+
+    // MARK: The axial stress profile
+
+    /// The disc-to-disc stress profile of the continuum coil - the data behind `AxialStressProfileWindow`, in numbers.
+    ///
+    /// This exists because that window is the one place the screen's output is read as a SHAPE rather than as a ranked list, and a
+    /// shape hides the things that go wrong with it: a gap tagged at the wrong height puts a point in the wrong place on a curve
+    /// that still looks plausible, and a missing tag drops a gap out of the picture silently. So the profile is printed here with
+    /// the checks it came from — the count against the number of gaps in the coil, the heights in order, and the worst gap with
+    /// exactly the four numbers the graph's annotation shows.
+    ///
+    /// It also pins the two derived quantities, which are recovered from the check rather than recomputed: the allowable field is
+    /// averageField / averageUtilization and the allowable ΔV is deltaV / averageUtilization, both exact because the field is
+    /// linear in the driving voltage.
+    private static func AxialProfileReport(model:PhaseModel, results:[SimulationModel.SimulationStepResult], alpha:[Double], scenario:Scenario) async -> String {
+
+        var text = "AXIAL STRESS PROFILE (coil \(scenario.continuumCoil), disc to disc)\n"
+        text += String(repeating: "-", count: 110) + "\n"
+
+        let checks = await DielectricStress.Report(model: model,
+                                                   results: results,
+                                                   capacitiveDistribution: alpha,
+                                                   peakVoltage: scenario.peakVoltage)
+
+        let name = DielectricStress.AxialProfileName(coil: scenario.continuumCoil)
+
+        let profile = checks.filter { $0.kind == .discToDisc && $0.profileName == name && $0.profileHeight != nil }
+            .sorted { ($0.profileHeight ?? 0.0) < ($1.profileHeight ?? 0.0) }
+
+        guard !profile.isEmpty else {
+
+            text += "  No disc-to-disc gaps are tagged for this coil. If the coil is a disc winding, the profile graph is empty and\n"
+            text += "  something has stopped AppendAxialSites tagging its sites.\n\n"
+            return text
+        }
+
+        // Every disc-to-disc check of this coil should be in the profile: the tag is not optional, and one without a height is a
+        // gap the graph cannot draw.
+        let untagged = checks.filter { $0.kind == .discToDisc && $0.location.hasPrefix("Coil \(scenario.continuumCoil),") && $0.profileHeight == nil }.count
+
+        text += "  \(profile.count) gaps tagged\(untagged == 0 ? "" : " - FAILED: \(untagged) disc-to-disc check(s) of this coil carry no height")\n"
+
+        let heights = profile.compactMap { $0.profileHeight }
+        text += String(format: "  Heights:    %.1f mm to %.1f mm\n", (heights.first ?? 0.0) * 1000.0, (heights.last ?? 0.0) * 1000.0)
+
+        let allowables = profile.map { $0.averageField / $0.averageUtilization }
+        let lowestAllowable = allowables.min() ?? 0.0
+        let highestAllowable = allowables.max() ?? 0.0
+        let constant = highestAllowable - lowestAllowable <= 1.0E-9 * max(1.0, highestAllowable)
+
+        text += String(format: "  Allowable:  %.2f kV/mm%@\n", highestAllowable / 1.0E6,
+                       constant ? " (the same in every gap, so the graph's allowable is one horizontal line)"
+                                : String(format: " at most, %.2f kV/mm at least - the graph draws it as a curve", lowestAllowable / 1.0E6))
+
+        // The worst gap is picked by utilization, exactly as the window's annotation picks it.
+        if let worst = profile.max(by: { $0.averageUtilization < $1.averageUtilization }) {
+
+            let allowableField = worst.averageField / worst.averageUtilization
+            let allowableDeltaV = abs(worst.deltaV) / worst.averageUtilization
+
+            text += String(format: "  Worst gap:  %.0f V/mm (%.2f kV/mm) at z = %.1f mm, %.0f%% of allowable\n",
+                           worst.averageField / 1000.0, worst.averageField / 1.0E6, (worst.profileHeight ?? 0.0) * 1000.0, worst.averageUtilization * 100.0)
+            text += String(format: "              dV = %.2f kV, allowable dV = %.2f kV at %.2f kV/mm\n",
+                           abs(worst.deltaV) / 1000.0, allowableDeltaV / 1000.0, allowableField / 1.0E6)
+            text += "              \(worst.location)\n"
+        }
+
+        text += "\n  Gap-by-gap (height mm, stress kV/mm, allowable kV/mm, dV kV, allowable dV kV):\n"
+
+        for check in profile {
+
+            let allowableField = check.averageField / check.averageUtilization
+
+            text += String(format: "    %8.1f  %7.3f  %7.3f  %8.2f  %8.2f\n",
+                           (check.profileHeight ?? 0.0) * 1000.0,
+                           check.averageField / 1.0E6,
+                           allowableField / 1.0E6,
+                           abs(check.deltaV) / 1000.0,
+                           allowableDeltaV(check) / 1000.0)
+        }
+
+        return text + "\n"
+    }
+
+    /// The driving voltage that would put a check's governing layer exactly at its allowable.
+    private static func allowableDeltaV(_ check:DielectricStress.StressCheck) -> Double {
+
+        return abs(check.deltaV) / check.averageUtilization
+    }
+
+    /// Draw the result graphs into PNG files beside the report (`-PCH_SelfTestGraphs YES`).
+    ///
+    /// The numbers behind a graph can be checked by printing them, and `AxialProfileReport` does. The DRAWING cannot: a curve
+    /// plotted off the end of its axis, an annotation box sitting on top of the line it describes, or a tick label overwriting its
+    /// neighbour are all invisible to any assertion worth writing, and all three are what actually goes wrong when a plot is
+    /// edited. So the window is built exactly as the menu item builds it, given a frame, and asked to draw itself into a bitmap.
+    ///
+    /// The window is never ordered front - `cacheDisplay(in:to:)` renders an unmapped view - so this stays headless.
+    private static func RenderGraphs(model:PhaseModel, results:[SimulationModel.SimulationStepResult], alpha:[Double], scenario:Scenario) async -> String {
+
+        var text = "GRAPHS\n"
+        text += String(repeating: "-", count: 110) + "\n"
+
+        guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+
+            return text + "  FAILED: the container has no Documents folder.\n\n"
+        }
+
+        let checks = await DielectricStress.Report(model: model,
+                                                   results: results,
+                                                   capacitiveDistribution: alpha,
+                                                   peakVoltage: scenario.peakVoltage)
+
+        guard let profileWindow = AxialStressProfileWindow(checks: checks, title: "Disc-to-Disc Stress vs. Height") else {
+
+            return text + "  FAILED: the axial stress profile window could not be built from \(checks.count) findings.\n\n"
+        }
+
+        guard let window = profileWindow.window, let contentView = window.contentView else {
+
+            return text + "  FAILED: the axial stress profile window has no content view.\n\n"
+        }
+
+        window.setContentSize(NSSize(width: 1000.0, height: 620.0))
+        contentView.layoutSubtreeIfNeeded()
+        contentView.displayIfNeeded()
+
+        guard let bitmap = contentView.bitmapImageRepForCachingDisplay(in: contentView.bounds) else {
+
+            return text + "  FAILED: no bitmap could be made for the graph.\n\n"
+        }
+
+        contentView.cacheDisplay(in: contentView.bounds, to: bitmap)
+
+        guard let png = bitmap.representation(using: .png, properties: [:]) else {
+
+            return text + "  FAILED: the graph bitmap could not be encoded.\n\n"
+        }
+
+        let url = documents.appendingPathComponent("SelfTestGraph-\(scenario.name)-axialStress.png")
+
+        do {
+
+            try png.write(to: url)
+            text += "  Axial stress profile: \(url.lastPathComponent) (\(Int(contentView.bounds.width)) x \(Int(contentView.bounds.height)))\n\n"
+        }
+        catch {
+
+            text += "  FAILED writing the graph: \(error)\n\n"
+        }
+
+        return text
     }
 
     // MARK: The transient

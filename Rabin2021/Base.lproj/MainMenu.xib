@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="23504" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
+<document type="com.apple.InterfaceBuilder3.Cocoa.XIB" version="3.0" toolsVersion="24765" targetRuntime="MacOSX.Cocoa" propertyAccessControl="none" useAutolayout="YES" customObjectInstantitationMethod="direct">
     <dependencies>
-        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="23504"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.CocoaPlugin" version="24765"/>
         <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
     </dependencies>
     <objects>
@@ -22,10 +22,13 @@
         <customObject id="XWq-sU-B2V" customClass="AppController" customModule="ImpulseDistribution" customModuleProvider="target">
             <connections>
                 <outlet property="addConnectionMenuItem" destination="wyt-nn-lsB" id="hUT-dj-hJ4"/>
-                <outlet property="addWoundInShieldsMenuItem" destination="WiS-Ad-100" id="WiS-Ad-102"/>
                 <outlet property="addGroundMenuItem" destination="v78-OQ-6tN" id="ILk-Wy-dG5"/>
                 <outlet property="addImpulseMenuItem" destination="i9N-bc-tbw" id="TJU-Oo-SB8"/>
+                <outlet property="addWoundInShieldsMenuItem" destination="WiS-Ad-100" id="WiS-Ad-102"/>
+                <outlet property="cancelInductanceMenuItem" destination="Cn2-sM-q01" id="Cn2-sM-q03"/>
+                <outlet property="cancelSimulationMenuItem" destination="Cn1-sM-q01" id="Cn1-sM-q03"/>
                 <outlet property="combineSegmentsIntoSingleSegmentMenuItem" destination="bwi-RW-boG" id="dY2-kP-Zy8"/>
+                <outlet property="compareSolversMenuItem" destination="Cmp-Sv-Mi1" id="Cmp-Sv-Ou1"/>
                 <outlet property="createSimModelMenuItem" destination="9LX-Ul-dgv" id="6lP-9A-RIt"/>
                 <outlet property="indCalcProgInd" destination="Det-ry-1cY" id="JK5-pS-z4f"/>
                 <outlet property="inductanceLight" destination="8Bk-Y9-N83" id="Fxc-0g-zsc"/>
@@ -35,9 +38,9 @@
                 <outlet property="rLocationTextField" destination="NTX-as-kOd" id="arL-Ge-79x"/>
                 <outlet property="radialShieldInsideMenuItem" destination="BEG-M4-Kp7" id="3uR-Go-Bnw"/>
                 <outlet property="removeConnectionMenuItem" destination="VZ8-kL-Dja" id="in8-h8-Gl3"/>
-                <outlet property="removeWoundInShieldsMenuItem" destination="WiS-Rm-200" id="WiS-Rm-202"/>
                 <outlet property="removeRadialShieldMenuItem" destination="xXj-L6-RCw" id="PQm-pG-7IL"/>
                 <outlet property="removeStaticRingMenuItem" destination="4HP-v0-HBk" id="Y4d-TJ-nm9"/>
+                <outlet property="removeWoundInShieldsMenuItem" destination="WiS-Rm-200" id="WiS-Rm-202"/>
                 <outlet property="saveAsCirFileMenuItem" destination="SJg-48-XWQ" id="GSK-ZP-juG"/>
                 <outlet property="saveBaseCmatrixMenuItem" destination="X1L-Wz-3EW" id="h9Y-Xj-oQR"/>
                 <outlet property="saveBmatrixMenuItem" destination="Lx5-Zo-nvZ" id="0yt-Rk-xis"/>
@@ -49,9 +52,6 @@
                 <outlet property="showWaveformsMenuItem" destination="QjX-pp-fL5" id="sb0-tI-ej0"/>
                 <outlet property="showWdgAsSingleSegmentMenuItem" destination="Aqp-v7-qka" id="wWQ-tl-Wef"/>
                 <outlet property="simCalcProgInd" destination="ar6-fH-ZoX" id="EOh-90-GTr"/>
-                <outlet property="cancelInductanceMenuItem" destination="Cn2-sM-q01" id="Cn2-sM-q03"/>
-                <outlet property="cancelSimulationMenuItem" destination="Cn1-sM-q01" id="Cn1-sM-q03"/>
-                <outlet property="compareSolversMenuItem" destination="Cmp-Sv-Mi1" id="Cmp-Sv-Ou1"/>
                 <outlet property="simulateMenuItem" destination="qgl-wB-C1d" id="6gm-BU-6n3"/>
                 <outlet property="simulationLight" destination="yKp-7M-HKH" id="sQW-KM-J6p"/>
                 <outlet property="splitSegmentToBasicSectionsMenuItem" destination="hmW-Yq-C8J" id="aNg-xP-L1a"/>
@@ -444,6 +444,12 @@
                                     <action selector="handleShowRadialStressProfiles:" target="XWq-sU-B2V" id="Str-Rp-Ac2"/>
                                 </connections>
                             </menuItem>
+                            <menuItem title="Show Axial Stress Profile…" id="Str-Rp-Mi4">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleShowAxialStressProfile:" target="XWq-sU-B2V" id="Str-Rp-Ac4"/>
+                                </connections>
+                            </menuItem>
                             <menuItem title="Turn Ladder for Selected Disc…" id="Str-Rp-Mi3">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
@@ -601,7 +607,7 @@
             <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" resizable="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
             <rect key="contentRect" x="335" y="390" width="599" height="807"/>
-            <rect key="screenRect" x="0.0" y="0.0" width="2560" height="1415"/>
+            <rect key="screenRect" x="0.0" y="0.0" width="1728" height="1084"/>
             <view key="contentView" id="EiT-Mj-1SZ">
                 <rect key="frame" x="0.0" y="0.0" width="599" height="807"/>
                 <autoresizingMask key="autoresizingMask"/>
@@ -610,11 +616,11 @@
                         <rect key="frame" x="-1" y="48" width="601" height="760"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <clipView key="contentView" id="SDg-ft-U91">
-                            <rect key="frame" x="1" y="1" width="584" height="743"/>
-                            <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                            <rect key="frame" x="1" y="1" width="599" height="758"/>
+                            <autoresizingMask key="autoresizingMask"/>
                             <subviews>
                                 <view id="ebn-Op-mWN" customClass="TransformerView" customModule="ImpulseDistribution" customModuleProvider="target">
-                                    <rect key="frame" x="0.0" y="0.0" width="585" height="744"/>
+                                    <rect key="frame" x="0.0" y="0.0" width="600" height="759"/>
                                     <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                                     <connections>
                                         <outlet property="addRadialShieldMenuItem" destination="kmi-xS-wRk" id="JqN-Ra-ha9"/>
@@ -629,11 +635,11 @@
                             </subviews>
                         </clipView>
                         <scroller key="horizontalScroller" wantsLayer="YES" verticalHuggingPriority="750" horizontal="YES" id="ZNq-Kw-tyS">
-                            <rect key="frame" x="1" y="744" width="584" height="15"/>
+                            <rect key="frame" x="1" y="742" width="599" height="17"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </scroller>
                         <scroller key="verticalScroller" wantsLayer="YES" verticalHuggingPriority="750" doubleValue="1" horizontal="NO" id="aVc-m1-gzr">
-                            <rect key="frame" x="585" y="1" width="15" height="743"/>
+                            <rect key="frame" x="583" y="1" width="17" height="758"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </scroller>
                     </scrollView>
@@ -718,11 +724,11 @@
                             <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
                         </textFieldCell>
                     </textField>
-                    <progressIndicator fixedFrame="YES" maxValue="100" doubleValue="50" indeterminate="YES" style="bar" translatesAutoresizingMaskIntoConstraints="NO" id="Det-ry-1cY">
+                    <progressIndicator wantsLayer="YES" fixedFrame="YES" maxValue="100" doubleValue="50" indeterminate="YES" style="bar" translatesAutoresizingMaskIntoConstraints="NO" id="Det-ry-1cY">
                         <rect key="frame" x="479" y="29" width="100" height="20"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
                     </progressIndicator>
-                    <progressIndicator fixedFrame="YES" maxValue="100" doubleValue="50" indeterminate="YES" style="bar" translatesAutoresizingMaskIntoConstraints="NO" id="ar6-fH-ZoX">
+                    <progressIndicator wantsLayer="YES" fixedFrame="YES" maxValue="100" doubleValue="50" indeterminate="YES" style="bar" translatesAutoresizingMaskIntoConstraints="NO" id="ar6-fH-ZoX">
                         <rect key="frame" x="481" y="4" width="100" height="20"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
                     </progressIndicator>

@@ -59,7 +59,10 @@ class StressProfileWindow:NSWindowController {
 
         for check in checks {
 
-            guard let name = check.profileName, check.profileHeight != nil else {
+            // RADIAL checks only. The disc-to-disc sites carry a profile name and a height as well, for the axial graph
+            // (AxialStressProfileWindow); without this filter they would appear in this window's picker, under a y axis whose
+            // note calls them radial.
+            guard check.kind.isRadial, let name = check.profileName, check.profileHeight != nil else {
 
                 continue
             }
