@@ -2757,8 +2757,8 @@ enum SelfTest {
             let allowableField = worst.averageField / worst.averageUtilization
             let allowableDeltaV = abs(worst.deltaV) / worst.averageUtilization
 
-            text += String(format: "  Worst gap:  %.0f V/mm (%.2f kV/mm) at z = %.1f mm, %.0f%% of allowable\n",
-                           worst.averageField / 1000.0, worst.averageField / 1.0E6, (worst.profileHeight ?? 0.0) * 1000.0, worst.averageUtilization * 100.0)
+            text += String(format: "  Worst gap:  %.2f kV/mm at z = %.1f mm, %.0f%% of allowable\n",
+                           worst.averageField / 1.0E6, (worst.profileHeight ?? 0.0) * 1000.0, worst.averageUtilization * 100.0)
             text += String(format: "              dV = %.2f kV, allowable dV = %.2f kV at %.2f kV/mm\n",
                            abs(worst.deltaV) / 1000.0, allowableDeltaV / 1000.0, allowableField / 1.0E6)
             text += "              \(worst.location)\n"

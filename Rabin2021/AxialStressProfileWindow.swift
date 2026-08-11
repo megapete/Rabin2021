@@ -470,7 +470,9 @@ private class ProfileView:NSView {
     /// allowable there. The ΔV pair is the useful one - a designer compares a withstand in kV, not a field in kV/mm.
     private func DrawAnnotation(for worst:AxialStressProfileWindow.Point, profile:AxialStressProfileWindow.Profile, curve:[NSPoint], plotLeft:CGFloat, plotRight:CGFloat, plotBottom:CGFloat, plotTop:CGFloat, allowableY:CGFloat) {
 
-        let lines = [("Maximum stress:", String(format: "%.0f V/mm  (%.2f kV/mm)", worst.stress / 1000.0, worst.stress / 1.0E6)),
+        // kV/mm throughout, matching the y axis and every allowable in DielectricStress. Two units in one window is how a stress
+        // gets misread by a factor of a thousand - see the unit note in AxisScale.UnitScale.
+        let lines = [("Maximum stress:", String(format: "%.2f kV/mm", worst.stress / 1.0E6)),
                      ("At height:", String(format: "%.0f mm", worst.z * 1000.0)),
                      ("ΔV there:", String(format: "%.2f kV", worst.deltaV / 1000.0)),
                      ("Allowable ΔV there:", String(format: "%.2f kV  (at %.2f kV/mm)", worst.allowableDeltaV / 1000.0, worst.allowableStress / 1.0E6)),
