@@ -32,6 +32,9 @@ enum Preference:String, CaseIterable, Sendable {
 
     /// The fraction of DelVecchio's 50%-probability breakdown levels that the dielectric stress screen treats as allowable.
     case dielectricDesignMargin = "PCH_RABIN2021_DielectricDesignMargin"
+
+    /// Whether the dielectric stress report shows its two corner-field columns.
+    case showCornerStresses = "PCH_RABIN2021_ShowCornerStresses"
 }
 
 extension Preference {
@@ -89,6 +92,13 @@ extension Preference {
                               explanation: "The fraction of the breakdown level that the dielectric stress report is allowed to use. DelVecchio ch. 13's breakdown data are 50%-probability levels (p.368: \"some margin below these levels would be needed in actual design\"), and the book's own Figure 13.5 example is drawn with a 20% margin, ie: 0.80. Every utilization in the report scales as 1/margin, so this moves the pass/fail line - it cannot change the worst-first ranking.",
                               kind: .number(minimum: 0.10, maximum: 1.00, decimals: 2),
                               factoryDefault: .number(0.65))
+
+        case .showCornerStresses:
+
+            return Definition(title: "Show corner stresses:",
+                              explanation: "Adds the two conductor-corner columns to the dielectric stress report: the peak field at a strand corner and the ratio by which the corner concentrates the field over the average. They are informational only - DelVecchio ch. 13's breakdown data are uniform-gap measurements compared against AVERAGE fields, so there is no sourced allowable to judge a corner peak against, and nothing in the report is ranked or coloured on them. Off by default because a column that cannot be failed reads like one that can.",
+                              kind: .flag,
+                              factoryDefault: .flag(false))
         }
     }
 }
@@ -303,6 +313,7 @@ enum Preferences {
 
         report.insert(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED", at: 0)
         report.append("current dielectric design margin: \(dielectricDesignMargin)")
+        report.append("corner stresses shown in the stress report: \(showCornerStresses)")
 
         UserDefaults.standard.set(report, forKey: "PreferencesVerification")
         UserDefaults.standard.synchronize()
@@ -317,5 +328,11 @@ enum Preferences {
     static var dielectricDesignMargin:Double {
 
         return Number(.dielectricDesignMargin)
+    }
+
+    /// Whether the dielectric stress report shows its corner-field columns. See `StressReportWindow.Column.isCornerColumn`.
+    static var showCornerStresses:Bool {
+
+        return Flag(.showCornerStresses)
     }
 }

@@ -22,6 +22,16 @@
 //  quantities whose definition decides whether a row is alarming or routine (whose thickness is "Layer/path"? is "Corner enh." a
 //  margin?), and a header the reader has to come back to this file to decode is a report that will be misread.
 //
+//  The two corner columns are OFF unless `Preferences.showCornerStresses` says otherwise, and the note about them appears only
+//  when they do. They are the only columns in the table that cannot be failed, so shipping them on by default put a number in
+//  front of the reader that looks like a margin and is not one.
+//
+//  THE NOTES ARE ONE NOTE PER LINE, and that is a layout constraint, not a typographic taste. `summaryLabel` is the only view in
+//  the window with a horizontal intrinsic size that AppKit has to honour, so the window cannot be narrower than the label's
+//  longest unbreakable run - which, when the notes ran together as one paragraph, was the whole paragraph. On a wide display the
+//  window opened absurdly wide. Explicit newlines cap the demanded width at the longest single note. Do not concatenate them
+//  back into one string, and do not cap `maximumNumberOfLines` below the number of notes.
+//
 
 import Cocoa
 import PchBasePackage
@@ -48,6 +58,23 @@ class StressReportWindow:NSWindowController {
         case averageMargin = "% of allowable"
         case peakField = "Corner (kV/mm)"
         case peakMargin = "Corner enh."
+
+        /// The conductor-corner columns, which `Preferences.showCornerStresses` turns on and off as a pair. They are informational
+        /// only - see the file header - so they are the two the table can do without.
+        var isCornerColumn:Bool {
+
+            switch self {
+
+            case .peakField, .peakMargin: return true
+            default: return false
+            }
+        }
+
+        /// The columns actually built into the table, in display order.
+        static var displayed:[Column] {
+
+            return Column.allCases.filter { !$0.isCornerColumn || Preferences.showCornerStresses }
+        }
 
         /// Right-align everything numeric.
         var isNumeric:Bool {
@@ -107,7 +134,10 @@ class StressReportWindow:NSWindowController {
                               backing: .buffered,
                               defer: false)
         window.title = title
-        window.setFrameAutosaveName("StressReportWindow")
+        // Deliberately not the old "StressReportWindow" key: it holds frames that were saved back when the run-together notes
+        // forced the window to open several thousand points wide, and restoring one of those would undo the fix for anyone who
+        // had already opened a report. Changing the key drops those saved frames once.
+        window.setFrameAutosaveName("StressReportWindowV2")
 
         super.init(window: window)
 
@@ -134,16 +164,30 @@ class StressReportWindow:NSWindowController {
         let over = checks.filter { $0.worstUtilization > 1.0 }.count
         let close = checks.filter { $0.worstUtilization > 0.8 && $0.worstUtilization <= 1.0 }.count
 
+        // One note per line, and it stays that way - see the file header for what running them together does to the window width.
+        var notes = ["\(checks.count) locations checked — \(over) over allowable, \(close) within 20% of it.",
+                     "Allowables are DelVecchio ch. 13 impulse breakdown levels at each layer's own thickness, times a \(Int((DielectricStress.StressAllowable.designMargin * 100).rounded()))% design margin (set in Preferences)."]
+
+        // Only worth saying when the columns it is about are on the screen.
+        if Preferences.showCornerStresses {
+
+            notes.append("The corner columns are an enhancement ratio, not a margin: ch. 13 has no criterion for a corner peak.")
+        }
+
         // The "strike only" clause is not a disclaimer for its own sake. A reader who sees "N locations checked, 0 over allowable"
         // will take it as a clean bill of health, and creep - which is often what governs - is not among the N. See the header of
         // DielectricStress.swift.
-        summaryLabel.stringValue = "\(checks.count) locations checked — \(over) over allowable, \(close) within 20% of it. Allowables are DelVecchio ch. 13 impulse breakdown levels at each layer's own thickness, times a \(Int((DielectricStress.StressAllowable.designMargin * 100).rounded()))% design margin (set in Preferences). The corner column is an enhancement ratio, not a margin: ch. 13 has no criterion for a corner peak. Strike (breakdown through a gap) only — creep along insulation surfaces is not screened. Hover a column heading for what it holds."
+        notes.append("Strike (breakdown through a gap) only — creep along insulation surfaces is not screened.")
+        notes.append("Hover a column heading for what it holds.")
+
+        summaryLabel.stringValue = notes.joined(separator: "\n")
         summaryLabel.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         summaryLabel.lineBreakMode = .byWordWrapping
-        summaryLabel.maximumNumberOfLines = 3
+        // Enough lines for one note each, plus room for any one of them to wrap if the window is dragged narrower than it opens.
+        summaryLabel.maximumNumberOfLines = notes.count + 2
         summaryLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        for column in Column.allCases {
+        for column in Column.displayed {
 
             let tableColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(column.rawValue))
             tableColumn.title = column.rawValue

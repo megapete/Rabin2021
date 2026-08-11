@@ -97,9 +97,11 @@ Three things in there are deliberate:
   from). `UserDefaults` is thread-safe and keeps its own in-memory copy; a bare global would need synchronization and its own
   invalidation.
 - **`runModal()` returns which preferences changed**, so `AppController.handleShowPreferences` can invalidate exactly what went
-  stale. Today that is the dielectric design margin: every utilization in the stress report is a fraction of an allowable
-  carrying that margin, so the cached `latestStressChecks` is cleared and an open report window is re-run (the screen is
-  milliseconds). Anything else added later that a preference invalidates belongs in that one method.
+  stale. Two do today, and they invalidate different amounts. The **dielectric design margin** invalidates the findings: every
+  utilization is a fraction of an allowable carrying that margin, so the cached `latestStressChecks` is cleared and an open
+  report window is re-run (the screen is milliseconds). **Show corner stresses** invalidates only the *window* — the columns are
+  built once in `StressReportWindow`'s initializer and no finding depends on the setting — so an open report is rebuilt from the
+  cached checks. Anything else added later that a preference invalidates belongs in that one method.
 
 `Preferences.VerifySelf()` checks the store the same way the other `VerifySelf()`s check their formulas — and it walks
 `Preference.allCases`, so a new preference is covered the moment it is added. Run it by calling it from

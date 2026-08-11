@@ -2799,16 +2799,34 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         if changed.contains(.dielectricDesignMargin) {
 
             self.latestStressChecks = []
+        }
 
-            if let reportWindow = self.stressReportWindow, reportWindow.window?.isVisible ?? false {
+        // The corner columns are built once, in StressReportWindow's initializer, so an open report cannot pick the preference up
+        // where it stands. The findings themselves are untouched by it - nothing is ranked or judged on a corner field - so this
+        // one only costs a rebuilt window, not a re-run screen.
+        let mustRebuildReport = changed.contains(.dielectricDesignMargin) || changed.contains(.showCornerStresses)
 
-                reportWindow.close()
-                self.stressReportWindow = nil
+        if mustRebuildReport, let reportWindow = self.stressReportWindow, reportWindow.window?.isVisible ?? false {
 
+            let cachedChecks = self.latestStressChecks
+
+            reportWindow.close()
+            self.stressReportWindow = nil
+
+            if cachedChecks.isEmpty {
+
+                // The margin moved, so the checks above were thrown away. Re-run the screen; it is milliseconds - see
+                // doShowStressReport.
                 Task {
 
                     await self.doShowStressReport()
                 }
+            }
+            else {
+
+                let rebuilt = StressReportWindow(checks: cachedChecks, title: "Dielectric Stress Report")
+                self.stressReportWindow = rebuilt
+                rebuilt.showWindow(self)
             }
         }
     }

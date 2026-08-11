@@ -102,7 +102,10 @@ model for the allowables and shipped invented numbers alongside; both are gone.
 
 **Only the average field carries a margin.** The corner column reports an *enhancement ratio*, not a percentage of an allowable,
 because chapter 13's data are uniform-gap measurements judged against average fields — there is no sourced criterion for a corner
-peak. That is precisely where the book says (p.16) "there is usually some judgment involved", and where an FE run earns its keep.
+peak. That is also why the two corner columns are **hidden unless `Preferences.showCornerStresses` is on** (factory default off,
+added 2026-08-11): they are the only columns in the table that cannot be failed, and a column sitting beside "% of allowable" that
+is not a margin is read as one. Nothing else changes with the setting — no finding is ranked, coloured or computed differently, so
+`AppController.handleShowPreferences` rebuilds the report window without re-running the screen. That is precisely where the book says (p.16) "there is usually some judgment involved", and where an FE run earns its keep.
 The one figure here that is an extrapolation rather than a citation is `creepImpulseRatio` (the book gives creep only at power
 frequency); it is isolated as a named constant for that reason, and is on the unused creep path.
 
