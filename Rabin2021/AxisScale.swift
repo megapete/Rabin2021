@@ -206,6 +206,23 @@ enum AxisScale {
         })
     }
 
+    /// A label for one value on an axis whose largest label is 'axisMaximum', in **the same unit as that axis's own ticks**.
+    ///
+    /// This is for a caller that adds a tick of its own to a list from ``Ticks(...)`` - `StressProfileView` marks the worst value
+    /// and the allowable. It has to go through the same ``UnitScale(maxAbsolute:quantity:)``, because a voltage axis slides
+    /// through the SI prefixes with its magnitude: a profile peaking above a megavolt gets ticks in MV, and a hand-formatted
+    /// "1735.31 kV" beside them puts two units on one axis, which is how a number gets misread by a factor of a thousand.
+    ///
+    /// Four significant figures, which is what the round ticks come out at over the ranges these graphs cover.
+    static func Label(value:Double, quantity:AxisQuantity, axisMaximum:Double) -> String {
+
+        let unit = UnitScale(maxAbsolute: max(abs(axisMaximum), abs(value)), quantity: quantity)
+        let scaled = value / unit.divisor
+        let integerDigits = abs(scaled) >= 1.0 ? Int(floor(log10(abs(scaled)))) + 1 : 1
+
+        return String(format: "%.\(max(0, 4 - integerDigits))f%@", scaled, unit.suffix)
+    }
+
     /// The divisor and unit suffix to use for an axis whose largest label is 'maxAbsolute'.
     private static func UnitScale(maxAbsolute:Double, quantity:AxisQuantity) -> (divisor:Double, suffix:String) {
 

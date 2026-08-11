@@ -44,8 +44,13 @@ margin by `scaleMultiplier.y` as well as by the scale, which made it anisotropic
 `bounds.height == frame.height * scale`, or the tick labels come out stretched.
 
 **`AxisScale.DrawXEndLabels(...)` marks only the two ENDS of an x axis**, and is used by exactly one graph — the initial
-distribution, whose x axis is axial position and whose ends are "Top" and "Bottom". It is deliberately not a general x-tick
-generator: on an axis where the ends say everything, a millimetre scale is clutter. The labels are pushed to the outside of their
+distribution, whose x axis is axial position and whose ends are "Top" and "Bottom". On an axis where the ends say everything, a
+millimetre scale is clutter — and that graph runs top-to-bottom, so the names are what stop it being read backwards. Where the
+intermediate values *do* matter, the two stress profiles use **`AxisScale.TickValues` + `AxisScale.DrawXAxis`**: a labelled grid at
+a **fixed** 100 mm interval, thinning its labels (never its ticks) when they would collide, so that a 900 mm coil and a 2400 mm one
+are read against the same ruler. **`AxisScale.Label(value:quantity:axisMaximum:)`** is for a caller adding a tick of its own to a
+list from `Ticks(...)`; it goes through the same `UnitScale`, because a voltage axis slides through the SI prefixes with its
+magnitude and a hand-written "1735.31 kV" beside ticks in MV is two units on one axis. The labels are pushed to the outside of their
 own ends (a centred left label would hang over the y axis, the one place on the plot that already has ink) and are hung from the
 **bottom of the data rectangle**, not from the zero line the x axis is drawn on — the two coincide only while every value is
 positive, and a negative-polarity impulse would otherwise draw them down across the curve. A view that sets
@@ -67,16 +72,25 @@ Distribution*. Three things about it are deliberate:
 - **It reads the same α the stress report does**, rather than computing an initial distribution of its own — so this graph and the report's `0+ (initial)` rows cannot disagree.
 - **The x axis runs top-to-bottom, left-to-right**, which is why `Distribution.points` carries a *depth below the top of the coil* and not a height above the yoke. That is the textbook orientation and it puts the line end on the left in the usual case, but it is the **opposite** of `CoilResultsDisplayView`'s other two users, whose x is a height — hence the end labels, which exist so the two graphs cannot be confused. "Impulsed coil" means a coil with a node carrying an impulse connector; if there is more than one they all go in the picker. Coils that are not driven are left out on purpose — α there is a small shunt-capacitance residual that would flatten the driven curve into the floor of the plot.
 
-## `AxialStressProfileWindow.swift`
+## The two stress profiles (`StressProfileView.swift`, `AxialStressProfileWindow.swift`, `StressProfileWindow.swift`)
 
-The disc-to-disc stress of one coil against height, with the allowable drawn across it. *Simulate → Show Axial Stress Profile…*.
-Four things about it are deliberate:
+`AxialStressProfileWindow` is the disc-to-disc stress of one coil against height (*Simulate → Show Axial Stress Profile…*);
+`StressProfileWindow` is the radial voltage difference — or radial stress, on a picker — between one coil and the next
+(*Simulate → Show Radial Stress Profiles…*). **Both draw into `StressProfileView`**, and that sharing is the point: the two are
+read side by side, so a difference in where the ticks fall, in what the allowable looks like or in what the annotation says would
+be taken for a difference in the *data*. The windows do the physics — which findings belong to which curve, what the allowable at
+a point is, what the annotation rows say — and the view knows nothing about coils or gaps.
 
-- **It does not use `CoilResultsDisplayView`.** It needs a second series, a labelled x axis on a fixed 100 mm grid and an
-  annotation block inside the plot, none of which that view has and none of which its two existing users want. It draws in plain
-  view coordinates (bounds == frame), which is what lets it hand `AxisScale` a `pointSize` of 1 and reuse `DrawYAxis` unchanged.
-  The x-axis machinery it needed — `AxisScale.TickValues` and `AxisScale.DrawXAxis` — went into `AxisScale`, where that file's own
-  comment had said a general x tick generator belongs.
+Six things about them are deliberate:
+
+- **The view is not `CoilResultsDisplayView`.** It needs a second series, a labelled x axis on a fixed 100 mm grid, markers at
+  named heights and an annotation block inside the plot, none of which that view has and none of which its remaining user wants.
+  It draws in plain view coordinates (bounds == frame), which is what lets it hand `AxisScale` a `pointSize` of 1 and reuse
+  `DrawYAxis` unchanged; `CoilResultsDisplayView` instead sets its bounds to the data rectangle, which is why that one needs two
+  passes to settle a margin and scales everything it draws by hand.
+- **Either quantity is judged against its own allowable.** The radial window's voltage view is compared with the ΔV that would put
+  the governing layer at its limit, its stress view with the limit itself; both fall out of the finding as a division by its
+  utilization, so the two views of one profile carry the same margin and the picker cannot move the worst point.
 - **The allowable is a series, not a rule.** With one duct size and one paper thickness the length of a coil every point of it is
   equal and it draws as the horizontal line it is meant to be, but a widened duct or a gap facing a static ring genuinely has a
   different allowable, and one rule at the smallest of them would understate the margin everywhere else. Where it varies the note
@@ -85,9 +99,14 @@ Four things about it are deliberate:
   round grid plus the two values the graph is read for — the worst stress and the allowable — each with a guide line across the
   plot. `AxisScale`'s own extreme ticks are dropped (except zero): they mark the ends of the range they are handed, and the top of
   this one is headroom rather than anything the coil reached.
-- **The annotation box is placed by measurement.** Four positions are scored by how many plotted gaps they would cover, with a
-  flat penalty for hiding the allowable line, and the cheapest wins. The window opens on the coil with the worst gap, not the
-  first one in the picker.
+- **The annotation box is placed by measurement.** Four positions are scored by how many plotted points they would cover, with a
+  flat penalty for hiding the allowable line, and the cheapest wins. Both windows open on the coil (or coil pair) with the worst
+  point in it, not on the first in the picker, and both pick "worst" by **utilization** — a point with a lower allowable can be
+  the one in trouble at a lower field, which is what the report table ranks on too. The rows never repeat a number: with volts on
+  the axis the third row is the stress there, with stress on the axis it is the ΔV.
+- **The radial profile marks where the inner coil ends** with a vertical rule, named once (to the left of the rule where there is
+  no room to its right). Past that height the field is genuinely two-dimensional and the plotted value is indicative only —
+  `TODO.md` item 11. The note said so already; the rule says *where*, which is the half that matters when reading a curve.
 
 ## Dialogs / windows
 

@@ -31,10 +31,9 @@
 //  evaluation of the allowable, because the field is LINEAR in the driving voltage (the property DielectricStress.Scan is built
 //  on): scaling ΔV by 1/utilization is precisely the ΔV that would put the governing layer at its allowable.
 //
-//  The view is private to this window rather than a sibling of CoilResultsDisplayView because it needs three things that view
-//  does not have and that its two existing users do not want: a second series, a labelled x axis on a fixed 100 mm grid, and an
-//  annotation block inside the plot. It is a plain view-coordinates drawing (bounds == frame, one point = one unit), which is
-//  what lets it hand AxisScale a pointSize of 1.
+//  The drawing is StressProfileView, which this window shares with StressProfileWindow's radial profiles - see the header of that
+//  file for why it is not CoilResultsDisplayView. This file's job is the physics: which findings belong to which coil, what the
+//  allowable at a point is, and what the annotation says.
 //
 
 import Cocoa
@@ -87,7 +86,7 @@ class AxialStressProfileWindow:NSWindowController {
 
     private let profiles:[Profile]
 
-    private let graphView = ProfileView()
+    private let graphView = StressProfileView()
     private let profilePicker = NSPopUpButton()
     private let noteLabel = NSTextField(labelWithString: "")
 
@@ -238,7 +237,25 @@ class AxialStressProfileWindow:NSWindowController {
 
         let profile = profiles[index]
 
-        graphView.profile = profile
+        // kV/mm throughout, matching the y axis and every allowable in DielectricStress. Two units in one window is how a stress
+        // gets misread by a factor of a thousand - see the unit note in AxisScale.UnitScale.
+        var annotation:[(label:String, value:String)] = []
+
+        if let worst = profile.worst {
+
+            annotation = [(label: "Maximum stress:", value: String(format: "%.2f kV/mm", worst.stress / 1.0E6)),
+                          (label: "At height:", value: String(format: "%.0f mm", worst.z * 1000.0)),
+                          (label: "ΔV there:", value: String(format: "%.2f kV", worst.deltaV / 1000.0)),
+                          (label: "Allowable ΔV there:", value: String(format: "%.2f kV  (at %.2f kV/mm)", worst.allowableDeltaV / 1000.0, worst.allowableStress / 1.0E6)),
+                          (label: "Utilization:", value: String(format: "%.0f%% of allowable", worst.utilization * 100.0))]
+        }
+
+        graphView.plot = StressProfileView.Plot(points: profile.points.map { StressProfileView.Point(z: $0.z, value: $0.stress, allowable: $0.allowableStress, utilization: $0.utilization) },
+                                                quantity: .stress,
+                                                peakTestVoltage: 0.0,
+                                                annotation: annotation,
+                                                markers: [],
+                                                markerName: "")
 
         var note = "Envelope: the worst disc-to-disc stress each gap saw at any instant of the run, one point per gap, joined by straight lines. Allowables are DelVecchio ch. 13 impulse breakdown levels at the governing layer's own thickness, times the design margin set in Preferences."
 
@@ -248,294 +265,5 @@ class AxialStressProfileWindow:NSWindowController {
         }
 
         noteLabel.stringValue = note
-    }
-}
-
-// MARK: - The plot
-
-/// The drawing. See the file header for why this is not CoilResultsDisplayView.
-private class ProfileView:NSView {
-
-    var profile:AxialStressProfileWindow.Profile? = nil {
-
-        didSet {
-
-            self.needsDisplay = true
-        }
-    }
-
-    /// The x axis is a coil height in millimetres and the grid the user asked for is 100 mm. It is not derived from the span: a
-    /// round grid is the point, so a 900 mm coil and a 2400 mm one are read against the same ruler.
-    private static let xTickInterval = 100.0
-
-    private let axisColor = NSColor.darkGray
-    private let stressColor = NSColor.systemRed
-    private let allowableColor = NSColor.systemOrange
-    private let extremumColor = NSColor.systemYellow
-
-    private let marginRight = 16.0
-    private let marginTop = 14.0
-
-    /// Room for the x-axis ticks, their labels, and the axis title under them.
-    private var marginBottom:CGFloat { return AxisScale.XEndLabelHeight + AxisScale.labelLineHeight + 4.0 }
-
-    override func draw(_ dirtyRect: NSRect) {
-
-        super.draw(dirtyRect)
-
-        // No background fill, so this graph sits on the window's own colour the way the other two do.
-        guard let profile = profile, let first = profile.points.first, let last = profile.points.last else {
-
-            return
-        }
-
-        // ---- the ranges ----
-        //
-        // The x range is the coil's own extent. The y range starts at zero - a stress profile read against an allowable is a
-        // picture of how much room is left, and a y axis that did not start at zero would make a comfortable coil look alarming -
-        // and reaches past whichever is higher, the worst stress or the allowable, so the allowable line is always on the plot.
-
-        let xMinimum = first.z * 1000.0
-        let xMaximum = max(last.z * 1000.0, xMinimum + 1.0)
-
-        let peakStress = profile.points.map { $0.stress }.max() ?? 1.0
-        let peakAllowable = profile.points.map { $0.allowableStress }.max() ?? 1.0
-        let yMaximum = max(peakStress, peakAllowable) * 1.08
-
-        // ---- the plot rectangle ----
-        //
-        // CoilResultsDisplayView needs two passes here because its y scale depends on its left margin. This one does not: the
-        // vertical scale is set by the plot HEIGHT, which the y tick labels cannot affect, so the ticks are worked out first and
-        // the left margin is then whatever they need.
-
-        let yTicks = YTicks(profile: profile, peakStress: peakStress, peakAllowable: peakAllowable, yMaximum: yMaximum)
-
-        let marginLeft = max(12.0, AxisScale.YAxisWidth(ticks: yTicks) + 4.0)
-
-        let plotLeft = bounds.minX + marginLeft
-        let plotRight = bounds.maxX - marginRight
-        let plotBottom = bounds.minY + marginBottom
-        let plotTop = bounds.maxY - marginTop
-
-        guard plotRight > plotLeft, plotTop > plotBottom else {
-
-            return
-        }
-
-        func ViewX(_ xMillimetres:Double) -> CGFloat {
-
-            return plotLeft + (xMillimetres - xMinimum) / (xMaximum - xMinimum) * (plotRight - plotLeft)
-        }
-
-        func ViewY(_ stress:Double) -> CGFloat {
-
-            return plotBottom + stress / yMaximum * (plotTop - plotBottom)
-        }
-
-        // ---- the axes ----
-
-        AxisScale.DrawYAxis(ticks: yTicks,
-                            axisX: plotLeft,
-                            axisBottom: plotBottom,
-                            axisTop: plotTop,
-                            plotRight: plotRight,
-                            pointSize: 1.0,
-                            axisColor: axisColor,
-                            extremumColor: extremumColor,
-                            viewY: ViewY)
-
-        AxisScale.DrawXAxis(values: AxisScale.TickValues(minimum: xMinimum, maximum: xMaximum, interval: ProfileView.xTickInterval),
-                            axisY: plotBottom,
-                            plotLeft: plotLeft,
-                            plotRight: plotRight,
-                            pointSize: 1.0,
-                            axisColor: axisColor,
-                            viewX: ViewX)
-
-        // Centred UNDER the tick labels, in the line of bottom margin reserved for it. Hung off the right-hand end it collided
-        // with the last tick label, which is the one place on this axis where there is already ink.
-        let xTitle = NSAttributedString(string: "Height above bottom yoke (mm)",
-                                        attributes: [.font:NSFont.systemFont(ofSize: AxisScale.labelFontSize), .foregroundColor:axisColor])
-        xTitle.draw(at: NSPoint(x: (plotLeft + plotRight - xTitle.size().width) / 2.0, y: bounds.minY + 1.0))
-
-        // ---- the two series ----
-
-        let curve = profile.points.map { NSPoint(x: ViewX($0.z * 1000.0), y: ViewY($0.stress)) }
-
-        Stroke(points: curve, color: stressColor, width: 1.5)
-
-        // The allowable. Drawn dashed so that it reads as a limit rather than as a second measurement, and so that a coil whose
-        // allowable happens to sit on top of a y tick's guide line can still be told apart from it.
-        let allowablePath = NSBezierPath()
-        allowablePath.lineWidth = 1.5
-        allowablePath.setLineDash([6.0, 4.0], count: 2, phase: 0.0)
-
-        for (index, point) in profile.points.enumerated() {
-
-            let at = NSPoint(x: ViewX(point.z * 1000.0), y: ViewY(point.allowableStress))
-            index == 0 ? allowablePath.move(to: at) : allowablePath.line(to: at)
-        }
-
-        allowableColor.setStroke()
-        allowablePath.stroke()
-
-        // ---- the worst gap, and what it is ----
-
-        guard let worst = profile.worst else {
-
-            return
-        }
-
-        let worstAt = NSPoint(x: ViewX(worst.z * 1000.0), y: ViewY(worst.stress))
-        let dot = NSBezierPath(ovalIn: NSRect(x: worstAt.x - 3.5, y: worstAt.y - 3.5, width: 7.0, height: 7.0))
-        stressColor.setFill()
-        dot.fill()
-
-        DrawAnnotation(for: worst,
-                       profile: profile,
-                       curve: curve,
-                       plotLeft: plotLeft,
-                       plotRight: plotRight,
-                       plotBottom: plotBottom,
-                       plotTop: plotTop,
-                       allowableY: ViewY(min(peakAllowable, yMaximum)))
-    }
-
-    /// The y ticks: a round grid over the whole axis, plus the two values the graph is actually read for - the worst stress in
-    /// the coil and the allowable it is judged against. Both are marked as extremes, so `AxisScale` runs its dashed guide line
-    /// across the plot at each; a round tick that would collide with either is dropped, those two being the informative ones.
-    ///
-    /// The majors come from `AxisScale.Ticks` but its own extreme ticks are thrown away (except zero). It marks the ends of the
-    /// range it is handed, and the top of this range is headroom above the allowable rather than a value anything reached - a
-    /// tick there labels the padding.
-    private func YTicks(profile:AxialStressProfileWindow.Profile, peakStress:Double, peakAllowable:Double, yMaximum:Double) -> [AxisTick] {
-
-        // A label's height, in data units: the same spacing rule AxisScale uses to decide two ticks are too close.
-        let plotHeight = max(1.0, bounds.height - marginBottom - marginTop)
-        let separation = AxisScale.labelLineHeight * yMaximum / plotHeight
-
-        let majors = AxisScale.Ticks(minimum: 0.0,
-                                     maximum: yMaximum,
-                                     quantity: .stress,
-                                     peakTestVoltage: 0.0,
-                                     minimumSeparation: separation).filter { !$0.isExtremum || $0.value == 0.0 }
-
-        func Label(_ stress:Double) -> String {
-
-            return String(format: "%.2f kV/mm", stress / 1.0E6)
-        }
-
-        var marks = [AxisTick(value: peakStress, label: Label(peakStress), isExtremum: true)]
-
-        if peakAllowable > 0.0, peakAllowable <= yMaximum, abs(peakAllowable - peakStress) >= separation {
-
-            marks.append(AxisTick(value: peakAllowable, label: Label(peakAllowable) + (profile.allowableIsConstant ? "" : " max"), isExtremum: true))
-        }
-
-        var result = majors.filter { major in !marks.contains { abs($0.value - major.value) < separation } }
-        result += marks
-        result.sort { $0.value < $1.value }
-
-        return result
-    }
-
-    private func Stroke(points:[NSPoint], color:NSColor, width:CGFloat) {
-
-        guard points.count > 1 else {
-
-            // A single-gap coil would otherwise draw nothing at all.
-            if let only = points.first {
-
-                color.setFill()
-                NSBezierPath(ovalIn: NSRect(x: only.x - 2.0, y: only.y - 2.0, width: 4.0, height: 4.0)).fill()
-            }
-
-            return
-        }
-
-        let path = NSBezierPath()
-        path.lineWidth = width
-        path.move(to: points[0])
-
-        for point in points.dropFirst() {
-
-            path.line(to: point)
-        }
-
-        color.setStroke()
-        path.stroke()
-    }
-
-    /// The numbers, in the body of the plot: what the worst gap is, where it is, and how much voltage it would take to reach the
-    /// allowable there. The ΔV pair is the useful one - a designer compares a withstand in kV, not a field in kV/mm.
-    private func DrawAnnotation(for worst:AxialStressProfileWindow.Point, profile:AxialStressProfileWindow.Profile, curve:[NSPoint], plotLeft:CGFloat, plotRight:CGFloat, plotBottom:CGFloat, plotTop:CGFloat, allowableY:CGFloat) {
-
-        // kV/mm throughout, matching the y axis and every allowable in DielectricStress. Two units in one window is how a stress
-        // gets misread by a factor of a thousand - see the unit note in AxisScale.UnitScale.
-        let lines = [("Maximum stress:", String(format: "%.2f kV/mm", worst.stress / 1.0E6)),
-                     ("At height:", String(format: "%.0f mm", worst.z * 1000.0)),
-                     ("ΔV there:", String(format: "%.2f kV", worst.deltaV / 1000.0)),
-                     ("Allowable ΔV there:", String(format: "%.2f kV  (at %.2f kV/mm)", worst.allowableDeltaV / 1000.0, worst.allowableStress / 1.0E6)),
-                     ("Utilization:", String(format: "%.0f%% of allowable", worst.utilization * 100.0))]
-
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 11.0, weight: .regular)
-        let boldFont = NSFont.monospacedDigitSystemFont(ofSize: 11.0, weight: .semibold)
-
-        let labelWidth = lines.map { NSAttributedString(string: $0.0, attributes: [.font:font]).size().width }.max() ?? 0.0
-        let valueWidth = lines.map { NSAttributedString(string: $0.1, attributes: [.font:boldFont]).size().width }.max() ?? 0.0
-
-        let lineHeight = NSAttributedString(string: "X", attributes: [.font:font]).size().height + 2.0
-        let padding = 8.0
-
-        let boxSize = NSSize(width: labelWidth + 10.0 + valueWidth + padding * 2.0, height: lineHeight * Double(lines.count) + padding * 2.0)
-
-        // WHERE THE BOX GOES is measured, not guessed. Four places are tried - left or right, under the allowable line or up in
-        // the top corner - and the one covering the least of the curve wins. Anything that would sit on the allowable line is
-        // rejected outright unless every candidate does: the curve is what the reader came for and the allowable is what they are
-        // judging it against, so the annotation gets whatever is left over rather than the other way round.
-        //
-        // "Under the allowable" is offered first because the band between the curve and its limit is usually the emptiest part of
-        // the plot, and it is exactly where a top-corner box would hide the limit.
-        let underAllowable = allowableY - 8.0
-        let topCorner = plotTop - 6.0
-
-        var candidates:[NSRect] = []
-
-        for top in [underAllowable, topCorner] where top - boxSize.height > plotBottom && top <= plotTop {
-
-            for x in [plotLeft + 12.0, plotRight - boxSize.width - 12.0] {
-
-                candidates.append(NSRect(x: x, y: top - boxSize.height, width: boxSize.width, height: boxSize.height))
-            }
-        }
-
-        func Cost(_ rect:NSRect) -> Int {
-
-            // One per plotted gap the box would cover, and a flat penalty - larger than any coil's gap count - for hiding the
-            // allowable line.
-            let covered = curve.filter { rect.contains($0) }.count
-            let hidesAllowable = allowableY >= rect.minY && allowableY <= rect.maxY
-
-            return covered + (hidesAllowable ? 10000 : 0)
-        }
-
-        let box = candidates.min { Cost($0) < Cost($1) } ?? NSRect(x: plotLeft + 12.0, y: topCorner - boxSize.height, width: boxSize.width, height: boxSize.height)
-
-        let background = NSBezierPath(roundedRect: box, xRadius: 5.0, yRadius: 5.0)
-        NSColor.textBackgroundColor.withAlphaComponent(0.92).setFill()
-        background.fill()
-        NSColor.separatorColor.setStroke()
-        background.lineWidth = 1.0
-        background.stroke()
-
-        var y = box.maxY - padding - lineHeight
-
-        for (label, value) in lines {
-
-            NSAttributedString(string: label, attributes: [.font:font, .foregroundColor:NSColor.secondaryLabelColor]).draw(at: NSPoint(x: box.minX + padding, y: y))
-            NSAttributedString(string: value, attributes: [.font:boldFont, .foregroundColor:NSColor.labelColor]).draw(at: NSPoint(x: box.minX + padding + labelWidth + 10.0, y: y))
-
-            y -= lineHeight
-        }
     }
 }

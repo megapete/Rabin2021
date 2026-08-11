@@ -14,7 +14,8 @@ cat ~/Library/Containers/com.huberistech.Rabin2021/Data/Documents/SelfTestReport
 ```
 
 Add `-PCH_SelfTestTransient YES` for the frequency-domain sweep as well, and `-PCH_SelfTestGraphs YES` (which needs the transient)
-to **render the result graphs to PNGs** beside the report — `SelfTestGraph-<scenario>-axialStress.png` today. That flag exists
+to **render the result graphs to PNGs** beside the report — `SelfTestGraph-<scenario>-axialStress.png` and
+`-radialStress.png` today, both of the profile windows, which share a view and so break together. That flag exists
 because the numbers behind a graph can be asserted and the drawing cannot: a curve running off its axis, an annotation box sitting
 on the line it describes, or a tick label overwriting its neighbour are invisible to any check worth writing, and are exactly what
 goes wrong when a plot is edited. The window is built the way the menu item builds it and drawn with `cacheDisplay(in:to:)`, so it

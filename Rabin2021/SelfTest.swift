@@ -2810,45 +2810,58 @@ enum SelfTest {
                                                    capacitiveDistribution: alpha,
                                                    peakVoltage: scenario.peakVoltage)
 
-        guard let profileWindow = AxialStressProfileWindow(checks: checks, title: "Disc-to-Disc Stress vs. Height") else {
+        // Both profile graphs, because they share a view (StressProfileView) and so break together.
+        var windows:[(what:String, controller:NSWindowController?)] = []
 
-            return text + "  FAILED: the axial stress profile window could not be built from \(checks.count) findings.\n\n"
+        windows.append(("axialStress", AxialStressProfileWindow(checks: checks, title: "Disc-to-Disc Stress vs. Height")))
+        windows.append(("radialStress", StressProfileWindow(checks: checks, peakTestVoltage: scenario.peakVoltage, title: "Radial Voltage Difference vs. Height")))
+
+        for (what, controller) in windows {
+
+            guard let controller else {
+
+                text += "  FAILED: the \(what) window could not be built from \(checks.count) findings.\n"
+                continue
+            }
+
+            guard let window = controller.window, let contentView = window.contentView else {
+
+                text += "  FAILED: the \(what) window has no content view.\n"
+                continue
+            }
+
+            window.setContentSize(NSSize(width: 1000.0, height: 620.0))
+            contentView.layoutSubtreeIfNeeded()
+            contentView.displayIfNeeded()
+
+            guard let bitmap = contentView.bitmapImageRepForCachingDisplay(in: contentView.bounds) else {
+
+                text += "  FAILED: no bitmap could be made for the \(what) graph.\n"
+                continue
+            }
+
+            contentView.cacheDisplay(in: contentView.bounds, to: bitmap)
+
+            guard let png = bitmap.representation(using: .png, properties: [:]) else {
+
+                text += "  FAILED: the \(what) bitmap could not be encoded.\n"
+                continue
+            }
+
+            let url = documents.appendingPathComponent("SelfTestGraph-\(scenario.name)-\(what).png")
+
+            do {
+
+                try png.write(to: url)
+                text += "  \(url.lastPathComponent) (\(Int(contentView.bounds.width)) x \(Int(contentView.bounds.height)))\n"
+            }
+            catch {
+
+                text += "  FAILED writing the \(what) graph: \(error)\n"
+            }
         }
 
-        guard let window = profileWindow.window, let contentView = window.contentView else {
-
-            return text + "  FAILED: the axial stress profile window has no content view.\n\n"
-        }
-
-        window.setContentSize(NSSize(width: 1000.0, height: 620.0))
-        contentView.layoutSubtreeIfNeeded()
-        contentView.displayIfNeeded()
-
-        guard let bitmap = contentView.bitmapImageRepForCachingDisplay(in: contentView.bounds) else {
-
-            return text + "  FAILED: no bitmap could be made for the graph.\n\n"
-        }
-
-        contentView.cacheDisplay(in: contentView.bounds, to: bitmap)
-
-        guard let png = bitmap.representation(using: .png, properties: [:]) else {
-
-            return text + "  FAILED: the graph bitmap could not be encoded.\n\n"
-        }
-
-        let url = documents.appendingPathComponent("SelfTestGraph-\(scenario.name)-axialStress.png")
-
-        do {
-
-            try png.write(to: url)
-            text += "  Axial stress profile: \(url.lastPathComponent) (\(Int(contentView.bounds.width)) x \(Int(contentView.bounds.height)))\n\n"
-        }
-        catch {
-
-            text += "  FAILED writing the graph: \(error)\n\n"
-        }
-
-        return text
+        return text + "\n"
     }
 
     // MARK: The transient

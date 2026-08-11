@@ -14,9 +14,14 @@
 //  curve covers the whole transient. An animation over time was considered and rejected: the radial peak at one height and the peak
 //  at another happen at different instants, so no single frame of an animation shows the thing being looked for.
 //
-//  The plotting itself reuses CoilResultsDisplayView, which already draws a series against axial position and already carries the
-//  AxisScale tick machinery. Only the enclosing window is new - CoilResultsDisplayWindow is tied to SimulationResults and node index
-//  ranges, which is the wrong shape for this data.
+//  The plotting is StressProfileView, shared with AxialStressProfileWindow: same axes, same dashed allowable, same annotation
+//  block, so the radial picture and the axial one can be read side by side without a difference in the FURNITURE being taken for a
+//  difference in the data. It used to draw into CoilResultsDisplayView, whose x axis carries only end labels ("bottom"/"top") and
+//  which has no second series - so this graph could show where the worst height was but not what it was allowed there.
+//
+//  EITHER QUANTITY IS JUDGED AGAINST ITS OWN ALLOWABLE. Voltage difference is compared with the ΔV that would put the governing
+//  layer at its limit, average stress with the limit itself; both come out of the finding as a division by its utilization (see
+//  the header of StressProfileView), so the two views of the same profile carry the same margin and cannot disagree about it.
 //
 
 import Cocoa
@@ -29,10 +34,33 @@ class StressProfileWindow:NSWindowController {
     struct Profile {
 
         let name:String
-        /// Height in metres, voltage difference in volts, average field in V/m. Sorted by height.
-        let points:[(z:Double, deltaV:Double, averageField:Double)]
+        /// Sorted by height. Height in metres, voltages in volts, fields in V/m.
+        let points:[Point]
         /// The heights at which the screen flagged that a coil ends, where the field stops being one-dimensional.
         let endMarkers:[Double]
+
+        /// The point the annotation is about, chosen by UTILIZATION rather than by raw value - the hilo stack varies from coil
+        /// pair to coil pair, so neither the largest voltage difference nor the largest field is reliably the worst place.
+        var worst:Point? {
+
+            return points.max { $0.utilization < $1.utilization }
+        }
+    }
+
+    /// One sampled height.
+    struct Point {
+
+        let z:Double
+        /// The radial voltage difference at this height at its worst instant, in volts.
+        let deltaV:Double
+        /// The difference that would put the governing layer exactly at its allowable, in volts.
+        let allowableDeltaV:Double
+        /// The average field in the governing layer, V/m.
+        let averageField:Double
+        /// What that layer is allowed, V/m, with the design margin applied.
+        let allowableField:Double
+        /// averageField / allowableField, which is also deltaV / allowableDeltaV.
+        let utilization:Double
     }
 
     /// What the y axis shows. Both are worth having: the voltage difference is what a designer reads directly and compares against
@@ -47,7 +75,7 @@ class StressProfileWindow:NSWindowController {
     private let profiles:[Profile]
     private let peakTestVoltage:Double
 
-    private let graphView = CoilResultsDisplayView()
+    private let graphView = StressProfileView()
     private let profilePicker = NSPopUpButton()
     private let quantityPicker = NSPopUpButton()
     private let noteLabel = NSTextField(labelWithString: "")
@@ -81,7 +109,27 @@ class StressProfileWindow:NSWindowController {
 
             let sorted = group.sorted { ($0.profileHeight ?? 0.0) < ($1.profileHeight ?? 0.0) }
 
-            let points = sorted.map { (z: $0.profileHeight ?? 0.0, deltaV: abs($0.deltaV), averageField: $0.averageField) }
+            // The allowables are recovered from the finding, not evaluated a second time: dividing by the utilization is exact,
+            // because the field is linear in the driving voltage. See the header of StressProfileView.
+            let points:[Point] = sorted.compactMap { check in
+
+                guard let z = check.profileHeight, check.averageUtilization > 0.0 else {
+
+                    return nil
+                }
+
+                return Point(z: z,
+                             deltaV: abs(check.deltaV),
+                             allowableDeltaV: abs(check.deltaV) / check.averageUtilization,
+                             averageField: check.averageField,
+                             allowableField: check.averageField / check.averageUtilization,
+                             utilization: check.averageUtilization)
+            }
+
+            guard !points.isEmpty else {
+
+                continue
+            }
 
             // A location string carrying the beyond-the-end note is where the inner coil stops.
             let markers = sorted.filter { $0.location.contains("beyond end of") }.compactMap { $0.profileHeight }
@@ -104,7 +152,13 @@ class StressProfileWindow:NSWindowController {
         super.init(window: window)
 
         BuildContent()
-        ShowProfile(at: 0)
+
+        // Open on the coil pair with the worst point in it, not on the first one alphabetically - the same worst-first discipline
+        // the report table is ranked on, and the same choice AxialStressProfileWindow makes.
+        let worstProfile = built.indices.max { (built[$0].worst?.utilization ?? 0.0) < (built[$1].worst?.utilization ?? 0.0) } ?? 0
+
+        profilePicker.selectItem(at: worstProfile)
+        ShowProfile(at: worstProfile)
     }
 
     required init?(coder: NSCoder) {
@@ -134,12 +188,13 @@ class StressProfileWindow:NSWindowController {
         noteLabel.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         noteLabel.textColor = NSColor.secondaryLabelColor
         noteLabel.lineBreakMode = .byWordWrapping
-        noteLabel.maximumNumberOfLines = 2
+        // No line limit, and low compression resistance: the note now grows a clause when the allowable varies, and a label pinned
+        // to both edges of the content view otherwise sets the window's minimum width to its whole string. See StressReportWindow.
+        noteLabel.maximumNumberOfLines = 0
+        noteLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         noteLabel.translatesAutoresizingMaskIntoConstraints = false
 
         graphView.translatesAutoresizingMaskIntoConstraints = false
-        graphView.yQuantity = .voltage
-        graphView.peakTestVoltage = peakTestVoltage
 
         contentView.addSubview(profilePicker)
         contentView.addSubview(quantityPicker)
@@ -189,32 +244,56 @@ class StressProfileWindow:NSWindowController {
         }
 
         let quantity = Quantity(rawValue: quantityPicker.indexOfSelectedItem) ?? .voltageDifference
+        let showingVolts = quantity == .voltageDifference
 
-        // CoilResultsDisplayView works in millimetres on the x axis and the data's own units on the y - the same convention
-        // doShowCoilResults uses, so the two graphs read alike. The y axis is told which quantity it is carrying so that AxisScale
-        // labels it in kV or in kV/mm as appropriate.
-        graphView.yQuantity = quantity == .voltageDifference ? .voltage : .stress
-        graphView.peakTestVoltage = quantity == .voltageDifference ? peakTestVoltage : 0.0
+        // The two views of one profile differ only in which pair of numbers is plotted; the heights, the marked coil ends and the
+        // point picked as worst are the same either way, so switching the picker cannot move the worst place.
+        let points = profile.points.map {
 
-        let points = profile.points.map { NSPoint(x: $0.z * 1000.0, y: quantity == .voltageDifference ? $0.deltaV : $0.averageField) }
-
-        let minZ = points.map { $0.x }.min() ?? 0.0
-        let maxZ = points.map { $0.x }.max() ?? 1.0
-        let maxV = points.map { $0.y }.max() ?? 1.0
-
-        graphView.UpdateScaleAndZoomWindow(extremaRect: NSRect(x: minZ, y: 0.0, width: maxZ - minZ, height: maxV))
-        graphView.currentData = points
-
-        let what = quantity == .voltageDifference ? "radial voltage difference" : "average radial stress"
-
-        if profile.endMarkers.isEmpty {
-
-            noteLabel.stringValue = "Envelope: the largest \(what) each height saw at any time during the run."
+            StressProfileView.Point(z: $0.z,
+                                    value: showingVolts ? $0.deltaV : $0.averageField,
+                                    allowable: showingVolts ? $0.allowableDeltaV : $0.allowableField,
+                                    utilization: $0.utilization)
         }
-        else {
+
+        var annotation:[(label:String, value:String)] = []
+
+        if let worst = profile.worst {
+
+            // The third row carries whichever quantity is NOT being plotted, so the block says something new on every line: with
+            // volts on the axis it is the stress there, and with stress on the axis it is the ΔV.
+            annotation = [(label: showingVolts ? "Maximum ΔV:" : "Maximum stress:",
+                           value: showingVolts ? String(format: "%.2f kV", worst.deltaV / 1000.0) : String(format: "%.2f kV/mm", worst.averageField / 1.0E6)),
+                          (label: "At height:", value: String(format: "%.0f mm", worst.z * 1000.0)),
+                          (label: showingVolts ? "Stress there:" : "ΔV there:",
+                           value: showingVolts ? String(format: "%.2f kV/mm", worst.averageField / 1.0E6) : String(format: "%.2f kV", worst.deltaV / 1000.0)),
+                          (label: "Allowable ΔV there:", value: String(format: "%.2f kV  (at %.2f kV/mm)", worst.allowableDeltaV / 1000.0, worst.allowableField / 1.0E6)),
+                          (label: "Utilization:", value: String(format: "%.0f%% of allowable", worst.utilization * 100.0))]
+        }
+
+        // peakTestVoltage sets the major-tick interval of a voltage axis only - a stress axis is always labelled in kV/mm.
+        graphView.plot = StressProfileView.Plot(points: points,
+                                                quantity: showingVolts ? .voltage : .stress,
+                                                peakTestVoltage: showingVolts ? peakTestVoltage : 0.0,
+                                                annotation: annotation,
+                                                markers: profile.endMarkers,
+                                                markerName: "inner coil ends")
+
+        let what = showingVolts ? "radial voltage difference" : "average radial stress"
+
+        var note = "Envelope: the largest \(what) each height saw at any time during the run, against what that height is allowed."
+
+        if !profile.endMarkers.isEmpty {
 
             let heights = profile.endMarkers.map { String(format: "%.0f", $0 * 1000.0) }.joined(separator: ", ")
-            noteLabel.stringValue = "Envelope of the largest \(what) at each height. The inner coil ends near \(heights) mm — beyond that the field is genuinely two-dimensional and the plotted value is indicative only."
+            note += " The inner coil ends near \(heights) mm (marked) — beyond that the field is genuinely two-dimensional and the plotted value is indicative only."
         }
+
+        if let plot = graphView.plot, !plot.allowableIsConstant {
+
+            note += " The allowable varies over this profile — the layer thickness governing it is not the same at every height — so it is drawn as a curve rather than as one rule."
+        }
+
+        noteLabel.stringValue = note
     }
 }

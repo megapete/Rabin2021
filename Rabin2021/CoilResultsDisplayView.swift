@@ -24,7 +24,11 @@ class CoilResultsDisplayView: NSView {
     }
 
     /// Names for the two ends of the x axis, or nil to leave the axis unlabelled (which is what the animated coil-results display
-    /// and the stress profiles do - both are read against the y axis, and their x axis is a position whose ends need no naming).
+    /// does - it is read against the y axis, and its x axis is a position whose ends need no naming).
+    ///
+    /// The stress profiles used to be the other user of this view and are now `StressProfileView`, whose x axis carries real
+    /// millimetre ticks. This one keeps end labels rather than gaining them: `InitialDistributionWindow` runs its x axis
+    /// top-to-bottom, so "Top"/"Bottom" is the thing that stops it being read backwards.
     ///
     /// Only the ends are marked, never the values between them: see ``AxisScale/DrawXEndLabels(leftLabel:rightLabel:axisY:plotLeft:plotRight:pointSize:color:)``.
     var xEndLabels:(left:String, right:String)? = nil {
