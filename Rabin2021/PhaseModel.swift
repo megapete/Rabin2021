@@ -953,7 +953,7 @@ actor PhaseModel /*:Codable */ {
     ///
     /// `SimulationModel.init` used to reduce the jumper graph itself with a single pass that absorbed, into each key, only those
     /// other keys whose sets named that key. One hop of transitivity is enough for a star (a lead jumpered to three others, which
-    /// is what the cross-product in `TransformerView.mouseUp` produces) and is NOT enough for a path: A-B, B-C came out as the two
+    /// is what the cross-product in `TransformerView.CompleteAddConnection` produces) and is NOT enough for a path: A-B, B-C came out as the two
     /// OVERLAPPING groups `A:{B,C}` and `C:{B}`. `FrequencyDomainSolver.Assemble` then folded rows in dictionary order, and an
     /// order exists in which a node's charge equation is added to a row that has already been replaced by a constraint - the
     /// group's charge balance is then simply wrong, silently, with a plausible answer at the end of it. Proper components make
@@ -1235,7 +1235,7 @@ actor PhaseModel /*:Codable */ {
                 // and NodeAt resolves a connection by upper/lower alone, so an interior connection inherited from the first old
                 // Segment (an UPPER location) came back attached to the new Segment's TOP node and one from the last old Segment (a
                 // LOWER location) to its BOTTOM node. A single jumper is stored as one connection per Segment meeting the node it
-                // was dropped on (TransformerView.mouseUp adds the whole cross-product), so folding those two Segments into one put
+                // was dropped on (TransformerView.CompleteAddConnection adds the whole cross-product), so folding those two Segments into one put
                 // the two halves of one jumper on opposite ends of the new Segment. The visible symptom was two connector lines
                 // where the user drew one; the real one was in SimulationModel.init, which unions the node groups a jumper ties
                 // together and so SHORTED OUT the new Segment - silently, and with a plausible answer at the end of it.

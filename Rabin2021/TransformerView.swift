@@ -210,6 +210,41 @@ struct SegmentPath:Equatable, Sendable  {
 
         let selfConnections = await self.segment.connections
 
+        // Where a run down a coil flank actually goes. `preferred` is where the routing would put it on its own (the coil
+        // edge plus a stub, plus whatever lane it was given); the answer is that, or further out if a radial lead stub
+        // crosses the run's axial span - see RadialLeadClearance for why this is a per-run, per-zoom question rather than a
+        // constant. `edgeX` is the flank the run measures from, and the result is never pushed more than
+        // connectorMaxFlankFraction of the radial gap away from it.
+        var leadClearanceCache:[ClearanceKey:Double?] = [:]
+        func FlankRunX(preferred:Double, edgeX:Double, coil:Int, span:ClosedRange<Double>, outside:Bool) async -> Double {
+
+            let key = ClearanceKey(coil: coil, outside: outside, spanLow: span.lowerBound, spanHigh: span.upperBound)
+            let leadTipX:Double?
+            if let cached = leadClearanceCache[key] {
+
+                leadTipX = cached
+            }
+            else {
+
+                leadTipX = await RadialLeadClearance(coil: coil, span: span, outside: outside, segments: allSegments, scaleSize: scaleSize)
+                leadClearanceCache[key] = leadTipX
+            }
+
+            guard let leadTipX else {
+
+                return preferred
+            }
+
+            let limit = txfoView.connectorRadialUnit * connectorMaxFlankFraction
+
+            if outside {
+
+                return min(max(preferred, leadTipX + laneGap), edgeX + limit)
+            }
+
+            return max(min(preferred, leadTipX - laneGap), edgeX - limit)
+        }
+
         for nextConnection in selfConnections {
 
             if let otherSegmentID = nextConnection.segmentID {
@@ -221,7 +256,7 @@ struct SegmentPath:Equatable, Sendable  {
             }
 
             // One jumper, one line. A connection the user drew is stored once for every Segment that meets each of the two nodes
-            // it joins - mouseUp() adds the whole cross-product of the (Segment, location) pairs at the two ends, and records the
+            // it joins - CompleteAddConnection() adds the whole cross-product of the (Segment, location) pairs at the two ends, and records the
             // result in each copy's equivalentConnections. Two axially adjacent discs meet at the same node, so those copies land
             // a disc gap apart and used to be drawn as two or four lines almost (but not exactly) on top of each other. Drawing
             // only the first member of an equivalence class also keeps the lane assignment honest: the copies have different
@@ -366,8 +401,11 @@ struct SegmentPath:Equatable, Sendable  {
                             let fromExitY = nextConnection.connector.fromIsUpper ? coilTop + crossMargin : coilBottom - crossMargin
                             let toExitY = nextConnection.connector.toIsUpper ? coilTop + crossMargin : coilBottom - crossMargin
 
-                            let outsideX = segRect.maxX + stub
-                            channelUses = [ConnectorChannelUse(channel: .vertical(baseX: outsideX), span: ConnectorSpan(fromExitY, toExitY))]
+                            // this one wraps right around the coil, so its span reaches past both ends and it has to clear
+                            // every radial lead on the flank
+                            let wrapSpan = ConnectorSpan(fromExitY, toExitY)
+                            let outsideX = await FlankRunX(preferred: segRect.maxX + stub, edgeX: segRect.maxX, coil: self.segment.radialPos, span: wrapSpan, outside: true)
+                            channelUses = [ConnectorChannelUse(channel: .vertical(baseX: outsideX), span: wrapSpan)]
                             lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
                             let runX = outsideX + Double(lane) * laneGap
 
@@ -382,9 +420,11 @@ struct SegmentPath:Equatable, Sendable  {
                             
                             if nextConnection.connector.toIsOutside {
 
-                                channelUses = [ConnectorChannelUse(channel: .vertical(baseX: fromPoint.x + stub), span: ConnectorSpan(fromPoint.y, toPoint.y))]
+                                let runSpan = ConnectorSpan(fromPoint.y, toPoint.y)
+                                let baseX = await FlankRunX(preferred: fromPoint.x + stub, edgeX: fromPoint.x, coil: self.segment.radialPos, span: runSpan, outside: true)
+                                channelUses = [ConnectorChannelUse(channel: .vertical(baseX: baseX), span: runSpan)]
                                 lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
-                                let runX = stub + Double(lane) * laneGap
+                                let runX = (baseX - fromPoint.x) + Double(lane) * laneGap
 
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
                                 connectorPath.line(to: (fromPoint + NSSize(width: runX, height: 0)) * dimensionMultiplier)
@@ -401,19 +441,24 @@ struct SegmentPath:Equatable, Sendable  {
                                 let highestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: highestSegmentIndex))!
                                 let lowestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
                                 
-                                connectorPath.move(to: fromPoint * dimensionMultiplier)
-                                connectorPath.line(to: (fromPoint + NSSize(width: stub, height: 0)) * dimensionMultiplier)
-
                                 let crossover = ConnectorCrossover(fromZ: fromPoint.y, toZ: toPoint.y, extentBottom: await lowestSegment.z1, extentTop: await highestSegment.z2, margin: crossMargin)
                                 let baseChannelY = crossover.baseChannelY
                                 let laneSign = crossover.goUp ? 1.0 : -1.0
-                                channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(fromPoint.x + stub, toPoint.x - stub))]
+
+                                // The two legs run up (or down) the coil's flanks to the cross-over channel, so each has to
+                                // clear the radial leads between its own end and the coil extent - not just the ones beside it.
+                                let exitX = await FlankRunX(preferred: fromPoint.x + stub, edgeX: fromPoint.x, coil: self.segment.radialPos, span: ConnectorSpan(fromPoint.y, baseChannelY), outside: true)
+                                let entryX = await FlankRunX(preferred: toPoint.x - stub, edgeX: toPoint.x, coil: self.segment.radialPos, span: ConnectorSpan(toPoint.y, baseChannelY), outside: false)
+
+                                channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(exitX, entryX))]
                                 lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
                                 let channelY = baseChannelY + laneSign * Double(lane) * laneGap
 
-                                connectorPath.line(to: NSPoint(x: fromPoint.x + stub, y: channelY) * dimensionMultiplier)
-                                connectorPath.line(to: NSPoint(x: toPoint.x - stub, y: channelY) * dimensionMultiplier)
-                                connectorPath.line(to: (toPoint + NSSize(width: -stub, height: 0)) * dimensionMultiplier)
+                                connectorPath.move(to: fromPoint * dimensionMultiplier)
+                                connectorPath.line(to: NSPoint(x: exitX, y: fromPoint.y) * dimensionMultiplier)
+                                connectorPath.line(to: NSPoint(x: exitX, y: channelY) * dimensionMultiplier)
+                                connectorPath.line(to: NSPoint(x: entryX, y: channelY) * dimensionMultiplier)
+                                connectorPath.line(to: NSPoint(x: entryX, y: toPoint.y) * dimensionMultiplier)
                                 connectorPath.line(to: toPoint * dimensionMultiplier)
                             }
                         }
@@ -429,26 +474,33 @@ struct SegmentPath:Equatable, Sendable  {
                                 let highestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: highestSegmentIndex))!
                                 let lowestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
                                 
-                                connectorPath.move(to: fromPoint * dimensionMultiplier)
-                                connectorPath.line(to: (fromPoint + NSSize(width: -stub, height: 0)) * dimensionMultiplier)
-
                                 let crossover = ConnectorCrossover(fromZ: fromPoint.y, toZ: toPoint.y, extentBottom: await lowestSegment.z1, extentTop: await highestSegment.z2, margin: crossMargin)
                                 let baseChannelY = crossover.baseChannelY
                                 let laneSign = crossover.goUp ? 1.0 : -1.0
-                                channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(fromPoint.x - stub, toPoint.x + stub))]
+
+                                // mirror of the outside-to-inside case above: this one leaves by the inside flank and arrives
+                                // on the outside one
+                                let exitX = await FlankRunX(preferred: fromPoint.x - stub, edgeX: fromPoint.x, coil: self.segment.radialPos, span: ConnectorSpan(fromPoint.y, baseChannelY), outside: false)
+                                let entryX = await FlankRunX(preferred: toPoint.x + stub, edgeX: toPoint.x, coil: self.segment.radialPos, span: ConnectorSpan(toPoint.y, baseChannelY), outside: true)
+
+                                channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(exitX, entryX))]
                                 lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
                                 let channelY = baseChannelY + laneSign * Double(lane) * laneGap
 
-                                connectorPath.line(to: NSPoint(x: fromPoint.x - stub, y: channelY) * dimensionMultiplier)
-                                connectorPath.line(to: NSPoint(x: toPoint.x + stub, y: channelY) * dimensionMultiplier)
-                                connectorPath.line(to: (toPoint + NSSize(width: stub, height: 0)) * dimensionMultiplier)
+                                connectorPath.move(to: fromPoint * dimensionMultiplier)
+                                connectorPath.line(to: NSPoint(x: exitX, y: fromPoint.y) * dimensionMultiplier)
+                                connectorPath.line(to: NSPoint(x: exitX, y: channelY) * dimensionMultiplier)
+                                connectorPath.line(to: NSPoint(x: entryX, y: channelY) * dimensionMultiplier)
+                                connectorPath.line(to: NSPoint(x: entryX, y: toPoint.y) * dimensionMultiplier)
                                 connectorPath.line(to: toPoint * dimensionMultiplier)
                             }
                             else {
 
-                                channelUses = [ConnectorChannelUse(channel: .vertical(baseX: fromPoint.x - stub), span: ConnectorSpan(fromPoint.y, toPoint.y))]
+                                let runSpan = ConnectorSpan(fromPoint.y, toPoint.y)
+                                let baseX = await FlankRunX(preferred: fromPoint.x - stub, edgeX: fromPoint.x, coil: self.segment.radialPos, span: runSpan, outside: false)
+                                channelUses = [ConnectorChannelUse(channel: .vertical(baseX: baseX), span: runSpan)]
                                 lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
-                                let runX = -(stub + Double(lane) * laneGap)
+                                let runX = (baseX - fromPoint.x) - Double(lane) * laneGap
 
                                 connectorPath.move(to: fromPoint * dimensionMultiplier)
                                 connectorPath.line(to: (fromPoint + NSSize(width: runX, height: 0)) * dimensionMultiplier)
@@ -476,21 +528,13 @@ struct SegmentPath:Equatable, Sendable  {
                     let highestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: highestSegmentIndex))!
                     let lowestSegment = await model.SegmentAt(location: LocStruct(radial: self.segment.radialPos, axial: 0))!
 
-                    connectorPath.move(to: fromPoint * dimensionMultiplier)
-                    
-                    var currentX = fromPoint.x + stub
+                    // The two flank offsets are settled before anything is drawn, because a leg that runs up to a cross-over
+                    // channel may have to be pushed out to clear a radial lead, and that changes where the path starts.
+                    let fromIsOutside = nextConnection.connector.fromIsOutside
+                    let toIsOutside = nextConnection.connector.toIsOutside
+                    var currentX = fromIsOutside ? fromPoint.x + stub : fromPoint.x - stub
                     var currentY = fromPoint.y
-                    if nextConnection.connector.fromIsOutside {
-                        
-                        connectorPath.line(to: (fromPoint + NSSize(width: stub, height: 0)) * dimensionMultiplier)
-                    }
-                    else { // from connector is inside
-                        
-                        connectorPath.line(to: (fromPoint + NSSize(width: -stub, height: 0)) * dimensionMultiplier)
-                        currentX = fromPoint.x - stub
-                    }
-                        
-                    let channelConnPoint = nextConnection.connector.toIsOutside ? toPoint + NSSize(width: stub, height: 0.0) : toPoint + NSSize(width: -stub, height: 0.0)
+                    var channelConnPoint = toIsOutside ? toPoint + NSSize(width: stub, height: 0.0) : toPoint + NSSize(width: -stub, height: 0.0)
 
                     let currentIdentity = ViewConnectorIdentity(fromSerialNumber: self.segment.serialNumber, toSerialNumber: otherSeg.serialNumber, fromLocation: nextConnection.connector.fromLocation, toLocation: nextConnection.connector.toLocation)
                     var channelUses:[ConnectorChannelUse] = []
@@ -517,9 +561,24 @@ struct SegmentPath:Equatable, Sendable  {
                         let crossover = ConnectorCrossover(fromZ: fromPoint.y, toZ: toPoint.y, extentBottom: spanBottom, extentTop: spanTop, margin: crossMargin)
                         let baseChannelY = crossover.baseChannelY
                         let laneSign = crossover.goUp ? 1.0 : -1.0
+
+                        // Each end climbs its own coil's flank to reach the channel, so each is cleared against that coil's
+                        // radial leads - the destination's are a different coil's, which is why the two calls differ in more
+                        // than their direction.
+                        currentX = await FlankRunX(preferred: currentX, edgeX: fromPoint.x, coil: self.segment.radialPos, span: ConnectorSpan(fromPoint.y, baseChannelY), outside: fromIsOutside)
+                        let toFlankX = await FlankRunX(preferred: channelConnPoint.x, edgeX: toPoint.x, coil: otherSeg.radialPos, span: ConnectorSpan(toPoint.y, baseChannelY), outside: toIsOutside)
+                        channelConnPoint = NSPoint(x: toFlankX, y: channelConnPoint.y)
+
                         channelUses = [ConnectorChannelUse(channel: .horizontal(baseY: baseChannelY), span: ConnectorSpan(currentX, channelConnPoint.x))]
                         lane = ViewConnector.assignLane(uses: channelUses, existing: txfoView.viewConnectors, excluding: currentIdentity)
                         currentY = baseChannelY + laneSign * Double(lane) * laneGap
+                    }
+
+                    connectorPath.move(to: fromPoint * dimensionMultiplier)
+                    connectorPath.line(to: NSPoint(x: currentX, y: fromPoint.y) * dimensionMultiplier)
+
+                    if !fromAndToInSameHilo {
+
                         connectorPath.line(to: NSPoint(x: currentX, y: currentY) * dimensionMultiplier)
                     }
 
@@ -681,7 +740,19 @@ struct ViewConnector : Equatable {
     
     /// The circle that shows we're "connected"
     static let connectorCircleRadius = 1.5
-    
+
+    /// The color of a ground symbol. This is a *dark* green (6.05:1 against the white background) because a saturated one is
+    /// the worst ink there is on white: the green channel carries ~72% of the luminance signal, so the `.green` this replaced
+    /// measured **1.37:1** and read as a faint smear. Only the lightness has been moved - the hue is untouched, which is why
+    /// it still reads as green. See `AppController.segmentColors` for the same reasoning applied to the coils.
+    static let groundColor:NSColor = NSColor(srgbRed: 0.00, green: 0.45, blue: 0.15, alpha: 1.0)
+
+    /// The color of an impulse symbol: a darkened red (5.89:1 against white, where `.red` was 4.00:1). Red and green are
+    /// reserved for the two terminations and appear in no coil's palette, so an impulse or a ground is identifiable by colour
+    /// alone no matter which coil it lands on.
+    static let impulseColor:NSColor = NSColor(srgbRed: 0.80, green: 0.00, blue: 0.00, alpha: 1.0)
+
+
     /// The color of the connector (only used if the 'path' property is not nil)
     let pathColor:NSColor
     
@@ -782,13 +853,22 @@ struct ViewConnector : Equatable {
     }
     
     /// The "hit zone" for the connector. This can be polled by the NSBezierPath function 'contains' to see if a mouse click in in this hit zone.
+    ///
+    /// The zone is a fixed size **on screen**, converted out of the scrollView the same way the lead stubs and the ground /
+    /// impulse symbols are. It used to be a model dimension (3 mm of winding), which is the wrong frame of reference for a
+    /// pointing target: aiming is done in screen space by a hand, so a zone in model space grew when the user zoomed in - when
+    /// the lead was already easy to hit - and shrank to nothing when zoomed out, which is exactly when help was wanted.
+    @MainActor
     var hitZone:NSBezierPath {
         get {
-            
+
             let result = NSBezierPath()
-            
-            let inset = TransformerViewConstants.connectorDistanceTolerance * dimensionMultiplier
-            
+
+            // view units per screen point; the identity fallback only applies before the view has been set up
+            let scaleSize = SegmentPath.txfoView.map({ $0.convert(NSSize(width: 1.0, height: 1.0), from: $0.scrollView) }) ?? NSSize(width: 1.0, height: 1.0)
+            let insetX = TransformerViewConstants.connectorHitTolerance * scaleSize.width
+            let insetY = TransformerViewConstants.connectorHitTolerance * scaleSize.height
+
             let numElements = path.elementCount
             
             if numElements > 1 {
@@ -803,7 +883,7 @@ struct ViewConnector : Equatable {
                     let point2 = pointArray[0]
                     
                     // Convert the line into a rectangle for hit-testing. I came up with this all by myself.
-                    let nextZoneRect = NSInsetRect(NormalizeRect(srcRect: NSRect(x: point1.x, y: point1.y, width: point2.x - point1.x, height: point2.y - point1.y)), -inset, -inset)
+                    let nextZoneRect = NSInsetRect(NormalizeRect(srcRect: NSRect(x: point1.x, y: point1.y, width: point2.x - point1.x, height: point2.y - point1.y)), -insetX, -insetY)
                     
                     result.append(NSBezierPath(rect: nextZoneRect))
                     
@@ -864,7 +944,7 @@ struct ViewConnector : Equatable {
             imageRect = NSRect(x: (connectionPoint + leadEndPoint).x - anchor.x, y: (connectionPoint + leadEndPoint).y - anchor.y, width: image.size.width * scaleSize.width, height: image.size.height * scaleSize.height)
         }
         
-        return ViewConnector(segments:segments, pathColor: .red, connectorType: .impulse, connectorDirection: connectorDirection, connector: connector, path: path, image: impulseImage, imageRect: imageRect)
+        return ViewConnector(segments:segments, pathColor: ViewConnector.impulseColor, connectorType: .impulse, connectorDirection: connectorDirection, connector: connector, path: path, image: impulseImage, imageRect: imageRect)
     }
     
     /// Function to draw a ground connection image at the given NSPoint and in the given direction.
@@ -919,15 +999,25 @@ struct ViewConnector : Equatable {
             
         }
         
-        return ViewConnector(segments:segments, pathColor:.green, connectorType: .ground, connectorDirection: connectorDirection, connector: connector, path: path)
+        return ViewConnector(segments:segments, pathColor: ViewConnector.groundColor, connectorType: .ground, connectorDirection: connectorDirection, connector: connector, path: path)
     }
 }
 
 /// Constants associated with TransformerView that are placed here to get them out of the MainActor
 struct TransformerViewConstants {
 
-    /// The distance (in meters) that is used to highlight the connectors (used for certain modes)
-    static let connectorDistanceTolerance = 0.003 // meters
+    /// How far (in view points at magnification 1, ie: on screen) either side of a connector still counts as a hit. `hitZone`
+    /// inflates every leg of the connector's path by this, so it is what decides how close the mouse has to be to pick a lead
+    /// up - in add-connection, add-ground, add-impulse and remove-connector modes alike.
+    ///
+    /// 4 points is deliberately more than the "pixel or two" it looks like it should be. The line itself is 1.5 points wide,
+    /// so this makes a corridor about 9.5 points across, and that is roughly where the drawing programs that do this for a
+    /// living sit (Illustrator's selection tolerance defaults to 4 px, AutoCAD's pickbox to about 5). The reason is that the
+    /// hand is not the limit - stopping is: a pointer being moved has to be *halted* on the target, and the overshoot in that
+    /// is a few points however steady the hand. Note the cost of going much further: neighbouring lanes are spaced by a model
+    /// dimension, so zoomed out they converge on screen, and a zone wide enough to cover two of them makes the first one in
+    /// `viewConnectors` win rather than the nearest.
+    static let connectorHitTolerance = 4.0 // view points
 }
 
 // MARK: - Connector lane routing (Phase 1: overlap avoidance)
@@ -952,8 +1042,22 @@ let connectorLaneGapFraction = 0.15
 let connectorCrossoverHeightFraction = 0.035
 /// The on-screen length (in view points at magnification 1) of the lead stub drawn for a coil-end or tapping-gap
 /// (floating / ground / impulse) termination. It is scaled by the current view scale so it stays a consistent size on
-/// screen (like the ground / impulse symbols), and is half of the previous fixed length.
-let connectorLeadScreenLength = 12.5
+/// screen (like the ground / impulse symbols). Halved again on 2026-08-12 (it was 12.5, itself half of the original fixed
+/// length) because the stubs read as too long. Shortening a lead also makes it *less* likely to reach a routing lane and so
+/// to need clearing - see `RadialLeadClearance` - but the two are independent knobs and neither assumes a value of the other.
+let connectorLeadScreenLength = 6.25
+/// The on-screen distance (view points at magnification 1) a **ground** symbol reaches beyond the tip of the lead it hangs
+/// on: `GroundConnection` draws 10 points of arrow lead and then three bars at +2, +4 and +6. Kept beside that routine's
+/// numbers - if the symbol is redrawn, this has to follow, or a connector routed to clear it will clip it.
+let groundSymbolScreenReach = 16.0
+/// The same figure for an **impulse** symbol: `ImpulseConnection` draws 10 points of lead, then hangs the 24-point-wide bolt
+/// image from an anchor 9 points in from its left edge, so the image reaches 15 points past the lead end.
+let impulseSymbolScreenReach = 25.0
+/// The furthest a flank run may be pushed out from a coil edge to clear a lead stub, as a fraction of the radial unit (the
+/// tightest hilo gap). A lead - especially a grounded or impulsed one, which carries a symbol on its tip - can be longer
+/// than the gap it sits in, and a run pushed out far enough to clear THAT would be drawn through the neighbouring coil.
+/// Crossing a lead is untidy; routing through a winding is wrong, so the clearance gives up rather than cross the gap.
+let connectorMaxFlankFraction = 0.8
 /// Coordinate quantum (in model meters) used to decide whether two connector runs share a channel.
 private let connectorChannelQuantum = 0.002
 
@@ -983,6 +1087,16 @@ struct ConnectorChannelUse {
 
     let channel:ConnectorChannel
     let span:ClosedRange<Double>
+}
+
+/// Key for `SetUpConnectors`' per-call cache of radial-lead clearances. The scan behind one answer walks every connection of
+/// every Segment in a coil, and a Segment carrying several routed connections asks the same question more than once.
+struct ClearanceKey:Hashable {
+
+    let coil:Int
+    let outside:Bool
+    let spanLow:Double
+    let spanHigh:Double
 }
 
 /// Identifies a logical connection so that duplicate ViewConnectors (e.g. a ground symbol plus its lead, or a
@@ -1031,6 +1145,72 @@ func ConnectorLeadVector(for location:Connector.Location, scaleSize:NSSize) -> N
     }
 }
 
+/// The outward reach, in model coordinates, of a **radial** lead stub - the kind drawn at `inside_center`/`outside_center`,
+/// ie: at a tapping gap or the break in a double-stacked winding - measured from the coil edge it takes off from, and
+/// including whatever symbol sits on its tip. A plain floating lead reaches `connectorLeadScreenLength`; a ground or an
+/// impulse reaches further, because the symbol is drawn beyond the lead's end (see the two `*SymbolScreenReach` constants).
+/// Only the radial locations have any reach worth speaking of: the leads at `*_upper`/`*_lower` run axially, along the coil
+/// edge rather than out into the gap the connectors are routed through.
+func RadialLeadReach(termination:Connector.Location, scaleSize:NSSize) -> Double {
+
+    var screenLength = connectorLeadScreenLength
+
+    if termination == .ground {
+
+        screenLength += groundSymbolScreenReach
+    }
+    else if termination == .impulse {
+
+        screenLength += impulseSymbolScreenReach
+    }
+
+    return screenLength * scaleSize.width / dimensionMultiplier
+}
+
+/// The x-coordinate that a vertical connector run down one flank of `coil` has to get past to miss the radial lead stubs it
+/// would otherwise cross, or nil if it crosses none. Only leads whose take-off point lies **within the run's axial span**
+/// count: a jumper between two discs above a tapping gap has no reason to be pushed out by the gap's lead, and pushing every
+/// run out to clear every lead would waste the radial gap the routing lives in.
+///
+/// This is deliberately recomputed on each rebuild rather than folded into `connectorStubOffset` once. A lead is drawn at a
+/// constant length **on screen** (like the ground and impulse symbols), so how far it reaches in *model* coordinates - which
+/// is what the routing is laid out in - depends entirely on the current zoom. At a high magnification a lead is a whisker
+/// and nothing has to move; zoomed out it is longer than the stub offset, which is the case the user sees a connector drawn
+/// straight through it.
+func RadialLeadClearance(coil:Int, span:ClosedRange<Double>, outside:Bool, segments:[Segment], scaleSize:NSSize) async -> Double? {
+
+    let leadLocation:Connector.Location = outside ? .outside_center : .inside_center
+    var result:Double? = nil
+
+    for nextSegment in segments where nextSegment.radialPos == coil {
+
+        let connections = await nextSegment.connections
+
+        for nextConnection in connections {
+
+            // a termination (and so a drawn lead) is a connection with no destination Segment
+            guard nextConnection.segmentID == nil, nextConnection.connector.fromLocation == leadLocation else {
+
+                continue
+            }
+
+            let leadRect = await nextSegment.rect
+
+            guard span.contains(leadRect.midY) else {
+
+                continue
+            }
+
+            let reach = RadialLeadReach(termination: nextConnection.connector.toLocation, scaleSize: scaleSize)
+            let tipX = outside ? leadRect.maxX + reach : leadRect.minX - reach
+
+            result = result.map({ outside ? max($0, tipX) : min($0, tipX) }) ?? tipX
+        }
+    }
+
+    return result
+}
+
 /// Decide whether a connector should route over the top or under the bottom of the given axial extent, choosing
 /// whichever gives the shorter total vertical travel for the two endpoints. Returns the direction and the base
 /// cross-over channel Y (the height of the horizontal run, before any lane offset), in model coordinates.
@@ -1071,7 +1251,44 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     /// The actual storage for the TransformerView's mode
     private var modeStore:Mode = .selectSegment
-    
+
+    /// The cursor that belongs to the current mode.
+    ///
+    /// AppKit owns the cursor. A bare `NSCursor.set()` is a one-shot that survives only until the next time the window
+    /// recalculates its cursor rectangles - which a redraw does - after which the pointer falls back to the arrow. That is why
+    /// adding a ground used to put the arrow back the moment the connector was drawn, even though the mode was still
+    /// `.addGround`: nothing had changed the mode, only the cursor had been forgotten. Declaring a cursor *rect* instead
+    /// (see `resetCursorRects`) makes the mode's cursor the view's steady state, so it stays until the mode itself changes.
+    var modeCursor:NSCursor {
+
+        switch self.modeStore {
+
+        case .selectSegment:
+            return .arrow
+
+        case .selectRect, .zoomRect:
+            return .crosshair
+
+        case .addGround:
+            return ViewConnector.GroundCursor
+
+        case .addImpulse:
+            return ViewConnector.ImpulseCursor
+
+        case .addConnection:
+            return ViewConnector.AddConnectionCursor
+
+        case .removeConnector:
+            return ViewConnector.PliersCursor
+        }
+    }
+
+    // Hand AppKit the cursor for the current mode over the whole view, and let it re-apply it whenever it likes.
+    override func resetCursorRects() {
+
+        self.addCursorRect(self.bounds, cursor: self.modeCursor)
+    }
+
     /// A computed property for the mode of the TransformerView. The getter just returns the current mode, but the setter does things like update the mode indicator field at the bottom of the window and change the cursor (if necessary)
     var mode:Mode {
         
@@ -1081,7 +1298,18 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
         
         set {
-            
+
+            // Leaving addConnection with a half-finished gesture (the Esc key, a right-click, another mode picked from a
+            // menu) drops the rubber band and the start connector. Doing it here rather than in each of those places is
+            // what makes 'get out of this' a single rule: the gesture only exists while the mode does.
+            if self.modeStore == .addConnection && newValue != .addConnection && self.addConnectionStartConnector != nil {
+
+                self.addConnectionStartConnector = nil
+                self.addConnectionPath.removeAllPoints()
+                self.highlightedConnectorPath = nil
+                self.needsDisplay = true
+            }
+
             if newValue == .selectSegment
             {
                 if let appCtrl = self.appController {
@@ -1143,8 +1371,13 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                 
                 ViewConnector.AddConnectionCursor.set()
             }
-            
+
             self.modeStore = newValue
+
+            // The .set() calls above are what makes the change of cursor immediate; this is what makes it stick. Cursor rects
+            // are AppKit's own record of what the pointer should be over this view, and resetCursorRects reads modeStore, so
+            // the mode has to be stored before the rects are invalidated.
+            self.window?.invalidateCursorRects(for: self)
         }
     }
     
@@ -1171,6 +1404,10 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     var connectorLaneGap = connectorLaneSpacing
     /// The axial clearance between the winding extent and a horizontal cross-over channel.
     var connectorCrossoverClearance = connectorCrossoverMargin
+    /// The radial distance the routing has to work in (the tightest hilo gap, or the smallest coil build when there is only
+    /// one coil) - the raw figure the two offsets above are fractions of. It is kept because a run pushed out to clear a lead
+    /// stub has to know how much room there is before it would be drawn through the neighbouring coil (`connectorMaxFlankFraction`).
+    var connectorRadialUnit = connectorStubDefault / connectorStubGapFraction
 
     /// Recompute the connector routing offsets from the model geometry (tightest radial gap and winding height) so that
     /// they scale with the physical size of the model. Falls back to the previous fixed defaults for degenerate geometry.
@@ -1225,6 +1462,7 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
 
         if radialUnit > 0 {
 
+            self.connectorRadialUnit = radialUnit
             self.connectorStubOffset = radialUnit * connectorStubGapFraction
             self.connectorLaneGap = radialUnit * connectorLaneGapFraction
         }
@@ -1304,15 +1542,19 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     /// A constant for the line dash used when displaying the selecttion rectangle
     let selectRectLineDash = NSSize(width: 10.0, height: 5.0)
     
-    /// In addConnection mode, this holds the ViewConnector where the connection started
+    /// In addConnection mode, this holds the ViewConnector where the connection started. It is non-nil for exactly as long as the gesture is live - ie: from the click that picks the first lead until the click that picks the second one (or until the user cancels with Esc), which is what every other part of the add-connection code tests to know whether a connection is being drawn.
     var addConnectionStartConnector:ViewConnector? = nil
     /// In addConnection mode, this holds the NSPoint where the connection started
     var addConnectionStartPoint:NSPoint = NSPoint()
     /// In addConnection mode, this holds the current connection path
     let addConnectionPath = NSBezierPath()
     
-    /// The default line width for the TransformerView
-    let defaultLineWidth = 1.0
+    /// The default line width for the TransformerView, in *screen* points - draw() converts it out of the scrollView's
+    /// coordinates, so a stroke is this wide at every zoom level rather than growing with the model. It was 1.0, and the
+    /// half-point is the third lever on legibility alongside the colours (`AppController.segmentColors`): contrast is a
+    /// property of the ink, but how much ink there is decides how much of that contrast the eye actually gets, and a
+    /// one-point line is the least of it.
+    let defaultLineWidth = 1.5
     
     /// An array of the currently-selected SegmentPaths
     var currentSegments:[SegmentPath] = []
@@ -1434,37 +1676,9 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
     
     // Whenever we re-enter the view, we set the cursor depending on the mode of the view
     override func mouseEntered(with event: NSEvent) {
-        
-        let mode = self.mode
-        
-        if mode == .selectSegment {
-            
-            NSCursor.arrow.set()
-        }
-        else if mode == .zoomRect || mode == .selectRect {
-            
-            NSCursor.crosshair.set()
-        }
-        else if mode == .addGround {
-            
-            ViewConnector.GroundCursor.set()
-        }
-        else if mode == .addImpulse {
-            
-            ViewConnector.ImpulseCursor.set()
-        }
-        else if mode == .removeConnector {
-            
-            ViewConnector.PliersCursor.set()
-        }
-        else if mode == .addConnection {
-            
-            ViewConnector.AddConnectionCursor.set()
-        }
-        else {
-            
-            NSCursor.arrow.set()
-        }
+
+        // the cursor rect (resetCursorRects) says the same thing; this just makes it immediate on the way in
+        self.modeCursor.set()
     }
     
     
@@ -1749,9 +1963,11 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
 
     // MARK: Key Events
     override func keyDown(with event: NSEvent) {
-        
+
+        // Esc gets out of whatever mode we are in. Note that this is also how a half-drawn connection is cancelled: the
+        // mode setter throws the pending gesture away on the way out of addConnection.
         if event.keyCode == kVK_Escape {
-            
+
             self.mode = .selectSegment
             return
         }
@@ -1795,6 +2011,13 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
                     self.setNeedsDisplay(hitZone.bounds)
                     break
                 }
+            }
+
+            // Between the two clicks of an add-connection gesture the mouse button is up, so this - and not mouseDragged -
+            // is what keeps the line from the first lead tracking the mouse.
+            if self.mode == .addConnection {
+
+                self.TrackAddConnection(to: mouseLoc)
             }
         }
     }
@@ -1843,8 +2066,11 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             return
         }
         else if self.mode == .addConnection {
-            
-            self.mouseDraggedWithAddConnection(event: event)
+
+            // Adding a connection is a click-move-click gesture, so the dragging is normally done with the button up (see
+            // mouseMoved). We track it here as well only so that a user who does hold the button down still sees the line -
+            // the release does nothing, and the second click is what completes the connection either way.
+            self.TrackAddConnection(to: self.convert(event.locationInWindow, from: nil))
             return
         }
         
@@ -1901,124 +2127,145 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
             self.mode = .selectSegment
             self.needsDisplay = true
         }
-        // The user has finished adding a connection. If the end-point is a valid connection point, add the new conenctor to the model.
-        else if self.mode == .addConnection, let startConnector = self.addConnectionStartConnector {
-            
-            let endPoint = self.convert(event.locationInWindow, from: nil)
-            let segmentArray = self.allSegments
-            
-            Task {
-                
-                for nextViewConnector in self.viewConnectors {
-                    
-                    if nextViewConnector.hitZone.contains(endPoint) {
-                        
-                        if nextViewConnector == startConnector {
-                            
-                            return
-                        }
-                        
-                        var startConnections = await startConnector.segments.from.ConnectionDestinations(fromLocation: startConnector.connector.fromLocation)
-                        startConnections.removeAll(where: { $0.segmentID == nil })
-                        startConnections.insert((startConnector.segments.from.serialNumber, startConnector.connector.fromLocation), at: 0)
-                        
-                        var endConnections = await nextViewConnector.segments.from.ConnectionDestinations(fromLocation: nextViewConnector.connector.fromLocation)
-                        endConnections.removeAll(where: { $0.segmentID == nil })
-                        endConnections.insert((nextViewConnector.segments.from.serialNumber, nextViewConnector.connector.fromLocation), at: 0)
-                        
-                        var equivalentConnections:Set<Segment.Connection.EquivalentConnection> = []
-                        
-                        for nextStartConnection in startConnections {
-                            
-                            for nextEndConnection in endConnections {
-                                
-                                guard let nextStartSegment = segmentArray.first(where: {$0.serialNumber == nextStartConnection.segmentID}) else {
-
-                                    ALog("Adding a connector: the start segment \(nextStartConnection.segmentID.map({ String($0) }) ?? "nil") is not in the model. A connection is naming a Segment that no longer exists - see UpdateConnectors' remap.")
-                                    return
-                                }
-                                let newConnections = await nextStartSegment.AddConnector(segments: segmentArray, fromLocation: nextStartConnection.location, toLocation: nextEndConnection.location, toSegmentID: nextEndConnection.segmentID)
-                                // let newConnections = nextStartConnection.segment!.AddConnector(fromLocation: nextStartConnection.location, toLocation: nextEndConnection.location, toSegment: nextEndConnection.segmentID)
-                                
-                                guard let newSrcConnection = newConnections.from, let newDestConnection = newConnections.to else {
-
-                                    // AddConnector returns (nil, nil) for exactly one reason: it was asked to connect a Segment to
-                                    // itself, which it refuses. That means the two ends resolved to the same serial number.
-                                    ALog("AddConnector returned nothing for \(nextStartConnection.segmentID.map({ String($0) }) ?? "nil") (\(nextStartConnection.location)) -> \(nextEndConnection.segmentID.map({ String($0) }) ?? "nil") (\(nextEndConnection.location)) - the two ends are the same Segment, so no connector was made.")
-                                    return
-                                }
-                                
-                                equivalentConnections.insert(Segment.Connection.EquivalentConnection(parent: nextStartConnection.segmentID!, connection: newSrcConnection))
-                                equivalentConnections.insert(Segment.Connection.EquivalentConnection(parent: nextEndConnection.segmentID!, connection: newDestConnection))
-                            }
-                        }
-                        
-                        for nextConnection in equivalentConnections {
-                            
-                            guard let nextConnParent = segmentArray.first(where: {$0.serialNumber == nextConnection.parent}) else {
-
-                                ALog("Registering equivalent connections: parent segment \(nextConnection.parent) is not in the model. An EquivalentConnection is naming a Segment that no longer exists - see UpdateConnectors' remap.")
-                                return
-                            }
-                            await nextConnParent.AddEquivalentConnections(to: nextConnection.connection, equ: equivalentConnections)
-                        }
-                        
-                        guard let startSegmentPath = self.segments.first(where: {$0.segment == startConnector.segments.from}) else {
-                            
-                            // this should never happen
-                            DLog("Problem!")
-                            break
-                        }
-                        
-                        // add all the non-touched segments to the maskSegment array so that the SetUpConnectors call goes quickly
-                        var maskSegments:[Int] = []
-                        for nextSegmentPath in self.segments {
-                            
-                            if nextSegmentPath.segment != nextViewConnector.segments.from {
-                                
-                                maskSegments.append(nextSegmentPath.segment.serialNumber)
-                            }
-                        }
-                        
-                        await startSegmentPath.SetUpConnectors(allSegments: segmentArray, maskSegments: maskSegments)
-                        
-                        break
-                    }
-                }
-                
-                self.highlightedConnectorPath = nil
-                self.addConnectionStartConnector = nil
-                self.addConnectionPath.removeAllPoints()
-                
-                self.mode = .selectSegment
-                self.needsDisplay = true
-            }
-        }
-        
-        // self.mode = .selectSegment
-        // self.needsDisplay = true
+        // Note that addConnection mode is deliberately NOT handled here: it is a click-move-click gesture, so the button
+        // comes up immediately after the click that picks the FIRST lead. Completing the connection on that release is
+        // what the old drag-based gesture did, and doing it here now would finish every connection before it was aimed.
+        // CompleteAddConnection() is called from the second mouseDown instead.
     }
-    
-    // The mouse is being dragged while in addConnection mode. Update the connection path and check if the mouse location is currently in the hitZone of a connector - if it is, set the highlight
-    func mouseDraggedWithAddConnection(event:NSEvent) {
-        
-        let endPoint = self.convert(event.locationInWindow, from: nil)
+
+    // The second click of the add-connection gesture. If it landed on a connector other than the one the gesture started
+    // on, add the new connector to the model. A click on nothing - or back on the starting lead - leaves the gesture
+    // running rather than throwing the start point away, so a mis-click costs nothing; Esc is what cancels.
+    func CompleteAddConnection(at endPoint:NSPoint) {
+
+        guard let startConnector = self.addConnectionStartConnector else {
+
+            return
+        }
+
+        guard let endConnector = self.viewConnectors.first(where: { $0.hitZone.contains(endPoint) }), endConnector != startConnector else {
+
+            return
+        }
+
+        let segmentArray = self.allSegments
+
+        // The gesture is over the instant the second lead is picked, so end it here rather than at the end of the Task
+        // below: the model work suspends on the Segment actors, and a click landing in that window would otherwise be read
+        // as another second click and add the same jumper twice.
+        self.EndAddConnection()
+
+        Task {
+
+            var startConnections = await startConnector.segments.from.ConnectionDestinations(fromLocation: startConnector.connector.fromLocation)
+            startConnections.removeAll(where: { $0.segmentID == nil })
+            startConnections.insert((startConnector.segments.from.serialNumber, startConnector.connector.fromLocation), at: 0)
+
+            var endConnections = await endConnector.segments.from.ConnectionDestinations(fromLocation: endConnector.connector.fromLocation)
+            endConnections.removeAll(where: { $0.segmentID == nil })
+            endConnections.insert((endConnector.segments.from.serialNumber, endConnector.connector.fromLocation), at: 0)
+
+            var equivalentConnections:Set<Segment.Connection.EquivalentConnection> = []
+
+            for nextStartConnection in startConnections {
+
+                for nextEndConnection in endConnections {
+
+                    guard let nextStartSegment = segmentArray.first(where: {$0.serialNumber == nextStartConnection.segmentID}) else {
+
+                        ALog("Adding a connector: the start segment \(nextStartConnection.segmentID.map({ String($0) }) ?? "nil") is not in the model. A connection is naming a Segment that no longer exists - see UpdateConnectors' remap.")
+                        return
+                    }
+                    let newConnections = await nextStartSegment.AddConnector(segments: segmentArray, fromLocation: nextStartConnection.location, toLocation: nextEndConnection.location, toSegmentID: nextEndConnection.segmentID)
+
+                    guard let newSrcConnection = newConnections.from, let newDestConnection = newConnections.to else {
+
+                        // AddConnector returns (nil, nil) for exactly one reason: it was asked to connect a Segment to
+                        // itself, which it refuses. That means the two ends resolved to the same serial number.
+                        ALog("AddConnector returned nothing for \(nextStartConnection.segmentID.map({ String($0) }) ?? "nil") (\(nextStartConnection.location)) -> \(nextEndConnection.segmentID.map({ String($0) }) ?? "nil") (\(nextEndConnection.location)) - the two ends are the same Segment, so no connector was made.")
+                        return
+                    }
+
+                    equivalentConnections.insert(Segment.Connection.EquivalentConnection(parent: nextStartConnection.segmentID!, connection: newSrcConnection))
+                    equivalentConnections.insert(Segment.Connection.EquivalentConnection(parent: nextEndConnection.segmentID!, connection: newDestConnection))
+                }
+            }
+
+            for nextConnection in equivalentConnections {
+
+                guard let nextConnParent = segmentArray.first(where: {$0.serialNumber == nextConnection.parent}) else {
+
+                    ALog("Registering equivalent connections: parent segment \(nextConnection.parent) is not in the model. An EquivalentConnection is naming a Segment that no longer exists - see UpdateConnectors' remap.")
+                    return
+                }
+                await nextConnParent.AddEquivalentConnections(to: nextConnection.connection, equ: equivalentConnections)
+            }
+
+            guard let startSegmentPath = self.segments.first(where: {$0.segment == startConnector.segments.from}) else {
+
+                // this should never happen
+                DLog("Problem!")
+                return
+            }
+
+            // add all the non-touched segments to the maskSegment array so that the SetUpConnectors call goes quickly
+            var maskSegments:[Int] = []
+            for nextSegmentPath in self.segments {
+
+                if nextSegmentPath.segment != endConnector.segments.from {
+
+                    maskSegments.append(nextSegmentPath.segment.serialNumber)
+                }
+            }
+
+            await startSegmentPath.SetUpConnectors(allSegments: segmentArray, maskSegments: maskSegments)
+
+            // The redraw EndAddConnection() asked for above happened while this Task was still suspended, ie: before the
+            // ViewConnector for the new jumper existed, so it drew the winding exactly as it was. Ask again now that the
+            // connector is there, or the new connection stays invisible until some unrelated event dirties the view.
+            self.needsDisplay = true
+        }
+    }
+
+    // Tear down whatever is left of an add-connection gesture, leaving the view ready for the next one. It deliberately does
+    // NOT leave addConnection mode: the mode stays armed until the user drops out of it with Esc, the same way add-ground,
+    // add-impulse and remove-connector do, so that a run of jumpers does not mean a trip back to the menu between each. That
+    // also means the cursor is untouched here - resetCursorRects keeps showing the add-connection cursor because the mode
+    // itself has not changed, which is the whole point of it being a cursor rect.
+    func EndAddConnection() {
+
+        self.highlightedConnectorPath = nil
+        self.addConnectionStartConnector = nil
+        self.addConnectionPath.removeAllPoints()
+
+        self.needsDisplay = true
+    }
+
+    // Update the rubber-band line (and the target highlight) while an add-connection gesture is waiting for its second
+    // click. Does nothing unless a gesture is actually running, so it is safe to call from any mouse-tracking routine.
+    func TrackAddConnection(to endPoint:NSPoint) {
+
+        guard self.addConnectionStartConnector != nil else {
+
+            return
+        }
+
         self.addConnectionPath.removeAllPoints()
         self.addConnectionPath.move(to: self.addConnectionStartPoint)
         self.addConnectionPath.line(to: endPoint)
-        
+
         self.highlightedConnectorPath = nil
-        
+
         for nextViewConnector in self.viewConnectors {
-            
+
             let hitZone = nextViewConnector.hitZone
             if hitZone.contains(endPoint) {
-            
+
                 self.highlightedConnectorPath = hitZone
                 break
             }
         }
-        
+
         self.needsDisplay = true
     }
     
@@ -2212,20 +2459,33 @@ class TransformerView: NSView, NSViewToolTipOwner, NSMenuItemValidation {
         }
     }
     
-    // The user clicked down on the mouse while in addConnector mode. If the click is at a valid location, set the addConnectionStartConnector and addConnectionStartPoint so that we can track the new connector
+    // The user clicked the mouse while in addConnection mode. Adding a connection takes two clicks: the first picks the lead
+    // the connection starts at (and starts the line that follows the mouse from there), the second picks the lead it ends at.
+    // Which of the two this is is answered by addConnectionStartConnector - it is non-nil only while a gesture is running.
     func mouseDownWithAddConnection(event:NSEvent) {
-        
+
         let clickPoint = self.convert(event.locationInWindow, from: nil)
-        
+
+        // second click: finish (or, on a miss, keep waiting - see CompleteAddConnection)
+        if self.addConnectionStartConnector != nil {
+
+            self.CompleteAddConnection(at: clickPoint)
+            return
+        }
+
         // print("Click location: \(clickPoint)")
         for nextViewConnector in self.viewConnectors {
-            
+
             if nextViewConnector.hitZone.contains(clickPoint) {
-                
+
                 // print("Got connector")
                 self.addConnectionStartConnector = nextViewConnector
                 self.addConnectionStartPoint = nextViewConnector.ClosestEndPoint(toPoint: clickPoint)
-                
+
+                // draw the line from the very first event rather than waiting for the mouse to move, so that the click is
+                // visibly acknowledged even if the user does not move at all
+                self.TrackAddConnection(to: clickPoint)
+
                 return
             }
         }

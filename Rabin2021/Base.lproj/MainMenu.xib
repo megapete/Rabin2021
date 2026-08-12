@@ -300,8 +300,7 @@
                                     <action selector="handleAddGround:" target="XWq-sU-B2V" id="CDX-5r-AKW"/>
                                 </connections>
                             </menuItem>
-                            <menuItem title="Add Connection..." id="wyt-nn-lsB">
-                                <modifierMask key="keyEquivalentModifierMask"/>
+                            <menuItem title="Add Connection..." keyEquivalent="j" id="wyt-nn-lsB">
                                 <connections>
                                     <action selector="handleAddConnection:" target="XWq-sU-B2V" id="Qup-Ay-jQg"/>
                                 </connections>

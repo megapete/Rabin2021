@@ -62,7 +62,7 @@ refused outright on a coil whose Segments have been folded, because a crossover 
   **that lead and nothing else**: what is at the same potential through a jumper is `ResolveNodeConnectivity`'s answer and is not
   written into the connector store (see `docs/connectors-and-nodes.md`). Both this routine and the UI used to copy the ground
   onto every jumpered lead as well, and both stopped on 2026-08-08.
-- **Jumpers** (`SelfTest.Jumper`, applied between the restructure and the terminations) are a port of `TransformerView.mouseUp`,
+- **Jumpers** (`SelfTest.Jumper`, applied between the restructure and the terminations) are a port of `TransformerView.CompleteAddConnection`,
   **cross-product and all**: a lead that already carries jumpers is at the same potential as everything on their far ends, so a
   new jumper is registered on every (Segment, location) pair at each end. Doing less would build a model the UI cannot produce.
   The order is forced from both sides — a restructure sends `UpdateConnectors` through the connectors and would sweep a jumper

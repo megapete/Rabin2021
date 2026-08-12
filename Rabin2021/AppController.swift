@@ -389,8 +389,26 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// The current multiplier for window height (used for old-style inductance calculations)
     var currentWindowMultiplier = 1.0
     
-    /// The colors of the different layers (for display purposes only)
-    static let segmentColors:[NSColor] = [.red, .blue, .orange, .purple, .yellow]
+    /// The colors of the different layers (for display purposes only), indexed by radialPos. Red and green are deliberately
+    /// NOT in here: they are reserved for the impulse and ground symbols (`ViewConnector.impulseColor`/`groundColor`), which
+    /// used to share `.red` with coil 0 - on a single-coil model the impulse arrow was then drawn in the winding's own ink.
+    ///
+    /// These are fixed sRGB values rather than the `.systemBlue` family on purpose. A colour's legibility here is its contrast
+    /// against `SegmentPath.bkGroundColor`, which is hardcoded white; the system colours are dynamic and shift in Dark Mode
+    /// while that white would not, so they would come out *worse* in the one case they are meant to help.
+    ///
+    /// Contrast ratios against white (WCAG relative luminance, 0.2126R + 0.7152G + 0.0722B on linearized sRGB): blue 8.1,
+    /// orange 3.5, purple 8.9, teal 5.6, brown 7.1. The predecessors were `[.red, .blue, .orange, .purple, .yellow]`, where
+    /// pure yellow measured **1.07:1** - the eye takes ~72% of its luminance signal from the green channel, so yellow (red +
+    /// green, both full) is nearly the luminance of white paper and a 1-point line of it is all but invisible. Contrast on
+    /// white is bought with *lightness*, not hue or saturation, which is why these are darkened rather than re-hued.
+    static let segmentColors:[NSColor] = [
+        NSColor(srgbRed: 0.00, green: 0.25, blue: 0.80, alpha: 1.0),    // blue
+        NSColor(srgbRed: 0.80, green: 0.38, blue: 0.00, alpha: 1.0),    // orange
+        NSColor(srgbRed: 0.50, green: 0.00, blue: 0.60, alpha: 1.0),    // purple
+        NSColor(srgbRed: 0.00, green: 0.45, blue: 0.50, alpha: 1.0),    // teal
+        NSColor(srgbRed: 0.50, green: 0.30, blue: 0.10, alpha: 1.0)     // brown
+    ]
     
     /// The inductance calculation for the current model has ben done
     var inductanceIsValid:Bool = false
@@ -3484,6 +3502,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
         
         self.txfoView.mode = .addConnection
+
+        // Esc cancels a half-drawn connection, and keyDown only gets there if the view is the first responder. Clicking in
+        // the view makes it one anyway, but the mode can also be entered from the menu without a click having happened yet.
+        self.txfoView.window?.makeFirstResponder(self.txfoView)
     }
     
     @IBAction func handleRemoveConnection(_ sender: Any) {

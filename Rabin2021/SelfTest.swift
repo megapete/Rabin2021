@@ -509,7 +509,7 @@ enum SelfTest {
                         notes: "Four coils. Coils 0 and 1 grounded at both ends; coil 2 is the impulsed HV (1050 kV full wave on its top); coil 3 is a double-stacked tap winding whose two ends are tied together and to the bottom of coil 2, and whose two centre leads are tied together and grounded. "
                              + (restructure.isInterleave ? "Coil 2 interleaved in its entirety." : "Coil 2 as designed."),
                         jumpers: [// The tap winding's two ends, tied to each other and then to the bottom of the HV. The second
-                                  // jumper names coil 3's TOP again on purpose: the UI's cross-product (TransformerView.mouseUp)
+                                  // jumper names coil 3's TOP again on purpose: the UI's cross-product (TransformerView.CompleteAddConnection)
                                   // then carries coil 3's bottom along with it, exactly as dragging from an already-jumpered lead
                                   // does, and this routine has to behave the same way or the test is not testing the UI's model.
                                   Jumper(from: .coilEnd(coil: 3, end: .top), to: .coilEnd(coil: 3, end: .bottom)),
@@ -972,7 +972,7 @@ enum SelfTest {
     ///
     /// This is the only check here that is about the CONNECTIONS rather than about a design, and it exists because the failure it
     /// covers is invisible in every other one: a jumper is stored as one connection per Segment that meets each of the two nodes it
-    /// joins (TransformerView.mouseUp adds the whole cross-product of the (Segment, location) pairs at the two ends), so a jumper
+    /// joins (TransformerView.CompleteAddConnection adds the whole cross-product of the (Segment, location) pairs at the two ends), so a jumper
     /// dropped on the node between two discs lives on BOTH of them. Fold those two discs into one Segment and the two halves land
     /// on opposite terminals of it - which drew the user two connector lines where they had made one, and, far worse, made
     /// SimulationModel's node merging tie the new Segment's two terminals together. A shorted-out disc pair changes the answer and
@@ -1039,7 +1039,7 @@ enum SelfTest {
 
         Stage("adding the interconnection")
 
-        // Exactly what TransformerView.mouseUp does when the user drags a connection from one lead to another.
+        // Exactly what TransformerView.CompleteAddConnection does when the user clicks one lead and then another.
         let allSegments = await model.segments
 
         var startConnections = await hvA.ConnectionDestinations(fromLocation: hvLoc)
@@ -1650,7 +1650,7 @@ enum SelfTest {
 
     // MARK: Jumpers
 
-    /// Put a jumper between two leads, the way `TransformerView.mouseUp` does.
+    /// Put a jumper between two leads, the way `TransformerView.CompleteAddConnection` does.
     ///
     /// This is a port of that routine's body with the hit testing and the redraw taken out, and the cross-product is the part
     /// worth keeping: a lead that already carries jumpers is at the same potential as everything on the far end of them, so a new

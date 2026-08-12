@@ -43,7 +43,7 @@ is this case end to end.
 
 ## One jumper is stored as up to four connections, and a fold is where that bites
 
-A node is shared by the two Segments that meet at it, and `TransformerView.mouseUp` registers a new jumper on **every** (Segment,
+A node is shared by the two Segments that meet at it, and `TransformerView.CompleteAddConnection` registers a new jumper on **every** (Segment,
 location) pair at each of its two ends — the whole cross-product, each copy carrying the others in its `equivalentConnections`. So
 a jumper dropped between discs 10 and 11 lives on *both* discs (and on both discs at the far end). While those discs are separate
 Segments the copies describe the same node and are drawn a disc-gap apart, i.e. on top of each other. **Fold the two discs into one
@@ -85,7 +85,7 @@ writes, so a lead reading zero means the model has it in `groundedNodes` — it 
 (see `SimulationModel.floatingResistanceToGround`, which is deliberately inert and says why).
 
 The same change deleted `SimulationModel.init`'s own reduction of the jumper graph, which was **not** a union-find: it absorbed
-into each key only those other keys whose sets named that key, which is enough for a star (what `mouseUp`'s cross-product makes)
+into each key only those other keys whose sets named that key, which is enough for a star (what `CompleteAddConnection`'s cross-product makes)
 and not for a path. A-B, B-C came out as the two *overlapping* groups `A:{B,C}` and `C:{B}`; `FrequencyDomainSolver.Assemble`
 then folds merges in dictionary order, and an order exists in which a node's charge equation is added to a row already replaced
 by a constraint — the group's charge balance is silently wrong. Proper components make each node an `eliminated` exactly once and
