@@ -48,6 +48,18 @@ owns `M` (Cholesky-factorized, for the RK45 path) and **`unfactoredM`** (the mat
 needs — reading `M` there would assemble the Cholesky factor as though it were the inductance). `Snapshot()` extracts a `Sendable`
 `NetworkSnapshot` so the frequency sweep can run with no actor hops in its inner loop.
 
+**`PchMatrix` is an `actor`, therefore a reference type — `init` must COPY `model.C`, never assign it.** `PhaseModel.C` is the
+basic, *unmodified* capacitance matrix, and the whole rebuild-every-run guarantee rests on it staying that way: each run
+re-reads it and redoes the row surgery against the terminations and jumpers as they now stand. `baseC` and `modelC` were
+assigned straight from `model.C!`, which handed both of them the PhaseModel's own matrix, so the surgery — `ZeroRow`, `AddRow`,
+the 1/−1 pair tying a merged node to the one it was kept for — was written into the model. **Every Dirichlet row and every merge
+then outlived the connector that asked for it.** Two leads jumpered for one run stayed shorted (their difference identically
+zero) for the rest of the session after the jumper was deleted, and a correct answer for a new connection scheme was only
+obtainable by making it the *first* scheme simulated after a recalculation — a rebuilt `C`. It corrupted the *Save C Matrix*
+export the same way. Both are now `await PchMatrix(srcMatrix: model.C!)`, two separate deep copies: `baseC` is the pristine
+network the `NetworkSnapshot`/SPICE export reads, `modelC` is the one operated on. `asSparseMatrix()` at the end of `init`
+returns a *new* matrix, which is why only the first run of a session looked right.
+
 - `SolveFrequencyDomain(waveForm:displaySpan:maximumFrequency:progress:)` is the **live entry point**. Results come back on a **uniform** time grid.
 - `SimulateRK45` / `DifferentialFormula` remain as an **independent cross-check**, reached via *Simulate → Compare Solvers (Debug)*. Both solvers return an **empty array for cancellation as well as failure**, so callers must check `Task.isCancelled` to tell the two apart.
 

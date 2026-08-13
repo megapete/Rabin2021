@@ -392,9 +392,23 @@ actor SimulationModel {
 
         self.M = await model.M!
         self.unfactoredM = await model.unfactoredM!
-        self.baseC = await model.C!
-        self.modelC = await model.C!
-        
+
+        // THESE MUST BE COPIES. PchMatrix IS AN ACTOR, THEREFORE A REFERENCE TYPE.
+        //
+        // 'model.C' is documented as the basic, UNMODIFIED capacitance matrix, and the whole rebuild-every-run guarantee rests on
+        // it staying that way: doCreateSimulationModel() re-reads it and redoes the row surgery below against the terminations and
+        // jumpers as they now stand. Assigning it here without copying handed this init the PhaseModel's own matrix, and the
+        // surgery - ZeroRow, AddRow, the 1/-1 pair that ties a merged node to the one it was kept for - was written straight into
+        // it. The next run then started from the previous run's result, so every Dirichlet row and every merge ever applied
+        // survived the connector that asked for it. A jumper between two leads left them shorted (V equal, difference identically
+        // zero) for the rest of the session even after it was deleted, and the only way to get a correct answer for a new
+        // connection scheme was to make it the FIRST scheme simulated after the matrices were recalculated.
+        //
+        // Two separate copies: 'baseC' is the pristine network - the SPICE/NetworkSnapshot export and the RK45 sizing read it -
+        // and 'modelC' is the one the surgery is done on.
+        self.baseC = await PchMatrix(srcMatrix: model.C!)
+        self.modelC = await PchMatrix(srcMatrix: model.C!)
+
         // WHO IS AT GROUND POTENTIAL IS THE MODEL'S QUESTION, NOT THIS ROUTINE'S.
         //
         // PhaseModel.ResolveNodeConnectivity resolves every jumper and returns the classification: which nodes are held at the
