@@ -29,7 +29,6 @@
                 <outlet property="cancelSimulationMenuItem" destination="Cn1-sM-q01" id="Cn1-sM-q03"/>
                 <outlet property="combineSegmentsIntoSingleSegmentMenuItem" destination="bwi-RW-boG" id="dY2-kP-Zy8"/>
                 <outlet property="compareSolversMenuItem" destination="Cmp-Sv-Mi1" id="Cmp-Sv-Ou1"/>
-                <outlet property="createSimModelMenuItem" destination="9LX-Ul-dgv" id="6lP-9A-RIt"/>
                 <outlet property="indCalcProgInd" destination="Det-ry-1cY" id="JK5-pS-z4f"/>
                 <outlet property="inductanceLight" destination="8Bk-Y9-N83" id="Fxc-0g-zsc"/>
                 <outlet property="interleaveSelectionMenuItem" destination="Msd-Z1-NJO" id="iTF-13-8vY"/>
@@ -380,13 +379,7 @@
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <menu key="submenu" title="Simulate" id="ifa-Yd-wQL">
                         <items>
-                            <menuItem title="Create Simulation Model" id="9LX-Ul-dgv">
-                                <modifierMask key="keyEquivalentModifierMask"/>
-                                <connections>
-                                    <action selector="handleCreateSimStruct:" target="XWq-sU-B2V" id="KKV-b2-uwj"/>
-                                </connections>
-                            </menuItem>
-                            <menuItem title="Simulate" id="qgl-wB-C1d">
+                            <menuItem title="Simulate now" id="qgl-wB-C1d">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
                                     <action selector="handleDoSimulate:" target="XWq-sU-B2V" id="nhz-vR-Yv3"/>

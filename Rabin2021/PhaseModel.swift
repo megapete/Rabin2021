@@ -76,8 +76,19 @@ actor PhaseModel /*:Codable */ {
     var fixedC:PchMatrix? = nil
     
     func SetFixedC(newFixedC:PchMatrix) {
-        
+
         self.fixedC = newFixedC
+    }
+
+    /// Throw the fixed capacitance matrix away.
+    ///
+    /// Unlike `C`, which the recalculation pipeline recomputes unconditionally, `fixedC` is written by
+    /// `SimulationModel.init` and by nothing else - so a geometry change that discards the simulation model would otherwise leave
+    /// it here, belonging to a network that no longer exists. It is only read by the Save Fixed C Matrix command, which would
+    /// silently write the wrong file. Called from `AppController.DiscardResultsForChangedModel()`.
+    func ClearFixedC() {
+
+        self.fixedC = nil
     }
     /// The window height to actually use
     var useWindowHeight:Double {

@@ -872,12 +872,13 @@ enum SelfTest {
 
         Stage("creating the simulation model")
 
-        guard let simModel = await SimulationModel(model: model) else {
+        // Through the controller rather than SimulationModel(model:) directly: this is the same call "Simulate now" makes, so the
+        // run exercises the real install path (undo slot, result invalidation) and the controller ends up holding the model that
+        // everything downstream of here reads back out of it.
+        guard let simModel = await controller.doCreateSimulationModel() else {
 
             return Report(text: text + "FAILED: the simulation model could not be created.\n", summary: "FAILED - no simulation model")
         }
-
-        controller.currentSimModel = simModel
 
         Stage("solving the initial distribution")
 

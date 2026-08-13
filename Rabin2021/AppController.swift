@@ -127,7 +127,6 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     @IBOutlet weak var saveAsCirFileMenuItem: NSMenuItem!
     
     /// Simulation
-    @IBOutlet weak var createSimModelMenuItem: NSMenuItem!
     @IBOutlet weak var simulateMenuItem: NSMenuItem!
     @IBOutlet weak var cancelSimulationMenuItem: NSMenuItem!
     @IBOutlet weak var compareSolversMenuItem: NSMenuItem!
@@ -165,8 +164,40 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     @IBOutlet weak var simulationLight: NSTextField!
     @IBOutlet weak var simCalcProgInd: NSProgressIndicator!
     
-    /// The current simulation model that is stored in memory
-    var currentSimModel:SimulationModel? = nil
+    /// The current simulation model that is stored in memory.
+    ///
+    /// This is a **build product**, not something the user maintains. It is created on demand - by "Simulate now", which always
+    /// rebuilds it, or by doGetSimulationModel() for the one command that needs a model but not a run - and it is only ever
+    /// replaced through doCreateSimulationModel(), so that the outgoing state lands in `previousSimulationState` on the way out.
+    private(set) var currentSimModel:SimulationModel? = nil
+
+    /// Everything that building a new simulation model replaces.
+    ///
+    /// Bundled into one value because the three pieces are only meaningful together: a result belongs to the model it was computed
+    /// on, and the fixed capacitance matrix in the PhaseModel belongs to whichever SimulationModel wrote it there. Restoring one
+    /// without the others would leave the app displaying one model's answer for another model's network.
+    struct SimulationState {
+
+        /// The simulation model itself. Optional because the first rebuild of a session has no predecessor to save.
+        let simModel:SimulationModel?
+
+        /// The results of the last run made **on `simModel`**, if it was ever run.
+        let results:SimulationResults?
+
+        /// SimulationModel's initializer writes its Dirichlet-fixed capacitance matrix back into the PhaseModel (the
+        /// `model.SetFixedC` call at the end of Assemble()), so the PhaseModel's copy is part of what a rebuild overwrites and
+        /// part of what putting the previous state back has to restore. It is only used by the Save Fixed C Matrix command, but
+        /// leaving it pointing at a discarded model's matrix would silently save the wrong file.
+        let fixedC:PchMatrix?
+    }
+
+    /// The state that the most recent doCreateSimulationModel() replaced, if any.
+    ///
+    /// One deep, which is all an "Undo Simulation" command would need: the interesting case is having just rebuilt the model,
+    /// realised the design was not the one that was wanted, and wanting the previous run's numbers back. Nothing calls
+    /// doRestorePreviousSimulationModel() yet - see that routine for what wiring it up would take. Making it a stack instead is a
+    /// matter of changing this to an array and pushing/popping in those two routines; nothing else reads it.
+    private(set) var previousSimulationState:SimulationState? = nil
 
     /// The currently-running simulation, if any. Held so that it can be cancelled (and so that a second simulation can't be launched on top of a running one).
     var runningSimulationTask:Task<Void, Never>? = nil
@@ -368,12 +399,25 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
     /// The most recent stress screen, kept so that the profile graphs can be built from exactly the findings the table showed
     /// rather than from a second scan.
+    ///
+    /// Emptied by `latestSimulationResult`'s `didSet` - see there.
     var latestStressChecks:[DielectricStress.StressCheck] = []
     // var voltageDiffsWindow:PchMatrixViewWindow? = nil
-    
+
     /// The result of the latest simulation run that was executed
-    var latestSimulationResult:SimulationResults? = nil
-    
+    var latestSimulationResult:SimulationResults? = nil {
+
+        // The stress checks are a pure function of this result (plus the model it was run on), and StressChecks() returns its
+        // cache whenever the cache is non-empty. Nothing but a preference change used to empty it, so a second run put its own
+        // waveforms on screen while the stress report went on showing the FIRST run's findings - the failure is silent, because a
+        // stale table of findings looks exactly like a fresh one. Hanging the invalidation off the property rather than off the
+        // places that assign it means a future writer cannot forget.
+        didSet {
+
+            self.latestStressChecks = []
+        }
+    }
+
     /// The current FE model that is stored in memory (this is required becuase the inductance calcualtion takes really long and so is put into a different thread)
     var currentFePhase:PchFePhase? = nil
     
@@ -627,6 +671,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// caller has already changed the geometry it was computed for. The user is never locked out of the editing commands.
     func recalculateModel(reinitialize:Bool, includeInductance:Bool = true) async {
 
+        // FIRST, and synchronously: the design has already changed by the time anyone calls this, so everything computed from the
+        // old one is wrong from this instant, not from whenever the recalculation gets around to running.
+        await self.DiscardResultsForChangedModel()
+
         self.CancelRecalculationInFlight()
 
         let superseded = self.runningRecalculationTask
@@ -654,6 +702,69 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
             self.runningRecalculationTask = nil
         }
+    }
+
+    /// Throw away everything that was computed from the design, because the design has changed.
+    ///
+    /// # Why this exists
+    ///
+    /// The results form a chain, and every link of it is keyed to a geometry: the inductance and capacitance matrices come from
+    /// the Segments, the simulation model comes from those matrices plus the terminations, the run comes from the simulation
+    /// model, and the stress screen comes from the run. Change a Segment - add a static ring, interleave a coil, move a wound-in
+    /// shield - and every one of them describes a transformer that is no longer on screen. `inductanceIsValid` and
+    /// `capacitanceIsValid` covered the first link only; the rest simply stayed, so a stress report opened after an edit was
+    /// screening the *previous* design, and the numbers looked exactly as authoritative as correct ones would have. There is no
+    /// version of this that the user can be expected to keep track of themselves, which is why it is not a warning.
+    ///
+    /// # Discarding rather than recomputing
+    ///
+    /// Only the matrices are recomputed automatically (by `PerformRecalculation`, which this routine precedes); the simulation is
+    /// minutes long and needs a crest and a bandwidth from the user, so it is not something to launch on their behalf because they
+    /// dragged a static ring. Everything downstream of the model is therefore nilled and the commands that display it go back to
+    /// being disabled, which is the honest state: the answer is not stale, it is *absent* until asked for again.
+    ///
+    /// The open result windows are closed for the same reason. A window is the one piece of this that keeps asserting its numbers
+    /// after the state behind it is gone, and it is the piece the user is actually looking at.
+    ///
+    /// - note: The undo slot goes too. It exists to get back a simulation that a *rebuild* replaced; once the design itself has
+    /// moved, the model saved in it is no more valid than the one being discarded.
+    func DiscardResultsForChangedModel() async {
+
+        self.currentSimModel = nil
+        self.previousSimulationState = nil
+        // Clears latestStressChecks through the property's didSet.
+        self.latestSimulationResult = nil
+
+        // Written by SimulationModel.init and by nothing else, so unlike C it does not get replaced by the recalculation.
+        await self.currentModel?.ClearFixedC()
+
+        self.simulationLight.textColor = .red
+
+        CloseResultWindows()
+    }
+
+    /// Close every window showing a result of the previous design.
+    ///
+    /// Only the five held windows can be reached: the waveform and max-voltage-difference windows are created and let go (AppKit
+    /// keeps them alive until they are closed), so nothing here has a handle on them. That is worth fixing if it ever matters -
+    /// they would need to go into an array of `NSWindowController` the way these five are properties - but they are graphs of a
+    /// named run rather than a screen of the current design, so a stale one is at least self-describing.
+    private func CloseResultWindows() {
+
+        self.coilResultsWindow?.close()
+        self.coilResultsWindow = nil
+
+        self.stressReportWindow?.close()
+        self.stressReportWindow = nil
+
+        self.stressProfileWindow?.close()
+        self.stressProfileWindow = nil
+
+        self.axialStressProfileWindow?.close()
+        self.axialStressProfileWindow = nil
+
+        self.initialDistributionWindow?.close()
+        self.initialDistributionWindow = nil
     }
 
     /// Ask the recalculation currently in flight, if any, to stop. Cancellation is cooperative all the way down (the checkpoints in
@@ -1449,28 +1560,123 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     // MARK: Testing routines
     
     // MARK: Simulation routines
-    @IBAction func handleCreateSimStruct(_ sender: Any) {
-        
-        Task {
-            
-            guard let newModel = await SimulationModel(model: self.currentModel!) else {
-                
-                PCH_ErrorAlert(message: "Could not create simulation model!")
-                return
-            }
-            
-            currentSimModel = newModel
+
+    /// Build a brand-new simulation model from the current state of the PhaseModel and install it as `currentSimModel`.
+    ///
+    /// # Why this is unconditional
+    ///
+    /// There used to be a "Create Simulation Model" menu item, and simulating was a two-step affair: create, then run. That was a
+    /// development convenience - it let the matrices be dumped and inspected before committing to a run - but it made the sim model
+    /// a piece of user-maintained state that nothing invalidated. Every edit made after the create (a jumper moved, a static ring
+    /// added, a coil interleaved) left the model built on the old geometry, and running gave a confident answer for a design that
+    /// was no longer on screen. The model is cheap next to the run it precedes, so it is now simply rebuilt every time.
+    ///
+    /// Everything derived from the design is rebuilt with it: the base capacitance matrix is re-read from the PhaseModel, the
+    /// Dirichlet row surgery is redone against the current terminations, and the node connectivity is re-resolved from the current
+    /// connectors. See `SimulationModel.init(model:)`.
+    ///
+    /// # The undo slot
+    ///
+    /// Whatever is being replaced - model, results, and the PhaseModel's fixed C - is saved into `previousSimulationState` first.
+    /// Nothing offers the user an undo yet; the point is that the state needed for one is no longer thrown away.
+    ///
+    /// - returns: The new model, or nil if it could not be built (the user has already been told why).
+    @discardableResult
+    func doCreateSimulationModel() async -> SimulationModel? {
+
+        guard let phModel = self.currentModel else {
+
+            PCH_ErrorAlert(message: "There is no model!")
+            return nil
         }
+
+        // Captured BEFORE the new model is built, because building it is what overwrites the PhaseModel's fixed C.
+        let outgoing = SimulationState(simModel: self.currentSimModel, results: self.latestSimulationResult, fixedC: await phModel.fixedC)
+
+        guard let newModel = await SimulationModel(model: phModel) else {
+
+            // Leave the existing model, results and undo slot alone. A failed rebuild is a refusal, not a reset - there is no
+            // reason to take away the answer the user already has.
+            PCH_ErrorAlert(message: "Could not create simulation model!", info: "See the log for what the model is missing.")
+            return nil
+        }
+
+        self.previousSimulationState = outgoing
+        self.currentSimModel = newModel
+        // The old results were computed on the model that was just replaced. They are not gone - they are in the undo slot - but
+        // they must not be shown next to a different network, so everything that displays a result goes dark until the new one
+        // runs, the open result windows included (same argument as DiscardResultsForChangedModel's).
+        self.latestSimulationResult = nil
+        self.simulationLight.textColor = .red
+        CloseResultWindows()
+
+        return newModel
     }
-    
+
+    /// The simulation model, built if there isn't one yet.
+    ///
+    /// For the commands that need a model but not a run - the initial distribution, the solver comparison. They used to rely on the
+    /// user having chosen "Create Simulation Model" first and refused if they hadn't; with that item gone they build one themselves.
+    /// An existing model is reused rather than rebuilt, so that these commands never discard a simulation result the way
+    /// doCreateSimulationModel() must.
+    func doGetSimulationModel() async -> SimulationModel? {
+
+        if let existing = self.currentSimModel {
+
+            return existing
+        }
+
+        return await doCreateSimulationModel()
+    }
+
+    /// Put the simulation state saved by the last rebuild back.
+    ///
+    /// **Nothing calls this yet.** It is the other half of the undo slot, written now so that adding the command later is a xib item
+    /// and a `validateMenuItem` clause rather than a rework of how the simulation model is owned. To wire it up: add an "Undo
+    /// Simulation" item whose action calls this in a `Task`, validate it on `previousSimulationState != nil && runningSimulationTask
+    /// == nil`, and call `updateViews()` afterwards.
+    ///
+    /// It swaps rather than pops, so the undo is itself undoable (which is what makes a single slot tolerable) and so that the
+    /// PhaseModel's fixed C never ends up belonging to a model that is no longer installed.
+    ///
+    /// - returns: false if there was nothing saved to go back to.
+    @discardableResult
+    func doRestorePreviousSimulationModel() async -> Bool {
+
+        guard let previous = self.previousSimulationState, let phModel = self.currentModel else {
+
+            return false
+        }
+
+        let outgoing = SimulationState(simModel: self.currentSimModel, results: self.latestSimulationResult, fixedC: await phModel.fixedC)
+
+        self.currentSimModel = previous.simModel
+        self.latestSimulationResult = previous.results
+
+        if let fixedC = previous.fixedC {
+
+            await phModel.SetFixedC(newFixedC: fixedC)
+        }
+
+        self.previousSimulationState = outgoing
+        self.simulationLight.textColor = self.latestSimulationResult != nil ? .green : .red
+
+        return true
+    }
+
+    /// Rebuild the simulation model from the design as it now stands, then run the impulse on it.
+    ///
+    /// The rebuild is not optional and not offered separately - see doCreateSimulationModel() for why. It happens inside the
+    /// simulation task, after the details dialog has been accepted, so that cancelling the dialog costs nothing and leaves the
+    /// previous run's results in place.
     @IBAction func handleDoSimulate(_ sender: Any) {
-        
-        guard let simModel = self.currentSimModel else {
-            
-            DLog("No simulation model!")
+
+        guard self.currentModel != nil else {
+
+            DLog("No model!")
             return
         }
-        
+
         var waveForms:[String] = []
         SimulationModel.WaveForm.Types.allCases.forEach {
 
@@ -1480,8 +1686,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         let simDetailsDlog = SimDetailsDlog(waveFormStrings: waveForms)
         
         if simDetailsDlog.runModal() == .OK {
-            
-            self.latestSimulationResult = nil
+
             let peakVoltage = simDetailsDlog.voltageField.doubleValue * 1000
             guard abs(peakVoltage) >= 10000 else {
                 
@@ -1496,9 +1701,6 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 let wfIndex = simDetailsDlog.waveFormPopUp.indexOfSelectedItem
                 let waveForm = SimulationModel.WaveForm(type: SimulationModel.WaveForm.Types.allCases[wfIndex], pkVoltage: peakVoltage)
 
-                // The simulation reports its progress through an AsyncStream. '.bufferingNewest(1)' is the important part: the solver never blocks waiting on the UI, and whatever we read is always the most recent value.
-                let (progressStream, progressContinuation) = AsyncStream<SimulationModel.ProgressUpdate>.makeStream(bufferingPolicy: .bufferingNewest(1))
-
                 simulationLight.textColor = .red
                 simCalcProgInd.isIndeterminate = false
                 simCalcProgInd.minValue = 0.0
@@ -1506,6 +1708,22 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 simCalcProgInd.doubleValue = 0.0
                 simCalcProgInd.isHidden = false
                 workingLabel.isHidden = false
+
+                // The bar stays determinate and sits at zero through the rebuild, which reports no progress of its own: it is one
+                // pass of matrix surgery, seconds at most against a run measured in minutes. The tooltip says what is happening,
+                // which is the same channel the solver's own passes use ('workingLabel' is shared with the inductance calculation).
+                simCalcProgInd.toolTip = "Building the simulation model"
+
+                let simModel = await doCreateSimulationModel()
+
+                guard let simModel else {
+
+                    await didFinishSimulationRun()
+                    return
+                }
+
+                // The simulation reports its progress through an AsyncStream. '.bufferingNewest(1)' is the important part: the solver never blocks waiting on the UI, and whatever we read is always the most recent value.
+                let (progressStream, progressContinuation) = AsyncStream<SimulationModel.ProgressUpdate>.makeStream(bufferingPolicy: .bufferingNewest(1))
 
                 // Each iteration of this loop resumes on the main actor, which is what actually lets AppKit redraw the bar between updates.
                 let progressTask = Task { @MainActor in
@@ -1551,9 +1769,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// Both are pinned to the same constant resistance, so what is being compared is the two numerical methods and not the two resistance models.
     @IBAction func handleCompareSolvers(_ sender: Any) {
 
-        guard let simModel = self.currentSimModel else {
+        guard self.currentModel != nil else {
 
-            DLog("No simulation model!")
+            DLog("No model!")
             return
         }
 
@@ -1589,6 +1807,16 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             simCalcProgInd.isIndeterminate = true
             simCalcProgInd.isHidden = false
             simCalcProgInd.startAnimation(nil)
+
+            // Unlike a run, this reuses an existing model if there is one: it is a check on the two solvers, not on the design, and
+            // rebuilding here would throw away the results of whatever run the user is checking.
+            guard let simModel = await doGetSimulationModel() else {
+
+                simCalcProgInd.stopAnimation(nil)
+                self.runningSimulationTask = nil
+                await didFinishSimulationRun()
+                return
+            }
 
             // RK45 is slow - that is the entire reason it was replaced - so this can take a while on a full-size model. Run it on something small.
             let comparison = await simModel.CompareSolvers(waveForm: waveForm, displaySpan: waveForm.timeToZero, maximumFrequency: bandwidth)
@@ -1944,15 +2172,15 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// committing to a run rather than after. A result is used only if one is to hand, and only to put the y axis into volts.
     func doShowInitialDistribution() async {
 
-        guard let phModel = self.currentModel, let simModel = self.currentSimModel else {
+        guard let phModel = self.currentModel, let simModel = await doGetSimulationModel() else {
 
-            PCH_ErrorAlert(message: "You must create the simulation model first!")
+            // doGetSimulationModel() has already said why if it was the one that failed.
             return
         }
 
         guard let snapshot = await simModel.Snapshot(), let alpha = await FrequencyDomainSolver.CapacitiveDistribution(snapshot: snapshot) else {
 
-            PCH_ErrorAlert(message: "The initial distribution could not be solved.", info: "This is the same assembly the frequency sweep uses, so a failure here means the capacitance matrix or the boundary conditions are not usable. Try recreating the simulation model.")
+            PCH_ErrorAlert(message: "The initial distribution could not be solved.", info: "This is the same assembly the frequency sweep uses, so a failure here means the capacitance matrix or the boundary conditions are not usable.")
             return
         }
 
@@ -1983,7 +2211,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
         guard !impulsedCoils.isEmpty else {
 
-            PCH_ErrorAlert(message: "No coil in this model is impulsed.", info: "Attach an impulse connector to a coil terminal and recreate the simulation model.")
+            PCH_ErrorAlert(message: "No coil in this model is impulsed.", info: "Attach an impulse connector to a coil terminal and simulate again.")
             return
         }
 
@@ -4317,19 +4545,16 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return self.currentModel != nil && inductanceIsValid
         }
         
-        if menuItem == self.createSimModelMenuItem {
-            
-            return self.currentModel != nil && self.designIsValid
-        }
-        
+        // Neither of these needs a simulation model to exist: both build one if there isn't one (and "Simulate now" rebuilds it
+        // whether there is one or not). What they need is a design complete enough to build one FROM, which is designIsValid.
         if menuItem == self.compareSolversMenuItem {
 
-            return self.currentSimModel != nil && self.runningSimulationTask == nil
+            return self.currentModel != nil && self.designIsValid && self.runningSimulationTask == nil
         }
 
         if menuItem == self.simulateMenuItem {
 
-            return self.currentModel != nil && self.designIsValid && self.currentSimModel != nil && self.runningSimulationTask == nil
+            return self.currentModel != nil && self.designIsValid && self.runningSimulationTask == nil
         }
 
         if menuItem == self.cancelSimulationMenuItem {
@@ -4354,11 +4579,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return self.currentModel != nil && self.currentSimModel != nil && self.latestSimulationResult != nil
         }
 
-        // The initial distribution is purely electrostatic - the s -> infinity limit of the sweep's own assembly - so it needs the
-        // simulation model but NOT a run. See doShowInitialDistribution.
+        // The initial distribution is purely electrostatic - the s -> infinity limit of the sweep's own assembly - so it needs a
+        // simulation model but NOT a run, and it builds the model itself if there isn't one. See doShowInitialDistribution.
         if menuItem.action == #selector(handleShowInitialDistribution(_:)) {
 
-            return self.currentModel != nil && self.currentSimModel != nil
+            return self.currentModel != nil && self.designIsValid
         }
 
         // The turn ladder is a purely electrostatic solve, so unlike the two above it needs no simulation result - only a model and
