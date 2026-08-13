@@ -21,6 +21,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // overridden for a single run from the command line. See Preferences.swift.
         Preferences.RegisterFactoryDefaults()
 
+        // The formula self-checks, if one was asked for on the command line. Each VerifySelf() writes its report to UserDefaults -
+        // the app is sandboxed, so print() and /tmp are both dead ends - and this gate exists so that running them does not mean
+        // editing this file and rebuilding every time. Nothing happens on a normal launch.
+        //
+        //     open -a ImpulseDistribution --args -PCH_Verify YES
+        //     defaults read com.huberistech.rabin2021 TurnLadderVerification
+        //     defaults read com.huberistech.rabin2021 DielectricStressVerification
+        if UserDefaults.standard.bool(forKey: "PCH_Verify") {
+
+            TurnLadderModel.VerifySelf()
+            DielectricStress.VerifySelf()
+            NSApp.terminate(nil)
+            return
+        }
+
         // A scripted test run, if one was asked for on the command line. This does nothing at all on a normal launch -
         // it needs the -PCH_SelfTest launch argument - and when it does run it terminates the app itself. See
         // SelfTest.swift for how to invoke it and where the report comes out.

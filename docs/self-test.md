@@ -14,8 +14,10 @@ cat ~/Library/Containers/com.huberistech.Rabin2021/Data/Documents/SelfTestReport
 ```
 
 Add `-PCH_SelfTestTransient YES` for the frequency-domain sweep as well, and `-PCH_SelfTestGraphs YES` (which needs the transient)
-to **render the result graphs to PNGs** beside the report — `SelfTestGraph-<scenario>-axialStress.png` and
-`-radialStress.png` today, both of the profile windows, which share a view and so break together. That flag exists
+to **render the result graphs to PNGs** beside the report — `SelfTestGraph-<scenario>-axialStress.png`, `-radialStress.png` and,
+for every sheet or layer winding in the model, `-radialProfile-coil<n>.png`. All three come out of `StressProfileView`, which they
+share and so break together; the radial *profile* is the one whose x axis is not a height, which is exactly what a shared view is
+most likely to get wrong. Its numbers go into the report as a line too, so a change of shape shows up without opening the PNG. That flag exists
 because the numbers behind a graph can be asserted and the drawing cannot: a curve running off its axis, an annotation box sitting
 on the line it describes, or a tick label overwriting its neighbour are invisible to any check worth writing, and are exactly what
 goes wrong when a plot is edited. The window is built the way the menu item builds it and drawn with `cacheDisplay(in:to:)`, so it
@@ -23,6 +25,20 @@ is never ordered front and the run stays headless. All three of those faults wer
 `AxialStressProfileWindow`. A full run of the STME-0999 fixture — parse,
 radial build-up, FE phase, eddy losses, inductance, capacitance, terminations, initial distribution and a 2048-step
 transient — is **37 seconds**, so there is no reason not to run it.
+
+**`S0738-sheet-floating` is the scenario that exercises the radial voltage profile**, and it exists because every other variant
+grounds coil 0 — a sheet winding — at *both* ends. A winding shorted end to end has identically zero volts across it at every
+instant, so its profile is a correct but useless flat line at zero. This one leaves its top lead floating, so it takes a
+transferred voltage (~9.5 kV of the 1050 kV impulse) and the graph has something in it. **No fixture has a layer winding**, so the
+layer half of that window has no end-to-end run — see `TODO.md` §8a.
+
+The `VerifySelf()` formula checks have their own gate, separate from all of this and needing no fixture:
+
+```bash
+open -a ImpulseDistribution --args -PCH_Verify YES
+defaults read com.huberistech.Rabin2021 TurnLadderVerification
+defaults read com.huberistech.Rabin2021 DielectricStressVerification
+```
 
 One name in that argument is not a design: **`STRANDED`** runs `SelfTest.CheckStrandedConnection` instead, which is about the
 connections rather than about a winding — it drops a jumper on a node that interleaving is about to swallow and checks that the

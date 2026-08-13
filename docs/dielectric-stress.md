@@ -246,8 +246,62 @@ as free nodes and no capacitance between two discs those discs disconnect, which
 lumped model's series-through-Cs picture, and fixing it needs the crossover conductor modelled. Continuous discs only — an
 interleaved winding's position-to-turn map is scheme-dependent and guessing it would give a confidently wrong answer.
 
+### The ladder's scope is now enforced, and sheet/layer windings have their own command
+
+`TurnLadderModel.LadderError.notContinuousDisc` was declared from the start and **never thrown** — the menu let any Segment that
+was not a static ring or a radial shield through the continuous-disc ladder. A sheet, layer, interleaved or wound-in-shield Segment
+was therefore given a confident answer about a winding order the ladder does not model. `doShowTurnLadder` now refuses anything
+that is not a plain single-disc `.disc` Segment, and `validateMenuItem` greys the command out for a sheet or layer winding.
+
+Two things that fed it were also wrong, and both **understated** every number it produced:
+
+- **The worst step was the model's, not the segment's.** It picked the step with the largest span over *all* nodes and read this
+  segment's two nodes at that instant. That is when the winding set is most stressed, not when a given coil is — an LV coil takes
+  its surge by transfer and peaks well after the impulsed winding's line end. `AppController.WorstInstant` now maximises
+  `|V[above] − V[below]|` for the segment itself.
+- **t = 0+ was not a candidate.** Turn-to-turn gradients peak there, and `DielectricStress.Scan` prepends
+  `FrequencyDomainSolver.CapacitiveDistribution` for exactly that reason; the ladder scanned only the time grid, whose first sample
+  has already missed the steepest part. `WorstInstant` now considers it too, and returns the whole node vector so that a
+  neighbouring coil can be read at the *same* instant.
+
+## Sheet and layer windings: the radial voltage profile
+
+`DielectricStress.AppendTurnToTurnSites` takes `.disc` and skips everything else, so **a sheet or layer winding got no
+turn-to-turn or layer-to-layer number anywhere in the report**. `RadialProfileWindow` is where they are looked at: one value per
+radial gap, innermost first, with the paper-impulse allowable from the same `DielectricStress.Evaluate` the report uses.
+
+**A sheet winding is a pure series chain, and this is a physical result, not a simplification.** Every turn is a full-height
+cylinder, so each turn completely screens the next from everything outside the coil: no interior turn has a capacitance to
+anything but its two radial neighbours, and the neighbouring coil and the core attach only to the two driven end turns, where they
+cannot perturb the interior. Adding a radial shunt to the neighbouring coil — the obvious fix, and the one first proposed — changes
+nothing at all for that reason. The entire non-uniformity is that the gap capacitance grows with radius: C ∝ r, so ΔV ∝ 1/r and
+the innermost gap is worst by exactly the ratio of the radii, about 4% on the S0738 fixture. `CapacitanceTurnToTurn` returns one
+value at the mean radius and so reports *none* of it; `Segment.SheetGapCapacitances` gives each gap its own.
+
+**A layer winding is the opposite and has to be solved.** Its turns run axially within a layer and the layers stack radially, so a
+turn's radial neighbour is a turn of a different layer, `turnsPerLayer` away electrically. `TurnLadderModel.SolveLayer` puts every
+turn on the network — Ctt along each layer, Cll/slots between layers at the same axial slot, and Cin/Cout out of the innermost and
+outermost layers to the neighbouring coils **at their own potentials** — and solves it by conjugate gradient. The ground path is
+what makes the distribution non-uniform: without a path out of the winding the network has only its two terminals and the answer
+collapses to the linear one. Layers alternate direction, so each starts where the previous ended and a short final layer sits at
+the end it actually occupies.
+
+**Two assumptions the design file cannot support**, both surfaced in the window's note: `PCH_ExcelDesignFile.Winding` carries a
+layer *count* and a duct *count* and nothing per layer, so `Segment.LayerTurnCounts` assumes equal layers with a short last one,
+and `LayerGapCapacitances` spreads the ducts evenly over the gaps. A deliberately graded winding, or ducts at particular gaps,
+needs new fields in `BasicSectionWindingData.LayerData`.
+
+**The y axis may drop the allowable.** Turn-to-turn in a sheet or layer winding runs at a per cent or two of what the paper
+withstands, and scaling to the allowable flattens the profile onto the x axis. `StressProfileView.Plot.allowableMayGoOffScale` is
+set only by this window — the two stress-profile windows exist to show how much room is left, and a comfortable coil that reads as
+comfortable is the right picture there.
+
 **Verification is by hand**, as everywhere else here. `DielectricStress.VerifySelf()` and `TurnLadderModel.VerifySelf()` write to
 `UserDefaults` (the app is sandboxed, so `print` and `/tmp` are dead ends); each doc comment gives the `defaults read` line. Both
-pass as of 2026-08-05. The ladder asserts its **convergence rate** rather than a bare threshold — the scheme is first order, since
+pass as of 2026-08-13, `TurnLadderModel.VerifySelf()` now covering the two radial solves as well: the sheet chain's gap voltages
+sum to the terminal voltage and stand in inverse proportion to the gap capacitances, and the layer network holds a constant
+potential (the Laplacian null space, which catches any diagonal that is not the exact sum of its incident capacitances) and is
+symmetric under conductor reversal (which catches a turn-to-slot map anchored at the wrong end). Both `VerifySelf()`s now run from
+a launch argument rather than an edit to `AppDelegate`: `open -a ImpulseDistribution --args -PCH_Verify YES`. The ladder asserts its **convergence rate** rather than a bare threshold — the scheme is first order, since
 the shunt lands only on interior turns, so doubling N must halve the departure from `sinh(αx)/sinh(α)`; measured ratio 2.0029. That
 distinction matters: a discretisation error shrinks with N, an assembly error does not.

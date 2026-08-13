@@ -365,6 +365,11 @@ enum SelfTest {
         // The same connection with the HV left alone, so that a failure can be pinned on the restructure or acquitted of it.
         "S0738-plain" : S0738(name: "S0738-plain", restructure: .none),
 
+        // The same design with coil 0's top lead left floating, so the SHEET winding takes a transferred voltage instead of being
+        // shorted end to end. This is the scenario that exercises the radial voltage profile: grounded at both ends coil 0 has no
+        // volts across it at any instant, and the graph is a correct but uninformative flat zero.
+        "S0738-sheet-floating" : S0738(name: "S0738-sheet-floating", restructure: .none, groundSheetTop: false),
+
         // The SAME fixture wired the way a double-stacked tap winding is wired when there are no taps in circuit: the two halves
         // PARALLELED rather than put in series with the HV. See S0738Parallel.
         "S0738-parallel" : S0738Parallel(name: "S0738-parallel", restructure: .none),
@@ -500,13 +505,31 @@ enum SelfTest {
     ///      in the two-coil fixtures makes a coil end anything other than a ground, an impulse or a floating lead.
     ///
     /// The HV is then interleaved in its entirety, which is what the plain variant exists to isolate.
-    private static func S0738(name:String, restructure:Restructure) -> Scenario {
+    /// - Parameter groundSheetTop: false leaves coil 0's TOP lead floating, so the sheet winding takes its voltage by transfer
+    /// instead of being shorted end to end. Grounded at both ends - the ordinary connection, and what every other variant uses -
+    /// coil 0 has identically zero volts across it at every instant, which is correct but makes the radial voltage profile a flat
+    /// line at zero and tests nothing about it. See the S0738-sheet-floating scenario.
+    private static func S0738(name:String, restructure:Restructure, groundSheetTop:Bool = true) -> Scenario {
+
+        var terminations = [Termination(point: .coilEnd(coil: 0, end: .bottom), type: .ground),
+                            Termination(point: .coilEnd(coil: 1, end: .bottom), type: .ground),
+                            Termination(point: .coilEnd(coil: 1, end: .top), type: .ground),
+                            // Only ONE of the two jumpered centre leads is grounded, because that is all the user does. The other
+                            // is at ground potential through the jumper, which PhaseModel.ResolveNodeConnectivity works out; the
+                            // ground is not copied onto it.
+                            Termination(point: .gapLead(coil: 3, gap: 0, side: .bottom), type: .ground),
+                            Termination(point: .coilEnd(coil: 2, end: .top), type: .impulse)]
+
+        if groundSheetTop {
+
+            terminations.insert(Termination(point: .coilEnd(coil: 0, end: .top), type: .ground), at: 1)
+        }
 
         return Scenario(name: name,
                         restructure: restructure,
                         matchedBuild: nil,
                         fixtureName: "S0738_AndIn.txt",
-                        notes: "Four coils. Coils 0 and 1 grounded at both ends; coil 2 is the impulsed HV (1050 kV full wave on its top); coil 3 is a double-stacked tap winding whose two ends are tied together and to the bottom of coil 2, and whose two centre leads are tied together and grounded. "
+                        notes: "Four coils. Coil 0 (a SHEET winding) grounded at " + (groundSheetTop ? "both ends" : "the bottom only, its top left floating") + " and coil 1 grounded at both ends; coil 2 is the impulsed HV (1050 kV full wave on its top); coil 3 is a double-stacked tap winding whose two ends are tied together and to the bottom of coil 2, and whose two centre leads are tied together and grounded. "
                              + (restructure.isInterleave ? "Coil 2 interleaved in its entirety." : "Coil 2 as designed."),
                         jumpers: [// The tap winding's two ends, tied to each other and then to the bottom of the HV. The second
                                   // jumper names coil 3's TOP again on purpose: the UI's cross-product (TransformerView.CompleteAddConnection)
@@ -516,15 +539,7 @@ enum SelfTest {
                                   Jumper(from: .coilEnd(coil: 3, end: .top), to: .coilEnd(coil: 2, end: .bottom)),
                                   // The two leads facing each other across coil 3's centre gap.
                                   Jumper(from: .gapLead(coil: 3, gap: 0, side: .bottom), to: .gapLead(coil: 3, gap: 0, side: .top))],
-                        terminations: [Termination(point: .coilEnd(coil: 0, end: .bottom), type: .ground),
-                                       Termination(point: .coilEnd(coil: 0, end: .top), type: .ground),
-                                       Termination(point: .coilEnd(coil: 1, end: .bottom), type: .ground),
-                                       Termination(point: .coilEnd(coil: 1, end: .top), type: .ground),
-                                       // Only ONE of the two jumpered centre leads is grounded, because that is all the user
-                                       // does. The other is at ground potential through the jumper, which
-                                       // PhaseModel.ResolveNodeConnectivity works out; the ground is not copied onto it.
-                                       Termination(point: .gapLead(coil: 3, gap: 0, side: .bottom), type: .ground),
-                                       Termination(point: .coilEnd(coil: 2, end: .top), type: .impulse)],
+                        terminations: terminations,
                         waveFormType: .FullWave,
                         peakVoltage: 1050.0e3,
                         displaySpan: 100.0e-6,
@@ -2816,6 +2831,49 @@ enum SelfTest {
 
         windows.append(("axialStress", AxialStressProfileWindow(checks: checks, title: "Disc-to-Disc Stress vs. Height")))
         windows.append(("radialStress", StressProfileWindow(checks: checks, peakTestVoltage: scenario.peakVoltage, title: "Radial Voltage Difference vs. Height")))
+
+        // The radial voltage profile of every sheet or layer winding in the model, if there is one. It shares StressProfileView with
+        // the two above, so it breaks with them; and it is the one graph whose x axis is NOT a height, which is exactly the thing a
+        // shared view is most likely to get wrong. The S0738 fixture's coil 0 is a sheet winding, so that scenario covers it.
+        for segment in await model.CoilSegments() {
+
+            let wdgType = await segment.wdgType
+
+            guard wdgType == .sheet || wdgType == .layer else {
+
+                continue
+            }
+
+            let nodes = await model.AdjacentNodes(to: segment)
+
+            guard let instant = AppController.WorstInstant(nodes: nodes, results: results, capacitiveDistribution: alpha, peakVoltage: scenario.peakVoltage) else {
+
+                text += "  SKIPPED the radial profile of coil \(await segment.radialPos): its nodes are not in the result.\n"
+                continue
+            }
+
+            do {
+
+                let contents = try await AppController.BuildRadialProfile(model: model, segment: segment, instant: instant)
+
+                text += String(format: "  coil %d (%@): %d gaps, worst %.1f V at gap %d of %d, %.2fx the reference of %.1f V, at %@\n",
+                               contents.coil,
+                               wdgType == .sheet ? "sheet" : "layer",
+                               contents.points.count,
+                               contents.points.map { $0.deltaV }.max() ?? 0.0,
+                               (contents.points.max { $0.utilization < $1.utilization }?.index ?? -1) + 1,
+                               contents.points.count,
+                               contents.enhancement,
+                               contents.reference,
+                               instant.label)
+
+                windows.append(("radialProfile-coil\(contents.coil)", RadialProfileWindow(contents: contents, peakTestVoltage: scenario.peakVoltage)))
+            }
+            catch {
+
+                text += "  FAILED the radial profile of coil \(await segment.radialPos): \(error.localizedDescription)\n"
+            }
+        }
 
         for (what, controller) in windows {
 

@@ -1459,6 +1459,188 @@ actor Segment: Equatable /*, Hashable */ {
         return ε0 * 2 * π * rMean * H * (firstTerm + secondTerm)
     }
 
+    // MARK: Per-gap radial geometry, for the turn ladder
+    //
+    // Everything above returns ONE capacitance for a whole coil, formed at the mean radius. That is right for the series-capacitance
+    // sum, where only the total matters. It is exactly wrong for a turn ladder: a chain of equal capacitors divides a voltage
+    // evenly, so a coil modelled that way can only ever report V/gaps per gap no matter what its geometry is. The three routines
+    // below give each radial gap its own radius, which is where a sheet winding's entire non-uniformity lives and where a layer
+    // winding's shunt varies. They deliberately do NOT feed SeriesCapacitance - changing that would move every existing result.
+
+    /// The turn-to-turn capacitance of every radial gap of a SHEET winding, innermost gap first, each formed at its own radius.
+    ///
+    /// Each turn of a sheet winding is a full-height cylinder, so the turns screen each other completely: no interior turn has a
+    /// capacitance to anything but its two radial neighbours, and the coil is a pure series chain between its two terminals. The same
+    /// charge Q therefore passes through every gap and ΔV_k = Q/C_k, so the profile is set entirely by how C_k varies.
+    ///
+    /// Gap k is a cylindrical capacitor at its own radius r_k:
+    ///
+    ///     C_k = ε0·εPaper·2π·r_k·(h + 2τ)/τ                      [DelVecchio 12.47's form, with 2π·r_k for the circumference]
+    ///
+    /// which grows linearly with radius across the build, so the INNERMOST gap carries the most volts - by r_outer/r_inner over the
+    /// outermost, about 13% for a 30 mm build at a 200 mm inner radius. Small, but it is the whole of the non-uniformity a sheet
+    /// winding has, and `CapacitanceTurnToTurn`'s single mean-radius value reports none of it.
+    ///
+    /// Geometry: N sheets of `turn.radialDimn` stacked across the build with the remainder shared equally over the N − 1 gaps, so
+    /// gap k lies between sheet k and sheet k + 1, centred at r1 + (k + 1)·t + (k + ½)·τ.
+    ///
+    /// The build is taken from the Segment's LIVE radii rather than the BasicSection's pristine `width` - see standing rule 7. The
+    /// `.sheet` branch of `CapacitanceTurnToTurn` still uses `width`; the two agree unless the coil has been built up.
+    func SheetGapCapacitances() throws -> [(radius:Double, capacitance:Double, insulation:Double)] {
+
+        guard !self.isStaticRing else {
+
+            throw SegmentError(info: "\(self.location)", type: .StaticRing)
+        }
+
+        guard !self.isRadialShield else {
+
+            throw SegmentError(info: "\(self.location)", type: .RadialShield)
+        }
+
+        guard self.wdgType == .sheet, let bs = self.basicSections.first else {
+
+            throw SegmentError(info: "", type: .IllegalWindingType)
+        }
+
+        let turns = Int(bs.N.rounded())
+
+        guard turns >= 2 else {
+
+            return []
+        }
+
+        let t = bs.wdgData.turn.radialDimn
+        let build = self.r2 - self.r1
+        let tau = (build - Double(turns) * t) / Double(turns - 1)
+
+        guard tau > 0.0 else {
+
+            throw SegmentError(info: "The sheet winding's turns fill its whole radial build, leaving no insulation between them", type: .IllegalWindingType)
+        }
+
+        let h = bs.height
+
+        var result:[(radius:Double, capacitance:Double, insulation:Double)] = []
+
+        for gap in 0..<(turns - 1) {
+
+            let radius = self.r1 + Double(gap + 1) * t + (Double(gap) + 0.5) * tau
+            result.append((radius: radius, capacitance: ε0 * εPaper * 2.0 * π * radius * (h + 2.0 * tau) / tau, insulation: tau))
+        }
+
+        return result
+    }
+
+    /// How the turns of a LAYER winding are shared out over its layers, innermost layer first.
+    ///
+    /// THIS IS AN ASSUMPTION, and the design file cannot confirm it: `PCH_ExcelDesignFile.Winding` carries a layer COUNT
+    /// (`numRadialSections`) and a total turn count, and nothing per layer. What is assumed here is the ordinary construction - every
+    /// layer is wound to the same axial pitch, so all but the last hold the same number of turns and the last one is short:
+    ///
+    ///     full = ceil(N / L),   last = N − (L − 1)·full
+    ///
+    /// A deliberately graded winding, where the layer turn counts are chosen rather than falling out of the height, will not match.
+    /// Carrying the real counts needs a per-layer field in `BasicSectionWindingData.LayerData` and somewhere to fill it from.
+    func LayerTurnCounts() throws -> [Int] {
+
+        guard self.wdgType == .layer, let bs = self.basicSections.first else {
+
+            throw SegmentError(info: "", type: .IllegalWindingType)
+        }
+
+        let layers = bs.wdgData.layers.numLayers
+        let turns = Int(bs.N.rounded())
+
+        guard layers >= 1, turns >= layers else {
+
+            throw SegmentError(info: "The layer winding has \(turns) turns over \(layers) layers, which is fewer than one turn per layer", type: .IllegalWindingType)
+        }
+
+        guard layers > 1 else {
+
+            return [turns]
+        }
+
+        let full = Int((Double(turns) / Double(layers)).rounded(.up))
+        let last = turns - (layers - 1) * full
+
+        guard last >= 1 else {
+
+            // ceil() overshot far enough to empty the last layer, which happens when L is large against N. Fall back to an even
+            // split with the remainder spread over the innermost layers - no layer is left empty and the total is still N.
+            let base = turns / layers
+            let extra = turns % layers
+            return (0..<layers).map { $0 < extra ? base + 1 : base }
+        }
+
+        return Array(repeating: full, count: layers - 1) + [last]
+    }
+
+    /// The layer-to-layer capacitance of every radial gap of a LAYER winding, innermost gap first, each formed at its own radius.
+    ///
+    /// This is `LayerToLayerCapacitance` gap by gap: the same DelVecchio 12.60 composite, with each gap's own radius in place of the
+    /// one Rmean that routine uses for all of them. Gap k sits between layer k and layer k + 1 at r1 + (k + 1)·(build/L).
+    ///
+    /// The ducts are still spread evenly over the L − 1 gaps, exactly as `LayerToLayerCapacitance` does, because that is all the
+    /// design file supports: `Winding` carries `numRadialDucts` and `radialDuctDimension` - a count and a size - and no positions. A
+    /// winding whose ducts sit at particular gaps has a much lower Cll at those gaps and a higher one everywhere else, and this will
+    /// not show it. Carrying duct positions needs a field in `BasicSectionWindingData.LayerData.DuctData`.
+    func LayerGapCapacitances() throws -> [(radius:Double, capacitance:Double, insulation:Double, duct:Double)] {
+
+        guard !self.isStaticRing else {
+
+            throw SegmentError(info: "\(self.location)", type: .StaticRing)
+        }
+
+        guard !self.isRadialShield else {
+
+            throw SegmentError(info: "\(self.location)", type: .RadialShield)
+        }
+
+        guard self.wdgType == .layer, let bs = self.basicSections.first else {
+
+            throw SegmentError(info: "", type: .IllegalWindingType)
+        }
+
+        let layers = bs.wdgData.layers.numLayers
+
+        guard layers > 1 else {
+
+            return []
+        }
+
+        let H = bs.height
+        let tIns = bs.wdgData.layers.interLayerInsulation
+        let tDuct = Double(bs.wdgData.layers.ducts.numDucts) * bs.wdgData.layers.ducts.ductDimn / Double(layers - 1)
+
+        let solid = tIns / εPaper
+
+        guard solid + tDuct > 0.0 else {
+
+            throw SegmentError(info: "Layer winding has no insulation between layers", type: .IllegalWindingType)
+        }
+
+        let pitch = (self.r2 - self.r1) / Double(layers)
+
+        var result:[(radius:Double, capacitance:Double, insulation:Double, duct:Double)] = []
+
+        for gap in 0..<(layers - 1) {
+
+            let radius = self.r1 + Double(gap + 1) * pitch
+
+            // The stick fraction is a fraction of THIS gap's circumference, so it has to be re-formed at each radius rather than
+            // carried over from the mean one - the same substitution LayerToLayerCapacitance makes, evaluated in the right place.
+            let fs = Double(bs.wdgData.discData.numAxialColumns) * bs.wdgData.discData.axialColumnWidth / (2 * π * radius)
+
+            let firstTerm = fs / (solid + (tDuct / εBoard))
+            let secondTerm = (1 - fs) / (solid + (tDuct / εOil))
+
+            result.append((radius: radius, capacitance: ε0 * 2 * π * radius * H * (firstTerm + secondTerm), insulation: tIns, duct: tDuct))
+        }
+
+        return result
+    }
 
     /// Return the Cdd values per DelVecchio equation 12.52 (3rd edition) for the gap above an below the given BasicSection.
     ///

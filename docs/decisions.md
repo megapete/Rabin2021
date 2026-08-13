@@ -140,6 +140,14 @@ at and deliberately not done:
 - **Interleaved and wound-in-shield discs** are refused rather than guessed. The map from physical radial position to electrical
   turn is scheme-dependent, and a wrong map produces a confidently wrong number instead of an error.
 
+**Sheet and layer windings were the third case, and they were neither extended nor refused (2026-08-13).** They are not discs at
+all — their turns run out along a radius rather than around a disc — so they got a command and a graph of their own rather than a
+place in the ladder. See `docs/dielectric-stress.md`. One thing settled in the course of it is worth recording because it is
+counter-intuitive and the obvious fix is wrong: **a sheet winding cannot be perturbed by the coil beside it.** Every turn is a
+full-height cylinder and screens the next completely, so the neighbouring coil's capacitance reaches only the two end turns, which
+are the driven terminals. Adding a radial shunt to the neighbour — proposed first, as the counterpart of the disc ladder's Cdd —
+changes the interior distribution by exactly nothing. What was actually missing was per-gap radii.
+
 ---
 
 ## §11 — coil-end radial fields are flagged, not valued

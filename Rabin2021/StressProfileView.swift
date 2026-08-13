@@ -33,10 +33,42 @@ import Cocoa
 @MainActor
 class StressProfileView:NSView {
 
+    /// What the x axis measures.
+    ///
+    /// The two stress profiles plot against height and want the fixed 100 mm grid the header argues for. The radial voltage profile
+    /// plots against a gap ordinal, where a 100-unit interval would put a single tick on the whole graph, so the interval has to be
+    /// derived from the range instead. What varies between callers is passed in - the same rule the rest of this view follows.
+    struct XAxis {
+
+        /// What `Point.z` is multiplied by to get plotted units. 1000 turns metres into millimetres.
+        let scale:Double
+        /// The tick interval in plotted units, or nil to choose one from the range - about ten ticks, on a whole number.
+        let interval:Double?
+        let title:String
+        let format:String
+
+        static let height = XAxis(scale: 1000.0, interval: 100.0, title: "Height above bottom yoke (mm)", format: "%.0f")
+
+        /// An axis counting something - gaps, turns, layers - rather than measuring it.
+        static func ordinal(title:String) -> XAxis {
+
+            return XAxis(scale: 1.0, interval: nil, title: title, format: "%.0f")
+        }
+
+        /// The interval actually used over a given span.
+        func Interval(from minimum:Double, to maximum:Double) -> Double {
+
+            if let interval { return interval }
+
+            return max(1.0, ((maximum - minimum) / 10.0).rounded())
+        }
+    }
+
     /// One plotted point.
     struct Point {
 
-        /// Height above the bottom yoke, in metres.
+        /// Where the point sits along the x axis. Metres of height for a `.height` axis, a 1-based ordinal for an ordinal one -
+        /// `Plot.xAxis` says which, and carries the scale that turns this into plotted units.
         let z:Double
         /// What is plotted, in base SI units (volts, or volts per metre - `Plot.quantity` says which).
         let value:Double
@@ -64,6 +96,19 @@ class StressProfileView:NSView {
         let markers:[Double]
         /// What the marked heights are, for the legend beside the first of them.
         let markerName:String
+        /// What the x axis is. Defaults to height, which is what both stress-profile windows want.
+        var xAxis:XAxis = .height
+        /// Whether the allowable may be dropped off the top of the y scale when it dwarfs the data - see `allowableScaleLimit`.
+        ///
+        /// FALSE for the two stress-profile windows, deliberately. Those exist to show how much room is left, and a comfortable
+        /// coil that READS as comfortable is the correct picture there; taking the limit off the plot the moment a coil is doing
+        /// well would be the opposite of what they are for.
+        ///
+        /// TRUE for the radial voltage profile, because the ratio there is not a design margin that varies from coil to coil - it
+        /// is a fixed fact about the check. Turn-to-turn voltage in a sheet or layer winding runs at a per cent or two of what the
+        /// paper withstands in EVERY design, so scaling to the allowable would flatten that graph onto its x axis always, and it
+        /// would never show the one thing it is drawn for.
+        var allowableMayGoOffScale:Bool = false
 
         /// True where every point has the same allowable, which is the ordinary case and the one in which the allowable really is
         /// a horizontal line.
@@ -91,9 +136,10 @@ class StressProfileView:NSView {
         }
     }
 
-    /// The x axis is a coil height in millimetres and the grid is 100 mm. It is not derived from the span: a round grid is the
-    /// point, so a 900 mm coil and a 2400 mm one are read against the same ruler.
-    private static let xTickInterval = 100.0
+    /// How many times the worst plotted value the allowable may be before it is taken off the y scale. 2.5 keeps it on the plot in
+    /// every case the two stress-profile windows produce - a gap running at 40% of allowable or worse, which is any gap worth
+    /// looking at - while taking it off for a site that is nowhere near its limit, where drawing it costs the profile its shape.
+    static let allowableScaleLimit = 2.5
 
     private let axisColor = NSColor.darkGray
     private let valueColor = NSColor.systemRed
@@ -121,13 +167,22 @@ class StressProfileView:NSView {
         //
         // The x range is the profile's own extent. The y range starts at zero - a profile read against an allowable is a picture
         // of how much room is left, and a y axis that did not start at zero would make a comfortable coil look alarming - and
-        // reaches past whichever is higher, the worst value or the allowable, so the allowable line is always on the plot.
+        // normally reaches past whichever is higher, the worst value or the allowable, so the allowable line is on the plot.
+        //
+        // NORMALLY, and only for a plot that asks for it. A site can run at a tiny fraction of what it is allowed - a sheet
+        // winding's turn-to-turn voltage comes out at a couple of per cent of the paper's impulse strength - and scaling to the
+        // allowable there flattens the whole profile onto the x axis and destroys the only thing the graph is for. Where
+        // `allowableMayGoOffScale` is set and the ratio passes `allowableScaleLimit`, the allowable goes OFF SCALE: the axis is set
+        // by the data and the dashed line is not drawn. Nothing is lost - the allowable and the utilization are both in the
+        // annotation block either way. See the note on the flag for why the two stress-profile windows do not set it.
 
-        let xMinimum = first.z * 1000.0
-        let xMaximum = max(last.z * 1000.0, xMinimum + 1.0)
+        let xMinimum = first.z * plot.xAxis.scale
+        let xMaximum = max(last.z * plot.xAxis.scale, xMinimum + 1.0)
 
         let peakValue = plot.points.map { $0.value }.max() ?? 1.0
-        let peakAllowable = plot.points.compactMap { $0.allowable }.max()
+        let allowablePeak = plot.points.compactMap { $0.allowable }.max()
+        let allowableIsOnScale = !plot.allowableMayGoOffScale || (allowablePeak ?? 0.0) <= StressProfileView.allowableScaleLimit * peakValue
+        let peakAllowable = allowableIsOnScale ? allowablePeak : nil
         let yMaximum = max(peakValue, peakAllowable ?? 0.0) * 1.08
 
         guard yMaximum > 0.0 else {
@@ -154,9 +209,9 @@ class StressProfileView:NSView {
             return
         }
 
-        func ViewX(_ xMillimetres:Double) -> CGFloat {
+        func ViewX(_ xPlotted:Double) -> CGFloat {
 
-            return plotLeft + (xMillimetres - xMinimum) / (xMaximum - xMinimum) * (plotRight - plotLeft)
+            return plotLeft + (xPlotted - xMinimum) / (xMaximum - xMinimum) * (plotRight - plotLeft)
         }
 
         func ViewY(_ value:Double) -> CGFloat {
@@ -176,7 +231,8 @@ class StressProfileView:NSView {
                             extremumColor: extremumColor,
                             viewY: ViewY)
 
-        AxisScale.DrawXAxis(values: AxisScale.TickValues(minimum: xMinimum, maximum: xMaximum, interval: StressProfileView.xTickInterval),
+        AxisScale.DrawXAxis(values: AxisScale.TickValues(minimum: xMinimum, maximum: xMaximum, interval: plot.xAxis.Interval(from: xMinimum, to: xMaximum)),
+                            format: plot.xAxis.format,
                             axisY: plotBottom,
                             plotLeft: plotLeft,
                             plotRight: plotRight,
@@ -186,7 +242,7 @@ class StressProfileView:NSView {
 
         // Centred UNDER the tick labels, in the line of bottom margin reserved for it. Hung off the right-hand end it collided
         // with the last tick label, which is the one place on this axis where there is already ink.
-        let xTitle = NSAttributedString(string: "Height above bottom yoke (mm)",
+        let xTitle = NSAttributedString(string: plot.xAxis.title,
                                         attributes: [.font:NSFont.systemFont(ofSize: AxisScale.labelFontSize), .foregroundColor:axisColor])
         xTitle.draw(at: NSPoint(x: (plotLeft + plotRight - xTitle.size().width) / 2.0, y: bounds.minY + 1.0))
 
@@ -199,7 +255,7 @@ class StressProfileView:NSView {
 
         // ---- the two series ----
 
-        let curve = plot.points.map { NSPoint(x: ViewX($0.z * 1000.0), y: ViewY($0.value)) }
+        let curve = plot.points.map { NSPoint(x: ViewX($0.z * plot.xAxis.scale), y: ViewY($0.value)) }
 
         Stroke(points: curve, color: valueColor, width: 1.5)
 
@@ -212,7 +268,7 @@ class StressProfileView:NSView {
 
         var drawing = false
 
-        for point in plot.points {
+        for point in (allowableIsOnScale ? plot.points : []) {
 
             guard let allowable = point.allowable else {
 
@@ -220,7 +276,7 @@ class StressProfileView:NSView {
                 continue
             }
 
-            let at = NSPoint(x: ViewX(point.z * 1000.0), y: ViewY(allowable))
+            let at = NSPoint(x: ViewX(point.z * plot.xAxis.scale), y: ViewY(allowable))
 
             drawing ? allowablePath.line(to: at) : allowablePath.move(to: at)
             drawing = true
@@ -236,7 +292,7 @@ class StressProfileView:NSView {
             return
         }
 
-        let worstAt = NSPoint(x: ViewX(worst.z * 1000.0), y: ViewY(worst.value))
+        let worstAt = NSPoint(x: ViewX(worst.z * plot.xAxis.scale), y: ViewY(worst.value))
         let dot = NSBezierPath(ovalIn: NSRect(x: worstAt.x - 3.5, y: worstAt.y - 3.5, width: 7.0, height: 7.0))
         valueColor.setFill()
         dot.fill()
@@ -295,14 +351,14 @@ class StressProfileView:NSView {
 
         for marker in plot.markers {
 
-            let millimetres = marker * 1000.0
+            let plotted = marker * plot.xAxis.scale
 
-            guard millimetres >= xMinimum, millimetres <= xMaximum else {
+            guard plotted >= xMinimum, plotted <= xMaximum else {
 
                 continue
             }
 
-            let x = viewX(millimetres)
+            let x = viewX(plotted)
 
             let rule = NSBezierPath()
             rule.lineWidth = 1.0
@@ -374,13 +430,19 @@ class StressProfileView:NSView {
 
         let boxSize = NSSize(width: labelWidth + 10.0 + valueWidth + padding * 2.0, height: lineHeight * Double(rows.count) + padding * 2.0)
 
-        // WHERE THE BOX GOES is measured, not guessed. Four places are tried - left or right, under the allowable line or up in
-        // the top corner - and the one covering the least of the curve wins. Anything that would sit on the allowable line is
-        // rejected outright unless every candidate does: the curve is what the reader came for and the allowable is what they are
-        // judging it against, so the annotation gets whatever is left over rather than the other way round.
+        // WHERE THE BOX GOES is measured, not guessed. Six places are tried - left or right, under the allowable line, up in the
+        // top corner or down in the bottom one - and the one covering the least of the curve wins. Anything that would sit on the
+        // allowable line is rejected outright unless every candidate does: the curve is what the reader came for and the allowable
+        // is what they are judging it against, so the annotation gets whatever is left over rather than the other way round.
         //
         // "Under the allowable" is offered first because the band between the curve and its limit is usually the emptiest part of
         // the plot, and it is exactly where a top-corner box would hide the limit.
+        //
+        // THE BOTTOM CORNER is offered last, and only earns its place when the profile runs along the TOP of its own axis. That
+        // happens whenever the allowable has gone off scale (see allowableScaleLimit): the axis is then set by the data, the peak
+        // sits near the top of the plot, and the empty half is underneath - the reverse of the ordinary stress profile, where the
+        // curve is low against a limit drawn above it. With only top-anchored candidates the box had nowhere to go but on top of
+        // the curve. It is last so that a tie still resolves the way it did before, and no existing graph moves.
         let topCorner = plotTop - 6.0
 
         var tops = [topCorner]
@@ -389,6 +451,8 @@ class StressProfileView:NSView {
 
             tops.insert(allowableY - 8.0, at: 0)
         }
+
+        tops.append(plotBottom + boxSize.height + 6.0)
 
         var candidates:[NSRect] = []
 

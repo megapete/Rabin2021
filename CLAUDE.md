@@ -17,7 +17,7 @@ that was fixed once and must not come back.**
 | Working on… | Read |
 |---|---|
 | Series/shunt capacitance, wound-in shields, interleaving, τ_p, DelVecchio ch. 12 | `docs/capacitance.md` |
-| Stress report, stress profiles, turn ladder, breakdown allowables (DelVecchio ch. 13) | `docs/dielectric-stress.md` |
+| Stress report, stress profiles, turn ladder, radial voltage profile (sheet/layer), breakdown allowables (DelVecchio ch. 13) | `docs/dielectric-stress.md` |
 | Frequency-domain solver, NILT, conductor impedance, `SimulationModel`, RK45, SPICE export | `docs/solver.md` |
 | Connectors, jumpers, terminations, `SetNodes`/`NodeAt`, tapping gaps | `docs/connectors-and-nodes.md` |
 | Segment indexing, static rings, radial shields, radial build-up | `docs/segments-and-geometry.md` |
@@ -54,7 +54,7 @@ Eight `.swift` files sit in the source folder but are **not in the target's Comp
 | `PCH_GraphingView.swift`, `PCH_GraphingWindow.swift` | Dead; the only reference is inside a commented-out block in `AppController.swift`. |
 | `oldPchMatrixView*.swift` (3 files) | Legacy. |
 
-The compiled target is exactly these 33: `AppController`, `AppDelegate`, `AxialStressProfileWindow`, `AxisScale`, `BasicSection`, `CoilResultsDisplayView`, `CoilResultsDisplayWindow`, `ConductorImpedance`, `Connector`, `Core`, `DielectricStress`, `FrequencyDomainSolver`, `GetNumberDialog`, `GetSimDetailsDialog`, `GetWoundInShieldDialog`, `InitialDistributionWindow`, `Node`, `NumericalLaplaceTransform`, `PhaseModel`, `Preferences`, `PreferencesDialog`, `Segment`, `SelfTest`, `ShowCoilResultsDialog`, `ShowWaveFormsDialog`, `SimulationModel`, `StressProfileView`, `StressProfileWindow`, `StressReportWindow`, `TransformerView`, `TurnLadderModel`, `WaveFormDisplayView`, `WaveFormDisplayWindow`.
+The compiled target is exactly these 34: `AppController`, `AppDelegate`, `AxialStressProfileWindow`, `AxisScale`, `BasicSection`, `CoilResultsDisplayView`, `CoilResultsDisplayWindow`, `ConductorImpedance`, `Connector`, `Core`, `DielectricStress`, `FrequencyDomainSolver`, `GetNumberDialog`, `GetSimDetailsDialog`, `GetWoundInShieldDialog`, `InitialDistributionWindow`, `Node`, `NumericalLaplaceTransform`, `PhaseModel`, `Preferences`, `PreferencesDialog`, `RadialProfileWindow`, `Segment`, `SelfTest`, `ShowCoilResultsDialog`, `ShowWaveFormsDialog`, `SimulationModel`, `StressProfileView`, `StressProfileWindow`, `StressReportWindow`, `TransformerView`, `TurnLadderModel`, `WaveFormDisplayView`, `WaveFormDisplayWindow`.
 
 **When adding a `.swift` file, add it to the Compile Sources phase.** Eight files in this folder are already orphaned, and SourceKit reports a misleading `No such module 'PchBasePackage'` on a file that is not in the target — that diagnostic means "not in Compile Sources", not "package missing".
 

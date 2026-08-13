@@ -44,15 +44,27 @@ struct TurnLadderModel:Sendable {
     enum LadderError:LocalizedError {
 
         case notContinuousDisc
+        case notRadialWinding
         case tooFewTurns
         case noCapacitance
+        case noGaps
+        case didNotConverge
 
         var errorDescription: String? {
 
             switch self {
 
             case .notContinuousDisc:
-                return "The turn ladder handles plain continuous disc windings only. An interleaved or wound-in-shield segment has a scheme-dependent map from physical position to electrical turn, which this model does not attempt to guess."
+                return "The turn ladder handles plain continuous disc windings only. An interleaved or wound-in-shield segment has a scheme-dependent map from physical position to electrical turn, which this model does not attempt to guess. Sheet and layer windings have their own command - Radial Voltage Profile - because their turns run radially rather than around a disc."
+
+            case .notRadialWinding:
+                return "The radial voltage profile handles sheet and layer windings only. A disc winding's turns run around the disc, not out along a radius; use the turn ladder for one of those."
+
+            case .noGaps:
+                return "The winding has fewer than two turns radially, so there is no radial gap to report a voltage across."
+
+            case .didNotConverge:
+                return "The layer network did not converge. This is a solver failure rather than a modelling one - the capacitance matrix should be positive definite, so please report it."
 
             case .tooFewTurns:
                 return "The disc has too few turns to resolve a distribution (at least three are needed)."
@@ -254,6 +266,484 @@ struct TurnLadderModel:Sendable {
         return x
     }
 
+    // MARK: Radial windings - sheet and layer
+    //
+    // A sheet or layer winding puts its turns out along a RADIUS rather than around a disc, so the question "what is the worst
+    // voltage between two adjacent conductors" is a different one and the disc ladder above cannot answer it. Neither winding type
+    // is checked anywhere else in the program either: DielectricStress.AppendTurnToTurnSites takes only `.disc`, so before this
+    // there was no turn-to-turn or layer-to-layer number for them at all.
+    //
+    // The two cases are as different from each other as they are from a disc:
+    //
+    //  - A SHEET winding is a pure series chain. Every turn is a full-height cylinder, so each turn completely screens the next from
+    //    everything outside the coil and no interior turn has a capacitance to anything but its two radial neighbours. The
+    //    neighbouring coil and the core attach only to the outermost and innermost turns, which are the driven terminals, so they
+    //    cannot perturb the interior at all. The same charge passes through every gap and the profile is set entirely by how the gap
+    //    capacitance varies with radius - see Segment.SheetGapCapacitances. There is nothing to iterate.
+    //
+    //  - A LAYER winding is the opposite: its turns run AXIALLY within a layer and the layers stack radially, so a turn's radial
+    //    neighbour is a turn of a different layer, hundreds of electrical turns away. That coupling is what makes the initial
+    //    distribution non-uniform, and it has to be solved rather than assumed. See SolveLayer.
+
+    /// One radial gap of a sheet or layer winding, as the profile graph plots it.
+    struct RadialGap:Sendable {
+
+        /// 0 is the innermost gap - between turns/layers 0 and 1.
+        let index:Int
+        /// The radius at which the gap sits, in metres.
+        let radius:Double
+        /// The largest voltage across this gap, in volts.
+        let deltaV:Double
+        /// The height at which that largest voltage occurs, in metres from the top of the bottom yoke. Nil for a sheet winding,
+        /// where a gap carries the same voltage over its whole height.
+        let worstHeight:Double?
+    }
+
+    /// The radial voltage profile of one sheet or layer winding.
+    struct RadialProfile:Sendable {
+
+        /// Innermost gap first.
+        let gaps:[RadialGap]
+        /// The voltage across the whole Segment that produced this, in volts.
+        let segmentVoltage:Double
+        /// What the simple assumption gives for every gap, in volts - an even division for a sheet, twice the volts per layer for a
+        /// layer winding. The profile is worth drawing precisely where it departs from this.
+        let reference:Double
+        /// What that assumption is called, for the annotation block.
+        let referenceName:String
+        /// The potential of every turn, in volts, indexed by ELECTRICAL turn. For a sheet winding this is the running sum of the
+        /// gap voltages from zero, since the chain's magnitudes do not depend on which terminal is at the inside; for a layer
+        /// winding it is the solved network. Kept mainly so VerifySelf can assert on it.
+        let turnPotentials:[Double]
+
+        var worst:RadialGap? {
+
+            return gaps.max { abs($0.deltaV) < abs($1.deltaV) }
+        }
+
+        var enhancementOverReference:Double {
+
+            guard reference > 0.0, let worst else { return 1.0 }
+
+            return abs(worst.deltaV) / reference
+        }
+    }
+
+    /// The turn-to-turn profile of a SHEET winding.
+    ///
+    /// The screening argument in the note above makes this a series chain of N − 1 capacitors between two driven terminals, so the
+    /// charge Q is common to every gap:
+    ///
+    ///     ΔV_k = Q/C_k    and    Σ ΔV_k = V    ⟹    ΔV_k = V·(1/C_k) / Σ(1/C_j)
+    ///
+    /// Note what this does NOT depend on: which terminal is at the inside. Reversing the winding negates every ΔV and leaves the
+    /// magnitudes alone, which is why this routine needs no winding-direction argument while SolveLayer does.
+    ///
+    /// - Parameter gapCapacitances: from Segment.SheetGapCapacitances, innermost first.
+    /// - Parameter gapRadii: the radius of each of those gaps, in metres.
+    /// - Parameter segmentVoltage: the voltage across the whole Segment, in volts.
+    static func SolveSheet(gapCapacitances:[Double], gapRadii:[Double], segmentVoltage:Double) throws -> RadialProfile {
+
+        guard gapCapacitances.count >= 1, gapRadii.count == gapCapacitances.count else {
+
+            throw LadderError.noGaps
+        }
+
+        guard gapCapacitances.allSatisfy({ $0 > 0.0 }) else {
+
+            throw LadderError.noCapacitance
+        }
+
+        let reciprocalSum = gapCapacitances.reduce(0.0) { $0 + 1.0 / $1 }
+
+        let gaps = (0..<gapCapacitances.count).map { k in
+
+            RadialGap(index: k,
+                      radius: gapRadii[k],
+                      deltaV: abs(segmentVoltage) * (1.0 / gapCapacitances[k]) / reciprocalSum,
+                      worstHeight: nil)
+        }
+
+        var potentials = [0.0]
+
+        for gap in gaps {
+
+            potentials.append(potentials[potentials.count - 1] + gap.deltaV)
+        }
+
+        return RadialProfile(gaps: gaps,
+                             segmentVoltage: segmentVoltage,
+                             reference: abs(segmentVoltage) / Double(gapCapacitances.count),
+                             referenceName: "even division (V/gaps)",
+                             turnPotentials: potentials)
+    }
+
+    /// Everything SolveLayer needs about the winding's geometry.
+    struct LayerGeometry:Sendable {
+
+        /// Turns in each layer, innermost layer first. From Segment.LayerTurnCounts.
+        let turnCounts:[Int]
+        /// The layer-to-layer capacitance of each of the L − 1 radial gaps, innermost first. From Segment.LayerGapCapacitances.
+        let gapCapacitances:[Double]
+        /// The radius of each of those gaps, in metres.
+        let gapRadii:[Double]
+        /// The AXIAL turn-to-turn capacitance of one adjacent pair within a layer, from Segment.CapacitanceTurnToTurn.
+        let Ctt:Double
+        /// The total capacitance from the innermost layer to whatever lies inside the coil, and from the outermost layer to
+        /// whatever lies outside it. These are what make the distribution non-uniform: without a path out of the winding the
+        /// network has only its two terminals and the answer collapses back to linear.
+        let innerGroundCapacitance:Double
+        let outerGroundCapacitance:Double
+        /// The coil's axial extent, in metres from the top of the bottom yoke.
+        let zBottom:Double
+        let zTop:Double
+    }
+
+    /// The layer-to-layer profile of a LAYER winding, at t = 0+.
+    ///
+    /// THE NETWORK. Nodes are electrical turns, 0 to N − 1 along the conductor. Three kinds of capacitance join them:
+    ///
+    ///  - Ctt between consecutive turns of the same layer, which are AXIALLY adjacent. This is the series path.
+    ///  - Cll_k/slots between the turn at axial slot s of layer k and the turn at the same slot of layer k + 1. These two are
+    ///    radially adjacent but are `turnsPerLayer` apart electrically, which is exactly what makes the problem two-dimensional and
+    ///    why it cannot be reduced to a tridiagonal solve the way one disc can. The crossover pair - the last turn of a layer and
+    ///    the first of the next - needs no special case: they are at the same slot in adjacent layers, so this term already covers
+    ///    them.
+    ///  - Cin/slots and Cout/slots from the innermost and outermost layers to what lies beside the coil, at ITS potential rather
+    ///    than at ground. That potential is sampled per slot, so an adjacent coil that is not the same height, or is ramping at a
+    ///    different rate, is carried properly.
+    ///
+    /// THE GEOMETRY. Layers alternate direction: layer 0 winds up from the bottom, layer 1 starts at the top and winds down, and so
+    /// on, so each layer starts where the previous one ended. Slot s is the same physical height in every layer - the axial pitch is
+    /// the coil height over the largest layer's turn count - which is what lets a short final layer sit at the end it actually
+    /// occupies rather than being stretched over the full height.
+    ///
+    /// WINDING SENSE. `vStart` is taken to be the potential of the first turn, at the INNERMOST layer. The model has no record of
+    /// which lead is at the inside of the coil, so this is a convention, not a reading: the ordinary build starts inside at the
+    /// bottom. It matters here in a way it does not for a sheet winding - a line end at the inside and a line end at the outside
+    /// give genuinely different profiles - so the caller shows it in the annotation.
+    ///
+    /// THE SOLVE. Kirchhoff's current law at t = 0+ on that network is C·V = b with C a weighted graph Laplacian and the two
+    /// terminal turns held fixed. Grounding two nodes makes it symmetric positive definite, so it goes to conjugate gradient, which
+    /// is matrix-free and needs no assumption about bandwidth - and the bandwidth here is turnsPerLayer, so a banded solver would be
+    /// no better than dense on exactly the windings that are largest.
+    ///
+    /// - Parameter innerNeighbourPotential: the potential, in volts, of whatever is inside the coil, one entry per axial slot.
+    /// - Parameter outerNeighbourPotential: the same for whatever is outside it.
+    static func SolveLayer(geometry:LayerGeometry,
+                           vStart:Double,
+                           vEnd:Double,
+                           innerNeighbourPotential:[Double],
+                           outerNeighbourPotential:[Double]) throws -> RadialProfile {
+
+        let layerCount = geometry.turnCounts.count
+
+        guard layerCount >= 2 else {
+
+            throw LadderError.noGaps
+        }
+
+        guard geometry.gapCapacitances.count == layerCount - 1, geometry.gapRadii.count == layerCount - 1 else {
+
+            throw LadderError.noGaps
+        }
+
+        guard geometry.Ctt > 0.0 else {
+
+            throw LadderError.noCapacitance
+        }
+
+        let turnCount = geometry.turnCounts.reduce(0, +)
+
+        guard turnCount >= 3 else {
+
+            throw LadderError.tooFewTurns
+        }
+
+        // ---- the turn -> (layer, slot) map ----
+
+        let slotCount = geometry.turnCounts.max() ?? 1
+        let pitch = (geometry.zTop - geometry.zBottom) / Double(slotCount)
+
+        var layerStart = [Int](repeating: 0, count: layerCount)
+        var running = 0
+
+        for k in 0..<layerCount {
+
+            layerStart[k] = running
+            running += geometry.turnCounts[k]
+        }
+
+        /// The node number of the turn at axial slot s of layer k, or nil where that layer has no turn there.
+        func NodeAt(layer:Int, slot:Int) -> Int? {
+
+            let turns = geometry.turnCounts[layer]
+
+            // Layer k winds up when k is even, so its local index i runs with the slot; when it winds down the local index runs
+            // from the TOP slot back. A short layer therefore sits at the end it actually starts from.
+            let local = layer % 2 == 0 ? slot : slotCount - 1 - slot
+
+            guard local >= 0, local < turns else { return nil }
+
+            return layerStart[layer] + local
+        }
+
+        // ---- assembly ----
+        //
+        // The two terminal turns are Dirichlet. Everything else is a free node; an edge to a fixed or known potential moves that
+        // potential to the right-hand side, which is what makes the free system positive definite rather than merely semi-definite.
+
+        let firstNode = 0
+        let lastNode = turnCount - 1
+
+        var freeIndex = [Int](repeating: -1, count: turnCount)
+        var free = 0
+
+        for node in 0..<turnCount where node != firstNode && node != lastNode {
+
+            freeIndex[node] = free
+            free += 1
+        }
+
+        guard free > 0 else {
+
+            throw LadderError.tooFewTurns
+        }
+
+        var diagonal = [Double](repeating: 0.0, count: free)
+        var rhs = [Double](repeating: 0.0, count: free)
+        var edges:[(a:Int, b:Int, c:Double)] = []
+
+        func FixedPotential(_ node:Int) -> Double? {
+
+            if node == firstNode { return vStart }
+            if node == lastNode { return vEnd }
+            return nil
+        }
+
+        /// Join two turns through a capacitance.
+        func Couple(_ nodeA:Int, _ nodeB:Int, _ c:Double) {
+
+            guard c > 0.0 else { return }
+
+            switch (FixedPotential(nodeA), FixedPotential(nodeB)) {
+
+            case (nil, nil):
+                let a = freeIndex[nodeA], b = freeIndex[nodeB]
+                diagonal[a] += c
+                diagonal[b] += c
+                edges.append((a: a, b: b, c: c))
+
+            case (nil, .some(let vB)):
+                let a = freeIndex[nodeA]
+                diagonal[a] += c
+                rhs[a] += c * vB
+
+            case (.some(let vA), nil):
+                let b = freeIndex[nodeB]
+                diagonal[b] += c
+                rhs[b] += c * vA
+
+            case (.some, .some):
+                // Both ends held: the branch carries current but constrains nothing.
+                break
+            }
+        }
+
+        /// Join a turn to a known potential outside the winding.
+        func Ground(_ node:Int, _ c:Double, _ potential:Double) {
+
+            guard c > 0.0, FixedPotential(node) == nil else { return }
+
+            let f = freeIndex[node]
+
+            diagonal[f] += c
+            rhs[f] += c * potential
+        }
+
+        // Series: consecutive turns within a layer.
+        for k in 0..<layerCount {
+
+            for i in 0..<(geometry.turnCounts[k] - 1) {
+
+                Couple(layerStart[k] + i, layerStart[k] + i + 1, geometry.Ctt)
+            }
+        }
+
+        // Radial: same slot, adjacent layers. Slots where only one of the two layers has a turn face the end region rather than
+        // another turn and are left out.
+        for k in 0..<(layerCount - 1) {
+
+            let share = geometry.gapCapacitances[k] / Double(slotCount)
+
+            for slot in 0..<slotCount {
+
+                guard let inner = NodeAt(layer: k, slot: slot), let outer = NodeAt(layer: k + 1, slot: slot) else { continue }
+
+                Couple(inner, outer, share)
+            }
+        }
+
+        // Out of the winding, on both sides.
+        let innerShare = geometry.innerGroundCapacitance / Double(slotCount)
+        let outerShare = geometry.outerGroundCapacitance / Double(slotCount)
+
+        for slot in 0..<slotCount {
+
+            if let node = NodeAt(layer: 0, slot: slot), slot < innerNeighbourPotential.count {
+
+                Ground(node, innerShare, innerNeighbourPotential[slot])
+            }
+
+            if let node = NodeAt(layer: layerCount - 1, slot: slot), slot < outerNeighbourPotential.count {
+
+                Ground(node, outerShare, outerNeighbourPotential[slot])
+            }
+        }
+
+        // ---- solve ----
+
+        guard let solution = SolveSymmetric(diagonal: diagonal, edges: edges, rhs: rhs) else {
+
+            throw LadderError.didNotConverge
+        }
+
+        var potentials = [Double](repeating: 0.0, count: turnCount)
+        potentials[firstNode] = vStart
+        potentials[lastNode] = vEnd
+
+        for node in 0..<turnCount where freeIndex[node] >= 0 {
+
+            potentials[node] = solution[freeIndex[node]]
+        }
+
+        // ---- the profile ----
+
+        var gaps:[RadialGap] = []
+
+        for k in 0..<(layerCount - 1) {
+
+            var worst = 0.0
+            var worstSlot = 0
+
+            for slot in 0..<slotCount {
+
+                guard let inner = NodeAt(layer: k, slot: slot), let outer = NodeAt(layer: k + 1, slot: slot) else { continue }
+
+                let difference = abs(potentials[inner] - potentials[outer])
+
+                if difference > worst {
+
+                    worst = difference
+                    worstSlot = slot
+                }
+            }
+
+            gaps.append(RadialGap(index: k,
+                                  radius: geometry.gapRadii[k],
+                                  deltaV: worst,
+                                  worstHeight: geometry.zBottom + (Double(worstSlot) + 0.5) * pitch))
+        }
+
+        // A layer winding's textbook figure. Adjacent layers are wound in opposite directions and joined at one end, so at the far
+        // end they are two whole layers of voltage apart - which is the number a designer reaches for, and the thing this solve
+        // exists to check rather than assume.
+        let voltsPerLayer = abs(vEnd - vStart) / Double(layerCount)
+
+        return RadialProfile(gaps: gaps,
+                             segmentVoltage: vEnd - vStart,
+                             reference: 2.0 * voltsPerLayer,
+                             referenceName: "2 x volts per layer",
+                             turnPotentials: potentials)
+    }
+
+    /// Conjugate gradient with Jacobi preconditioning, on the symmetric positive definite system SolveLayer assembles.
+    ///
+    /// Matrix-free: the operator is (diagonal ⊙ x) minus the neighbour sum over `edges`, each edge appearing once and acting on both
+    /// of its ends. Every diagonal entry is the sum of the capacitances incident on that node and every off-diagonal is the negative
+    /// of one of them, so the matrix is weakly diagonally dominant everywhere and strictly so at any node touching a held potential
+    /// - which, the winding being connected, makes it positive definite.
+    ///
+    /// Returns nil if it fails to converge, which should not happen for a well-formed winding.
+    private static func SolveSymmetric(diagonal:[Double], edges:[(a:Int, b:Int, c:Double)], rhs:[Double]) -> [Double]? {
+
+        let n = diagonal.count
+
+        guard n > 0 else { return [] }
+
+        func Apply(_ x:[Double]) -> [Double] {
+
+            var result = [Double](repeating: 0.0, count: n)
+
+            for i in 0..<n {
+
+                result[i] = diagonal[i] * x[i]
+            }
+
+            for edge in edges {
+
+                result[edge.a] -= edge.c * x[edge.b]
+                result[edge.b] -= edge.c * x[edge.a]
+            }
+
+            return result
+        }
+
+        // Jacobi preconditioner. The diagonal spans several orders of magnitude here - a turn in the middle of a layer carries two
+        // Ctt while one at a layer end carries one plus a much smaller Cll share - so this is worth having.
+        let inverseDiagonal = diagonal.map { $0 > 0.0 ? 1.0 / $0 : 1.0 }
+
+        var x = [Double](repeating: 0.0, count: n)
+        var r = rhs
+        var z = (0..<n).map { inverseDiagonal[$0] * r[$0] }
+        var p = z
+        var rz = zip(r, z).reduce(0.0) { $0 + $1.0 * $1.1 }
+
+        let rhsNorm = sqrt(rhs.reduce(0.0) { $0 + $1 * $1 })
+
+        guard rhsNorm > 0.0 else { return x }
+
+        let tolerance = 1.0E-12 * rhsNorm
+        let maximumIterations = max(1000, 4 * n)
+
+        for _ in 0..<maximumIterations {
+
+            let ap = Apply(p)
+            let pAp = zip(p, ap).reduce(0.0) { $0 + $1.0 * $1.1 }
+
+            guard pAp > 0.0 else { return nil }
+
+            let alpha = rz / pAp
+
+            for i in 0..<n {
+
+                x[i] += alpha * p[i]
+                r[i] -= alpha * ap[i]
+            }
+
+            if sqrt(r.reduce(0.0) { $0 + $1 * $1 }) <= tolerance {
+
+                return x
+            }
+
+            for i in 0..<n {
+
+                z[i] = inverseDiagonal[i] * r[i]
+            }
+
+            let rzNext = zip(r, z).reduce(0.0) { $0 + $1.0 * $1.1 }
+            let beta = rzNext / rz
+            rz = rzNext
+
+            for i in 0..<n {
+
+                p[i] = z[i] + beta * p[i]
+            }
+        }
+
+        return nil
+    }
+
     // MARK: Self-check
 
     /// A runnable self-check, in the same style as DielectricStress.VerifySelf and for the same reason - there is no test target.
@@ -359,6 +849,108 @@ struct TurnLadderModel:Sendable {
 
             failures += 1
             report.append("FAIL enhancement solve threw")
+        }
+
+        // MARK: the radial solves
+
+        // 4. A sheet winding is a series chain, so two things must hold exactly: the gap voltages sum to the terminal voltage, and
+        // they are in inverse proportion to the gap capacitances. The second is the whole content of the model - the first would
+        // still hold if every gap were given the same capacitance, which is the bug this replaces.
+        let sheetRadii = (0..<10).map { 0.200 + Double($0) * 0.003 }
+        let sheetCapacitances = sheetRadii.map { 1.0E-7 * $0 / 0.200 }
+
+        if let sheet = try? SolveSheet(gapCapacitances: sheetCapacitances, gapRadii: sheetRadii, segmentVoltage: 10000.0) {
+
+            check("sheet gap voltages sum to the terminal voltage", sheet.gaps.reduce(0.0) { $0 + $1.deltaV }, 10000.0, tolerance: 1.0E-12)
+
+            // C ∝ r, so ΔV ∝ 1/r and the innermost gap beats the outermost by exactly the radius ratio.
+            check("sheet innermost/outermost ratio is the radius ratio",
+                  sheet.gaps[0].deltaV / sheet.gaps[9].deltaV,
+                  sheetRadii[9] / sheetRadii[0],
+                  tolerance: 1.0E-12)
+
+            check("sheet worst gap is the innermost", Double(sheet.worst?.index ?? -1), 0.0, tolerance: 1.0E-12)
+        }
+        else {
+
+            failures += 1
+            report.append("FAIL sheet solve threw")
+        }
+
+        // A uniform chain must divide evenly - the degenerate case, and the one the old code produced for every winding.
+        if let flatSheet = try? SolveSheet(gapCapacitances: [Double](repeating: 1.0E-7, count: 10), gapRadii: sheetRadii, segmentVoltage: 10000.0) {
+
+            check("uniform sheet chain divides evenly", flatSheet.gaps.map { $0.deltaV }.max() ?? 0.0, 1000.0, tolerance: 1.0E-12)
+        }
+        else {
+
+            failures += 1
+            report.append("FAIL uniform sheet solve threw")
+        }
+
+        // 5. The layer network, on the two identities that catch an assembly error.
+        //
+        // 5a. NULL SPACE. Hold both terminals and both neighbours at the same potential and every turn must sit at exactly that
+        // potential: a capacitance network has no absolute reference, so a constant vector is in the null space of the Laplacian.
+        // This fails the moment a diagonal entry is not the exact sum of the capacitances incident on its node, which is the error
+        // an assembly of this shape is most likely to contain.
+        let layerTurns = [Int](repeating: 10, count: 6)
+        let layerGeometry = LayerGeometry(turnCounts: layerTurns,
+                                          gapCapacitances: [Double](repeating: 2.0E-10, count: 5),
+                                          gapRadii: (0..<5).map { 0.200 + Double($0) * 0.004 },
+                                          Ctt: 1.0E-9,
+                                          innerGroundCapacitance: 5.0E-11,
+                                          outerGroundCapacitance: 5.0E-11,
+                                          zBottom: 0.0,
+                                          zTop: 1.0)
+
+        let held = [Double](repeating: 100.0, count: 10)
+
+        if let uniform = try? SolveLayer(geometry: layerGeometry, vStart: 100.0, vEnd: 100.0, innerNeighbourPotential: held, outerNeighbourPotential: held) {
+
+            let worstDeviation = uniform.turnPotentials.reduce(0.0) { max($0, abs($1 - 100.0)) }
+
+            check("layer network holds a constant potential", worstDeviation, 0.0, tolerance: 1.0E-9)
+            check("layer network has no gap voltage at constant potential", uniform.gaps.map { $0.deltaV }.max() ?? 0.0, 0.0, tolerance: 1.0E-9)
+        }
+        else {
+
+            failures += 1
+            report.append("FAIL uniform layer solve threw")
+        }
+
+        // 5b. MIRROR SYMMETRY. With an even layer count, equal turn counts, equal capacitances and both neighbours at the same
+        // potential, reversing the conductor maps every turn onto the turn at the SAME axial slot in the mirrored layer - the two
+        // parity flips (layer order and winding direction) cancel. So swapping the terminal potentials must reverse the solution
+        // exactly. This is the check on the turn -> (layer, slot) map, which nothing else here would catch: a map that anchored a
+        // layer at the wrong end, or failed to alternate, breaks this while leaving 5a untouched.
+        let grounded = [Double](repeating: 0.0, count: 10)
+
+        if let forward = try? SolveLayer(geometry: layerGeometry, vStart: 0.0, vEnd: 1000.0, innerNeighbourPotential: grounded, outerNeighbourPotential: grounded),
+           let reversed = try? SolveLayer(geometry: layerGeometry, vStart: 1000.0, vEnd: 0.0, innerNeighbourPotential: grounded, outerNeighbourPotential: grounded) {
+
+            var worstDeviation = 0.0
+            let turns = forward.turnPotentials.count
+
+            for j in 0..<turns {
+
+                worstDeviation = max(worstDeviation, abs(forward.turnPotentials[j] - reversed.turnPotentials[turns - 1 - j]))
+            }
+
+            check("layer solution is symmetric under conductor reversal", worstDeviation, 0.0, tolerance: 1.0E-6)
+
+            // And the thing the solve exists to show: with a real path out of the winding the profile is NOT the textbook
+            // 2 x volts-per-layer everywhere. If this ever comes back at 1.00 the ground capacitances have stopped reaching the
+            // network and the answer has quietly collapsed to the linear one.
+            report.append(String(format: "INFO layer enhancement over 2 x volts-per-layer: %.3fx (worst gap %d of %d)",
+                                 forward.enhancementOverReference,
+                                 (forward.worst?.index ?? -1) + 1,
+                                 forward.gaps.count))
+        }
+        else {
+
+            failures += 1
+            report.append("FAIL mirror-symmetry layer solve threw")
         }
 
         report.insert(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED", at: 0)

@@ -392,6 +392,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     /// that created them returns.
     var stressReportWindow:StressReportWindow? = nil
     var stressProfileWindow:StressProfileWindow? = nil
+    var radialProfileWindow:RadialProfileWindow? = nil
     var axialStressProfileWindow:AxialStressProfileWindow? = nil
 
     /// The capacitive initial distribution graph, held for the same reason.
@@ -759,6 +760,9 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
         self.stressProfileWindow?.close()
         self.stressProfileWindow = nil
+
+        self.radialProfileWindow?.close()
+        self.radialProfileWindow = nil
 
         self.axialStressProfileWindow?.close()
         self.axialStressProfileWindow = nil
@@ -2428,13 +2432,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return
         }
 
-        guard let simResult = self.latestSimulationResult, let worstStep = simResult.stepResults.max(by: { lhs, rhs in
-
-            let lhsSpan = (lhs.volts.max() ?? 0.0) - (lhs.volts.min() ?? 0.0)
-            let rhsSpan = (rhs.volts.max() ?? 0.0) - (rhs.volts.min() ?? 0.0)
-            return lhsSpan < rhsSpan
-
-        }) else {
+        guard self.latestSimulationResult != nil else {
 
             PCH_ErrorAlert(message: "You must run the simulation first!", info: "The turn ladder needs the disc's terminal voltages, which come from the simulation.")
             return
@@ -2449,6 +2447,15 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
 
         do {
+
+            // The scope this model claims. It was documented from the start - in the header of TurnLadderModel, in TODO.md §8 and in
+            // docs/decisions.md §8 - but never enforced, so a sheet, layer, interleaved or wound-in-shield Segment was quietly run
+            // through the continuous-disc ladder and given a confident answer about a winding order the ladder does not model.
+            // A sheet or layer winding now has a command of its own; the other two are refused, as the decision record says.
+            guard await segment.wdgType == .disc, await !segment.interleaved, await segment.woundInShield == nil, await segment.basicSections.count == 1 else {
+
+                throw TurnLadderModel.LadderError.notContinuousDisc
+            }
 
             let turnCount = Int((await segment.N).rounded())
             let Ctt = try await segment.CapacitanceTurnToTurn()
@@ -2468,15 +2475,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
             let nodes = await phModel.AdjacentNodes(to: segment)
 
-            guard nodes.below >= 0, nodes.above >= 0,
-                  nodes.below < worstStep.volts.count, nodes.above < worstStep.volts.count else {
+            guard let instant = await self.WorstInstant(nodes: nodes) else {
 
                 PCH_ErrorAlert(message: "That segment's nodes are not in the simulation result.")
                 return
             }
 
-            let vStart = worstStep.volts[nodes.below]
-            let vEnd = worstStep.volts[nodes.above]
+            let vStart = instant.vBelow
+            let vEnd = instant.vAbove
 
             // A continuous disc winding alternates direction, so a disc at an even axial position winds outward.
             let windsOutward = (await segment.axialPos) % 2 == 0
@@ -2505,7 +2511,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             let alert = NSAlert()
             alert.messageText = "Turn Ladder: \(turnCount) turns, disc at axial position \(await segment.axialPos)"
             alert.informativeText = """
-            Disc voltage at the worst step: \(String(format: "%.1f kV", abs(vEnd - vStart) / 1000.0)).
+            Disc voltage at its own worst instant (\(instant.label)): \(String(format: "%.1f kV", abs(vEnd - vStart) / 1000.0)).
 
             Worst turn-to-turn voltage: \(String(format: "%.1f V", result.worstTurnToTurn)), between the turns at radial positions \(result.worstPosition) and \(result.worstPosition + 1).
 
@@ -2520,6 +2526,365 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
             PCH_ErrorAlert(message: "The turn ladder could not be solved.", info: error.localizedDescription)
         }
+    }
+
+    /// The instant at which one Segment sees its OWN largest terminal-to-terminal voltage, with the whole node vector at that
+    /// instant so that anything else in the model can be read at the same moment.
+    ///
+    /// Two things this fixes, and both of them understated every number the turn ladder produced.
+    ///
+    /// THE WORST STEP IS THE SEGMENT'S OWN. The code this replaces picked the step with the largest span over ALL the nodes in the
+    /// model and then read this segment's two nodes at that instant. That is the moment the winding SET is most stressed, which is
+    /// not the moment a given coil is: a low-voltage coil takes its surge by transfer and peaks well after the impulsed winding's
+    /// line end does. Reading it at the HV's worst instant can understate it by any factor at all, and a sheet or layer coil - which
+    /// is usually the LV - is exactly the case where the two instants are furthest apart.
+    ///
+    /// t = 0+ IS A CANDIDATE. Turn-to-turn and layer-to-layer gradients peak essentially at t → 0+, and the frequency-domain
+    /// solver's uniform grid starts some tens of nanoseconds in, by which time the steepest part has begun to relax. The dielectric
+    /// stress screen prepends `FrequencyDomainSolver.CapacitiveDistribution` for precisely this reason - see the header of
+    /// `DielectricStress.Scan` - and the turn ladder scanned only the time grid, so it never saw it.
+    ///
+    /// The whole `volts` vector comes back, not just the two terminals, because the layer solve needs the potential of the
+    /// NEIGHBOURING coil at the same instant. Reading that from a different step would be worse than not reading it at all.
+    func WorstInstant(nodes:(below:Int, above:Int)) async -> (vBelow:Double, vAbove:Double, label:String, volts:[Double])? {
+
+        guard let simResult = self.latestSimulationResult else {
+
+            return nil
+        }
+
+        var alpha:[Double]? = nil
+
+        if let simModel = self.currentSimModel, let snapshot = await simModel.Snapshot() {
+
+            alpha = await FrequencyDomainSolver.CapacitiveDistribution(snapshot: snapshot)
+        }
+
+        return AppController.WorstInstant(nodes: nodes,
+                                          results: simResult.stepResults,
+                                          capacitiveDistribution: alpha,
+                                          peakVoltage: simResult.peakVoltage)
+    }
+
+    /// The same choice, over candidate vectors that are already in hand. Split out so the scripted self-test can make it without an
+    /// AppController's live state - it has the step results and the capacitive distribution already.
+    static func WorstInstant(nodes:(below:Int, above:Int), results:[SimulationModel.SimulationStepResult], capacitiveDistribution:[Double]?, peakVoltage:Double) -> (vBelow:Double, vAbove:Double, label:String, volts:[Double])? {
+
+        guard nodes.below >= 0, nodes.above >= 0 else {
+
+            return nil
+        }
+
+        var best:(vBelow:Double, vAbove:Double, label:String, volts:[Double])? = nil
+
+        func Consider(_ volts:[Double], _ label:String) {
+
+            guard nodes.below < volts.count, nodes.above < volts.count else {
+
+                return
+            }
+
+            let span = abs(volts[nodes.above] - volts[nodes.below])
+
+            if let best, abs(best.vAbove - best.vBelow) >= span {
+
+                return
+            }
+
+            best = (vBelow: volts[nodes.below], vAbove: volts[nodes.above], label: label, volts: volts)
+        }
+
+        if let alpha = capacitiveDistribution, !alpha.isEmpty, peakVoltage != 0.0 {
+
+            // alpha is per-unit, normalized to a 1 V drive, exactly as DielectricStress.Scan takes it.
+            Consider(alpha.map { $0 * peakVoltage }, "t = 0+, initial distribution")
+        }
+
+        for step in results {
+
+            Consider(step.volts, String(format: "t = %.3f µs", step.time * 1.0E6))
+        }
+
+        return best
+    }
+
+    @IBAction func handleShowRadialProfile(_ sender: Any) {
+
+        Task {
+
+            await doShowRadialProfile()
+        }
+    }
+
+    /// The conductor-to-conductor voltage profile across the radial build of a sheet or layer winding.
+    ///
+    /// This is the counterpart of the turn ladder for the windings whose turns run OUT rather than around, and it is the only place
+    /// in the program where either type is checked at all: `DielectricStress.AppendTurnToTurnSites` takes `.disc` and nothing else,
+    /// so before this a sheet or layer winding had no turn-to-turn or layer-to-layer number anywhere in the report.
+    ///
+    /// The two winding types share a picture and nothing else - see the note above TurnLadderModel.SolveSheet and .SolveLayer for
+    /// why one is a closed-form series chain and the other needs a network solve.
+    func doShowRadialProfile() async {
+
+        guard let phModel = self.currentModel else {
+
+            PCH_ErrorAlert(message: "There is no model!")
+            return
+        }
+
+        guard self.latestSimulationResult != nil else {
+
+            PCH_ErrorAlert(message: "You must run the simulation first!", info: "The radial profile needs the coil's terminal voltages, which come from the simulation.")
+            return
+        }
+
+        guard let segment = self.txfoView.currentSegments.map({ $0.segment }).first else {
+
+            PCH_ErrorAlert(message: "Select a sheet or layer winding first.")
+            return
+        }
+
+        let wdgType = await segment.wdgType
+
+        guard wdgType == .sheet || wdgType == .layer else {
+
+            PCH_ErrorAlert(message: "The radial voltage profile could not be produced.", info: TurnLadderModel.LadderError.notRadialWinding.localizedDescription)
+            return
+        }
+
+        let nodes = await phModel.AdjacentNodes(to: segment)
+
+        guard let instant = await self.WorstInstant(nodes: nodes) else {
+
+            PCH_ErrorAlert(message: "That segment's nodes are not in the simulation result.")
+            return
+        }
+
+        do {
+
+            let contents = try await AppController.BuildRadialProfile(model: phModel, segment: segment, instant: instant)
+
+            let window = RadialProfileWindow(contents: contents, peakTestVoltage: self.latestSimulationResult?.peakVoltage ?? 0.0)
+
+            self.radialProfileWindow = window
+            window.showWindow(self)
+        }
+        catch {
+
+            PCH_ErrorAlert(message: "The radial voltage profile could not be produced.", info: error.localizedDescription)
+        }
+    }
+
+    /// Everything the radial profile window draws, assembled from the model.
+    ///
+    /// This is separate from the command above it so that the scripted self-test can build the same window from the same numbers
+    /// without a selection or a menu - which is the only way the DRAWING gets exercised, since nothing about a plot running off its
+    /// axis is visible to an assertion. See SelfTest.RenderGraphs.
+    static func BuildRadialProfile(model:PhaseModel, segment:Segment, instant:(vBelow:Double, vAbove:Double, label:String, volts:[Double])) async throws -> RadialProfileWindow.Contents {
+
+        let coil = await segment.radialPos
+        let wdgType = await segment.wdgType
+        let profile:TurnLadderModel.RadialProfile
+        let gapColumns:[[DielectricLayer]]
+        let usesCornerModel:Bool
+        let cornerRadius:Double?
+        var notes:[(label:String, value:String)] = []
+
+        guard let bs = await segment.basicSections.first else {
+
+            throw TurnLadderModel.LadderError.noGaps
+        }
+
+        if wdgType == .sheet {
+
+            let gaps = try await segment.SheetGapCapacitances()
+
+            profile = try TurnLadderModel.SolveSheet(gapCapacitances: gaps.map { $0.capacitance },
+                                                     gapRadii: gaps.map { $0.radius },
+                                                     segmentVoltage: instant.vAbove - instant.vBelow)
+
+            // Two smooth broad faces of foil, so the whole gap is one column of turn insulation and there is NO conductor corner to
+            // concentrate the field - which is the physical difference between this and a disc's turn-to-turn site, where the strand
+            // corner is what governs. A foil EDGE is a different site altogether and is not this check.
+            gapColumns = gaps.map { [DielectricLayer.Paper($0.insulation)] }
+            usesCornerModel = false
+            cornerRadius = nil
+
+            notes.append((label: "Winding:", value: "sheet, \(Int((await segment.N).rounded())) turns"))
+            notes.append((label: "Model:", value: "series chain, each gap at its own radius"))
+        }
+        else if wdgType == .layer {
+
+            let turnCounts = try await segment.LayerTurnCounts()
+            let gaps = try await segment.LayerGapCapacitances()
+            let Ctt = try await segment.CapacitanceTurnToTurn()
+
+            // What lies on each side of the coil. The capacitance between two coils is the OUTER one's inner shunt, so the path out
+            // of the outside of this coil is the next coil's inner shunt - or, for the outermost coil, the tank and the next phase.
+            let coilCount = await model.CoilCount()
+            let innerGround = (try? await model.CoilInnerShuntCapacitance(coil: coil)) ?? 0.0
+            let outerGround:Double
+
+            if coil + 1 < coilCount {
+
+                outerGround = (try? await model.CoilInnerShuntCapacitance(coil: coil + 1)) ?? 0.0
+            }
+            else {
+
+                let outer = try? await model.OuterShuntCapacitance()
+                outerGround = (outer?.tank ?? 0.0) + (outer?.adjacentPhase ?? 0.0)
+            }
+
+            let zBottom = await segment.z1
+            let zTop = await segment.z2
+            let slots = turnCounts.max() ?? 1
+
+            // The neighbours' potentials at THIS instant, sampled at the height of each axial slot. A core or a tank is at ground; a
+            // coil is at whatever its own profile says at that height, held at the nearest value past its ends - the same rule the
+            // radial stress screen uses for coils of unequal height.
+            let innerProfile = coil > 0 ? try? await model.CoilVoltageProfile(coil: coil - 1) : nil
+            let outerProfile = coil + 1 < coilCount ? try? await model.CoilVoltageProfile(coil: coil + 1) : nil
+
+            func Sampled(_ points:[PhaseModel.CoilProfilePoint]?) -> [Double] {
+
+                return (0..<slots).map { slot in
+
+                    let z = zBottom + (Double(slot) + 0.5) * (zTop - zBottom) / Double(slots)
+                    return AppController.PotentialAt(profile: points, z: z, volts: instant.volts)
+                }
+            }
+
+            let geometry = TurnLadderModel.LayerGeometry(turnCounts: turnCounts,
+                                                         gapCapacitances: gaps.map { $0.capacitance },
+                                                         gapRadii: gaps.map { $0.radius },
+                                                         Ctt: Ctt,
+                                                         innerGroundCapacitance: innerGround,
+                                                         outerGroundCapacitance: outerGround,
+                                                         zBottom: zBottom,
+                                                         zTop: zTop)
+
+            profile = try TurnLadderModel.SolveLayer(geometry: geometry,
+                                                     vStart: instant.vBelow,
+                                                     vEnd: instant.vAbove,
+                                                     innerNeighbourPotential: Sampled(innerProfile),
+                                                     outerNeighbourPotential: Sampled(outerProfile))
+
+            // The inter-layer gap is the composite LayerToLayerCapacitance models: solid insulation, plus the duct where there is
+            // one. Two conductor turns face each other across it, so the corner model applies exactly as it does to a disc's
+            // turn-to-turn site.
+            gapColumns = gaps.map { gap in
+
+                var column = [DielectricLayer.Paper(gap.insulation)]
+
+                if gap.duct > 0.0 {
+
+                    column.append(DielectricLayer.Oil(gap.duct))
+                }
+
+                return column
+            }
+
+            usesCornerModel = true
+            cornerRadius = DielectricStress.CornerRadius(thickness: bs.wdgData.turn.strandRadial, width: bs.wdgData.turn.strandAxial)
+
+            notes.append((label: "Winding:", value: "layer, \(turnCounts.count) layers, \(turnCounts.map { String($0) }.joined(separator: "/")) turns"))
+            notes.append((label: "Sense:", value: "starts at the innermost layer, at the lower node"))
+        }
+        else {
+
+            throw TurnLadderModel.LadderError.notRadialWinding
+        }
+
+        // Each gap through the SAME evaluation the stress report uses, so a number here and a number there cannot disagree about what
+        // paper withstands. The allowable ΔV is deltaV/averageUtilization, which is exact because the field is linear in the driving
+        // voltage - the trick both stress-profile windows already use.
+        var points:[RadialProfileWindow.GapPoint] = []
+
+        for gap in profile.gaps {
+
+            let column = gap.index < gapColumns.count ? gapColumns[gap.index] : []
+            let thickness = column.reduce(0.0) { $0 + $1.thickness }
+
+            var site = DielectricStress.StressSite(kind: .turnToTurn,
+                                                   location: "Coil \(coil), gap \(gap.index + 1)",
+                                                   voltageTerms: [],
+                                                   columns: column.isEmpty ? [] : [column],
+                                                   innerRadius: gap.radius - thickness / 2.0,
+                                                   usesCornerModel: usesCornerModel,
+                                                   gapLength: thickness)
+
+            if let cornerRadius {
+
+                site.cornerRadius = cornerRadius
+                site.farCornerRadius = cornerRadius
+            }
+
+            let check = DielectricStress.Evaluate(site: site, deltaV: gap.deltaV, time: 0.0)
+
+            points.append(RadialProfileWindow.GapPoint(index: gap.index,
+                                                       radius: gap.radius,
+                                                       deltaV: gap.deltaV,
+                                                       allowableDeltaV: check.flatMap { $0.averageUtilization > 0.0 ? gap.deltaV / $0.averageUtilization : nil },
+                                                       utilization: check?.averageUtilization ?? 0.0,
+                                                       worstHeight: gap.worstHeight,
+                                                       material: check.map { "\($0.material)" } ?? "-"))
+        }
+
+        notes.append((label: "Coil voltage:", value: String(format: "%.2f kV", abs(profile.segmentVoltage) / 1000.0)))
+        notes.append((label: "At:", value: instant.label))
+        notes.append((label: profile.referenceName + ":", value: String(format: "%.1f V", profile.reference)))
+
+        return RadialProfileWindow.Contents(coil: coil,
+                                            isSheet: wdgType == .sheet,
+                                            points: points,
+                                            enhancement: profile.enhancementOverReference,
+                                            reference: profile.reference,
+                                            notes: notes)
+    }
+
+    /// A coil's potential at a height, held at the nearest node past either end of it.
+    ///
+    /// A nil or empty profile is a core or a tank rather than a coil, and those are at ground. Past the end of a shorter coil the
+    /// field is genuinely two-dimensional and the nearest potential is the best a one-dimensional model can say - the same rule, and
+    /// the same caveat, as `DielectricStress.AppendRadialSites`.
+    static func PotentialAt(profile:[PhaseModel.CoilProfilePoint]?, z:Double, volts:[Double]) -> Double {
+
+        guard let profile, !profile.isEmpty else {
+
+            return 0.0
+        }
+
+        func Volts(_ point:PhaseModel.CoilProfilePoint) -> Double {
+
+            guard point.nodeIndex >= 0, point.nodeIndex < volts.count else { return 0.0 }
+            return volts[point.nodeIndex]
+        }
+
+        guard let first = profile.first, let last = profile.last else {
+
+            return 0.0
+        }
+
+        if z <= first.z { return Volts(first) }
+        if z >= last.z { return Volts(last) }
+
+        for i in 0..<(profile.count - 1) {
+
+            let low = profile[i]
+            let high = profile[i + 1]
+
+            if z >= low.z, z <= high.z {
+
+                let span = high.z - low.z
+
+                guard span > 0.0 else { return Volts(low) }
+
+                let fraction = (z - low.z) / span
+                return Volts(low) + fraction * (Volts(high) - Volts(low))
+            }
+        }
+
+        return Volts(last)
     }
 
     @IBAction func handleShowCoilResults(_ sender: Any) {
@@ -4586,11 +4951,34 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return self.currentModel != nil && self.designIsValid
         }
 
-        // The turn ladder is a purely electrostatic solve, so unlike the two above it needs no simulation result - only a model and
-        // a selection of at least two discs from one winding.
+        // The turn ladder handles plain continuous discs and nothing else, so the menu says so rather than letting the command be
+        // chosen and then refused. Interleaved and wound-in-shield Segments are enabled deliberately: those are refused with an
+        // explanation of WHY the winding order cannot be guessed, which is worth reading, whereas a sheet or layer winding has
+        // somewhere else to go and is simply pointed at it.
         if menuItem.action == #selector(handleShowTurnLadder(_:)) {
 
-            return self.currentModel != nil && self.latestSimulationResult != nil && currentSegsCount == 1 && !currentSegs[0].segment.isStaticRing && !currentSegs[0].segment.isRadialShield
+            guard self.currentModel != nil, self.latestSimulationResult != nil, currentSegsCount == 1 else {
+
+                return false
+            }
+
+            let segment = currentSegs[0].segment
+
+            return !segment.isStaticRing && !segment.isRadialShield && segment.wdgType == .disc
+        }
+
+        // Its counterpart for the windings whose turns run out along a radius. Enabled only for those two types - the graph's whole
+        // x axis is a count of radial gaps, and a disc winding has one.
+        if menuItem.action == #selector(handleShowRadialProfile(_:)) {
+
+            guard self.currentModel != nil, self.latestSimulationResult != nil, currentSegsCount == 1 else {
+
+                return false
+            }
+
+            let segment = currentSegs[0].segment
+
+            return !segment.isStaticRing && !segment.isRadialShield && (segment.wdgType == .sheet || segment.wdgType == .layer)
         }
         
         if menuItem == self.saveBaseCmatrixMenuItem {

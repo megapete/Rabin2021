@@ -448,6 +448,12 @@
                                     <action selector="handleShowTurnLadder:" target="XWq-sU-B2V" id="Str-Rp-Ac3"/>
                                 </connections>
                             </menuItem>
+                            <menuItem title="Radial Voltage Profile for Selected Winding…" id="Str-Rp-Mi5">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="handleShowRadialProfile:" target="XWq-sU-B2V" id="Str-Rp-Ac5"/>
+                                </connections>
+                            </menuItem>
                         </items>
                     </menu>
                 </menuItem>

@@ -119,6 +119,34 @@ Render the page instead (poppler is installed; the Read tool does this).
 discs needs the crossover conductor modelled explicitly; interleaved and wound-in-shield discs are refused rather than guessed. Both
 extensions were considered and declined — reasoning in `docs/decisions.md` §8.
 
+**That scope is now actually enforced (2026-08-13).** `notContinuousDisc` was declared and never thrown, so every winding type ran
+through the disc ladder. Sheet and layer windings went somewhere better rather than being merely refused — see §8a — and
+interleaved and wound-in-shield Segments are refused with the explanation, as the decision record says.
+
+### 8a. The layer solve has no fixture, and two of its inputs are not in the design file
+
+`TurnLadderModel.SolveLayer` and `RadialProfileWindow` are exercised end to end on a **sheet** winding by the
+`S0738-sheet-floating` scenario. **Nothing exercises the layer path on a real design** — none of the four fixtures has a layer
+winding — so what is verified there is the solver algebra (`VerifySelf`'s null-space and mirror-symmetry checks) and not the
+geometry plumbing that feeds it. A layer-winding fixture is the missing piece.
+
+Two inputs are assumed because `PCH_ExcelDesignFile.Winding` does not carry them:
+
+- **Turns per layer.** It has `numRadialSections` and a total turn count, nothing per layer, so `Segment.LayerTurnCounts` assumes
+  equal layers with a short last one. A graded winding will not match.
+- **Duct positions.** It has `numRadialDucts` and `radialDuctDimension` — a count and a size — so `LayerGapCapacitances` spreads
+  them evenly, exactly as `LayerToLayerCapacitance` already did. A winding whose ducts sit at particular gaps has a much lower Cll
+  at those gaps and a higher one everywhere else, and neither routine will show it.
+
+Both need a field in `BasicSectionWindingData.LayerData` and somewhere to fill it from.
+
+### 8b. The sheet series capacitance still uses the pristine BasicSection width
+
+`Segment.SheetGapCapacitances` takes the radial build from the Segment's live `r2 − r1`, per standing rule 7. The `.sheet` branch
+of `CapacitanceTurnToTurn` still uses `basicSections[0].width`. The two agree unless a sheet coil has been built up to carry
+shields, which nothing does today — but they should not be able to disagree, and changing the older one moves the model, so it was
+left alone rather than altered as a side effect.
+
 ### 9. `SteinParameters.gradientEnhancement` interpolates the intermediate case
 
 It is exact at Ya = Yb (linear, an interior disc with equal gaps) and at Ya = 1, Yb = 0 (α/tanh α, a one-sided disc) and

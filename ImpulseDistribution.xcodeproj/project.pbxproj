@@ -49,6 +49,7 @@
 		F5A15CE32C0A130000000012 /* InitialDistributionWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE32C0A130000000011 /* InitialDistributionWindow.swift */; };
 		F5A15CE32C0A130000000022 /* SelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE32C0A130000000021 /* SelfTest.swift */; };
 		F5A15CE32C0A130000000032 /* AxialStressProfileWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE32C0A130000000031 /* AxialStressProfileWindow.swift */; };
+		F5A15CE32C0A130000000052 /* RadialProfileWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE32C0A130000000051 /* RadialProfileWindow.swift */; };
 		F5A15CE32C0A130000000042 /* StressProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE32C0A130000000041 /* StressProfileView.swift */; };
 		F5A15CE42C0A140000000002 /* TurnLadderModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE42C0A140000000001 /* TurnLadderModel.swift */; };
 		F5C0DE012C50000100AA0001 /* ConductorImpedance.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C0DE002C50000100AA0001 /* ConductorImpedance.swift */; };
@@ -96,6 +97,7 @@
 		F5A15CE32C0A130000000011 /* InitialDistributionWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InitialDistributionWindow.swift; sourceTree = "<group>"; };
 		F5A15CE32C0A130000000021 /* SelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelfTest.swift; sourceTree = "<group>"; };
 		F5A15CE32C0A130000000031 /* AxialStressProfileWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AxialStressProfileWindow.swift; sourceTree = "<group>"; };
+		F5A15CE32C0A130000000051 /* RadialProfileWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadialProfileWindow.swift; sourceTree = "<group>"; };
 		F5A15CE32C0A130000000041 /* StressProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressProfileView.swift; sourceTree = "<group>"; };
 		F5A15CE42C0A140000000001 /* TurnLadderModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnLadderModel.swift; sourceTree = "<group>"; };
 		F5C0DE002C50000100AA0001 /* ConductorImpedance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConductorImpedance.swift; sourceTree = "<group>"; };
@@ -170,6 +172,7 @@
 				F5A15CE32C0A130000000011 /* InitialDistributionWindow.swift */,
 				F5A15CE32C0A130000000021 /* SelfTest.swift */,
 				F5A15CE32C0A130000000031 /* AxialStressProfileWindow.swift */,
+				F5A15CE32C0A130000000051 /* RadialProfileWindow.swift */,
 				F5A15CE32C0A130000000041 /* StressProfileView.swift */,
 				F5A15CE42C0A140000000001 /* TurnLadderModel.swift */,
 				F531E27C2B7C0B9F004DE02F /* WaveFormDisplayWindow.swift */,
@@ -308,6 +311,7 @@
 				F5A15CE32C0A130000000012 /* InitialDistributionWindow.swift in Sources */,
 				F5A15CE32C0A130000000022 /* SelfTest.swift in Sources */,
 				F5A15CE32C0A130000000032 /* AxialStressProfileWindow.swift in Sources */,
+				F5A15CE32C0A130000000052 /* RadialProfileWindow.swift in Sources */,
 				F5A15CE32C0A130000000042 /* StressProfileView.swift in Sources */,
 				F5A15CE42C0A140000000002 /* TurnLadderModel.swift in Sources */,
 				D3B7FF22270E320E002537D3 /* BasicSection.swift in Sources */,
