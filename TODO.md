@@ -123,14 +123,17 @@ extensions were considered and declined — reasoning in `docs/decisions.md` §8
 through the disc ladder. Sheet and layer windings went somewhere better rather than being merely refused — see §8a — and
 interleaved and wound-in-shield Segments are refused with the explanation, as the decision record says.
 
-### 8a. The layer solve has no fixture, and two of its inputs are not in the design file
+### 8a. Two of the layer solve's inputs are not in the design file
 
-`TurnLadderModel.SolveLayer` and `RadialProfileWindow` are exercised end to end on a **sheet** winding by the
-`S0738-sheet-floating` scenario. **Nothing exercises the layer path on a real design** — none of the four fixtures has a layer
-winding — so what is verified there is the solver algebra (`VerifySelf`'s null-space and mirror-symmetry checks) and not the
-geometry plumbing that feeds it. A layer-winding fixture is the missing piece.
+**The fixture gap is closed (2026-08-14).** `SheetAndLayer.txt` is a two-winding design — a 13-turn sheet coil inside a 938-turn,
+12-layer coil — and `SHEETLAYER-sheet` and `SHEETLAYER-layer` impulse one of them each while shorting the other out. Both paths now
+run end to end. The layer result carries an independent cross-check: the solved worst inter-layer gap comes out at **2.46×** twice
+the volts per layer, against **2.71×** for α/tanh α formed from the coil's lumped Cs and Cg — two entirely different routes to one
+number, agreeing to 9%. That figure is *reported and not asserted*: the two are not the same quantity (the continuum line-end
+gradient of a uniform winding, against the worst discrete inter-layer gap), so a tolerance would be fitted to this one design
+rather than tested against it. Standing rule 8.
 
-Two inputs are assumed because `PCH_ExcelDesignFile.Winding` does not carry them:
+Two inputs are still assumed, because `PCH_ExcelDesignFile.Winding` does not carry them:
 
 - **Turns per layer.** It has `numRadialSections` and a total turn count, nothing per layer, so `Segment.LayerTurnCounts` assumes
   equal layers with a short last one. A graded winding will not match.

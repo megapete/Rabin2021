@@ -69,19 +69,24 @@ class RadialProfileWindow:NSWindowController {
         let isSheet:Bool
         /// Innermost gap first.
         let points:[GapPoint]
-        /// The worst gap over the reference below.
-        let enhancement:Double
+        /// The worst gap over the reference below, or nil where there is no reference to be over - a coil grounded at both ends
+        /// has none, and still has voltage across its gaps.
+        let enhancement:Double?
         /// What a simple assumption gives for every gap, in volts - an even division for a sheet winding, twice the volts per layer
         /// for a layer one.
         let reference:Double
+        /// The classical alpha/tanh(alpha) line-end gradient from the coil's lumped Cs and Cg, for a layer winding. Nil for a
+        /// sheet winding, whose model is a closed-form series chain with no alpha in it at all.
+        let screenEstimate:Double?
         /// Rows for the annotation block, as (label, value) pairs.
         let notes:[(label:String, value:String)]
     }
 
     private let points:[GapPoint]
     private let isSheet:Bool
-    private let enhancement:Double
+    private let enhancement:Double?
     private let reference:Double
+    private let screenEstimate:Double?
     private let notes:[(label:String, value:String)]
     private let peakTestVoltage:Double
 
@@ -94,6 +99,7 @@ class RadialProfileWindow:NSWindowController {
         self.isSheet = contents.isSheet
         self.enhancement = contents.enhancement
         self.reference = contents.reference
+        self.screenEstimate = contents.screenEstimate
         self.notes = contents.notes
         self.peakTestVoltage = peakTestVoltage
 
@@ -156,6 +162,17 @@ class RadialProfileWindow:NSWindowController {
         window.contentView = contentView
     }
 
+    /// A voltage for the annotation block.
+    ///
+    /// %.1f everywhere would be tidier, but a coil grounded at both ends has a few NANOVOLTS across it rather than exactly zero,
+    /// and its gaps still carry a real distribution driven by the coil beside it. Printing those as "0.0 V" next to a perfectly
+    /// good enhancement ratio reads as a broken number. Anything below a volt therefore goes to scientific notation, where it is
+    /// obviously negligible rather than obviously wrong.
+    static func Volts(_ value:Double) -> String {
+
+        return abs(value) >= 1.0 ? String(format: "%.1f V", value) : String(format: "%.3g V", value)
+    }
+
     private func ShowProfile() {
 
         // The worst gap is chosen by UTILIZATION rather than by raw volts, for the same reason the report table is ranked that way:
@@ -169,7 +186,7 @@ class RadialProfileWindow:NSWindowController {
         if let worst {
 
             annotation.append((label: "Worst gap:", value: "\(worst.index + 1) of \(points.count), at r = \(String(format: "%.1f mm", worst.radius * 1000.0))"))
-            annotation.append((label: "ΔV there:", value: String(format: "%.1f V", worst.deltaV)))
+            annotation.append((label: "ΔV there:", value: RadialProfileWindow.Volts(worst.deltaV)))
 
             if let allowable = worst.allowableDeltaV {
 
@@ -178,7 +195,7 @@ class RadialProfileWindow:NSWindowController {
                 // allowableScaleLimit. Say so, so that a reader does not go looking for a dashed line that is not there.
                 let offScale = allowable > StressProfileView.allowableScaleLimit * worst.deltaV
 
-                annotation.append((label: "Allowable ΔV:", value: String(format: "%.1f V (%@)%@", allowable, worst.material, offScale ? " — off scale" : "")))
+                annotation.append((label: "Allowable ΔV:", value: "\(RadialProfileWindow.Volts(allowable)) (\(worst.material))\(offScale ? " — off scale" : "")"))
                 annotation.append((label: "Utilization:", value: String(format: "%.1f%% of allowable", worst.utilization * 100.0)))
             }
 
@@ -187,9 +204,20 @@ class RadialProfileWindow:NSWindowController {
                 annotation.append((label: "At height:", value: String(format: "%.0f mm", height * 1000.0)))
             }
 
-            if reference > 0.0 {
+            if let enhancement {
 
                 annotation.append((label: "Over reference:", value: String(format: "%.2fx", enhancement)))
+            }
+            else {
+
+                // A coil grounded at both ends. Its gaps still carry voltage - the winding beside it drives them capacitively -
+                // but there is no terminal voltage to measure them against, and saying so beats printing 1.00x.
+                annotation.append((label: "Over reference:", value: "n/a — the coil has no voltage across its terminals"))
+            }
+
+            if let screenEstimate {
+
+                annotation.append((label: "alpha screen:", value: String(format: "%.2fx (alpha/tanh alpha, from lumped Cs and Cg)", screenEstimate)))
             }
         }
 

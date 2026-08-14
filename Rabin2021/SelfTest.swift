@@ -365,6 +365,12 @@ enum SelfTest {
         // The same connection with the HV left alone, so that a failure can be pinned on the restructure or acquitted of it.
         "S0738-plain" : S0738(name: "S0738-plain", restructure: .none),
 
+        // The two-winding fixture that exists for the radial voltage profile: a sheet coil and a layer coil and nothing else. Each
+        // variant impulses ONE of them and shorts the other out, so the profile under test is driven by the impulse directly
+        // rather than by transfer, and the coil beside it is at a fixed potential.
+        "SHEETLAYER-sheet" : SheetAndLayer(name: "SHEETLAYER-sheet", impulsedCoil: 0, peakVoltage: 45.0e3),
+        "SHEETLAYER-layer" : SheetAndLayer(name: "SHEETLAYER-layer", impulsedCoil: 1, peakVoltage: 125.0e3),
+
         // The same design with coil 0's top lead left floating, so the SHEET winding takes a transferred voltage instead of being
         // shorted end to end. This is the scenario that exercises the radial voltage profile: grounded at both ends coil 0 has no
         // volts across it at any instant, and the graph is a correct but uninformative flat zero.
@@ -545,6 +551,48 @@ enum SelfTest {
                         displaySpan: 100.0e-6,
                         bandwidth: 10.0e6,
                         continuumCoil: 2)
+    }
+
+    /// The SheetAndLayer fixture: one SHEET coil inside one LAYER coil, and nothing else.
+    ///
+    /// This is the fixture the radial voltage profile needed. Every other design here is disc-wound apart from S0738's coil 0, and
+    /// that one is grounded at both ends in every variant - correct, but it leaves the coil with no volts across it, so the profile
+    /// is a flat line at zero. Nothing exercised the LAYER path on a real design at all; see TODO.md §8a.
+    ///
+    /// WHICH LEAD IS WHICH. A sheet or layer coil is one BasicSection, so it is one Segment, and `AppController`'s
+    /// segment-building loop gives it exactly two floating leads: `.inside_lower` on the way in and - through
+    /// `Connector.AlternatingLocation` - `.outside_upper` on the way out. So on these two coils `.coilEnd(end: .bottom)` IS the
+    /// innermost lead and `.coilEnd(end: .top)` IS the outermost one, which is what makes the connection below expressible. The
+    /// TERMINATIONS section of the report prints the location each one landed on, so if that ever stops being true the run says so
+    /// rather than silently testing the winding backwards.
+    ///
+    /// Each variant impulses one coil and grounds both leads of the other, which is what makes the profile under test worth
+    /// reading: the impulsed coil is driven directly rather than by transfer, and the coil beside it is held at a known potential -
+    /// so the layer solve's Cin/Cout terms have something definite on the other end of them.
+    ///
+    /// - Parameter impulsedCoil: 0 for the sheet, 1 for the layer. The other coil is grounded at both ends.
+    private static func SheetAndLayer(name:String, impulsedCoil:Int, peakVoltage:Double) -> Scenario {
+
+        let quietCoil = impulsedCoil == 0 ? 1 : 0
+
+        return Scenario(name: name,
+                        restructure: .none,
+                        matchedBuild: nil,
+                        fixtureName: "SheetAndLayer.txt",
+                        notes: "Two coils: coil 0 is a SHEET winding, coil 1 is a LAYER winding. Coil \(impulsedCoil) is impulsed - its innermost lead grounded and \(String(format: "%.0f", peakVoltage / 1000.0)) kV full wave on its outermost - and both leads of coil \(quietCoil) are grounded.",
+                        jumpers: [],
+                        terminations: [Termination(point: .coilEnd(coil: quietCoil, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: quietCoil, end: .top), type: .ground),
+                                       // The innermost lead of the impulsed coil, then the outermost. Order matters only in that
+                                       // AddConnector REPLACES a floating lead, so each has to still be floating when it is used.
+                                       Termination(point: .coilEnd(coil: impulsedCoil, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: impulsedCoil, end: .top), type: .impulse)],
+                        waveFormType: .FullWave,
+                        peakVoltage: peakVoltage,
+                        displaySpan: 100.0e-6,
+                        bandwidth: 10.0e6,
+                        continuumCoil: impulsedCoil,
+                        reportNodes: true)
     }
 
     /// The STME-0999_2 fixture: 25 MVA, 120 kV wye to 26.4 kV delta, both coils disc-wound in CTC. 550 kV BIL on the HV.
@@ -2856,16 +2904,29 @@ enum SelfTest {
 
                 let contents = try await AppController.BuildRadialProfile(model: model, segment: segment, instant: instant)
 
-                text += String(format: "  coil %d (%@): %d gaps, worst %.1f V at gap %d of %d, %.2fx the reference of %.1f V, at %@\n",
+                // %g, not %.1f, on both voltages. A coil grounded at both ends comes out at a few nanovolts rather than at exactly
+                // zero, and %.1f prints that as "0.0 V" beside a perfectly real enhancement ratio - the shape is scale-invariant and
+                // survives however small the driving voltage gets. Printing "1.04x the reference of 0.0 V" reads as a bug in the
+                // ratio when it is only a bug in the format.
+                text += String(format: "  coil %d (%@): %d gaps, worst %g V at gap %d of %d, %@ the reference of %g V, at %@\n",
                                contents.coil,
                                wdgType == .sheet ? "sheet" : "layer",
                                contents.points.count,
                                contents.points.map { $0.deltaV }.max() ?? 0.0,
                                (contents.points.max { $0.utilization < $1.utilization }?.index ?? -1) + 1,
                                contents.points.count,
-                               contents.enhancement,
+                               contents.enhancement.map { String(format: "%.2fx", $0) } ?? "n/a against",
                                contents.reference,
                                instant.label)
+
+                // The independent check on a layer solve, and the reason it is printed rather than asserted: alpha/tanh(alpha) comes
+                // from the coil's LUMPED Cs and Cg while the profile comes from a turn-level network, so agreement is real evidence
+                // that the network is assembled right. They are not the same quantity - see the note in BuildRadialProfile - so a
+                // tolerance here would be fitted to one design rather than tested against it. Standing rule 8.
+                if let screen = contents.screenEstimate {
+
+                    text += String(format: "    alpha screen on the same coil: %.2fx (alpha/tanh alpha from lumped Cs and Cg)\n", screen)
+                }
 
                 windows.append(("radialProfile-coil\(contents.coil)", RadialProfileWindow(contents: contents, peakTestVoltage: scenario.peakVoltage)))
             }
@@ -2879,7 +2940,14 @@ enum SelfTest {
 
             guard let controller else {
 
-                text += "  FAILED: the \(what) window could not be built from \(checks.count) findings.\n"
+                // Both stress-profile windows are failable initialisers that return nil when the findings hold nothing they can
+                // draw, and that is not always a failure: a model with no DISC winding in it has no disc-to-disc gap, so the axial
+                // profile has nothing to say and correctly declines to open. The SheetAndLayer fixture is exactly that model.
+                let hasDiscGaps = checks.contains { $0.kind == .discToDisc }
+                let expected = what == "axialStress" && !hasDiscGaps
+
+                text += expected ? "  \(what): nothing to draw - this model has no disc-to-disc gaps.\n"
+                                 : "  FAILED: the \(what) window could not be built from \(checks.count) findings.\n"
                 continue
             }
 

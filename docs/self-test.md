@@ -26,11 +26,26 @@ is never ordered front and the run stays headless. All three of those faults wer
 radial build-up, FE phase, eddy losses, inductance, capacitance, terminations, initial distribution and a 2048-step
 transient — is **37 seconds**, so there is no reason not to run it.
 
-**`S0738-sheet-floating` is the scenario that exercises the radial voltage profile**, and it exists because every other variant
-grounds coil 0 — a sheet winding — at *both* ends. A winding shorted end to end has identically zero volts across it at every
-instant, so its profile is a correct but useless flat line at zero. This one leaves its top lead floating, so it takes a
-transferred voltage (~9.5 kV of the 1050 kV impulse) and the graph has something in it. **No fixture has a layer winding**, so the
-layer half of that window has no end-to-end run — see `TODO.md` §8a.
+**`SHEETLAYER-sheet` and `SHEETLAYER-layer` are the scenarios for the radial voltage profile.** `SheetAndLayer.txt` is a
+two-winding design that exists for it: a 13-turn **sheet** coil inside a 938-turn, 12-layer **layer** coil, and nothing else. Each
+variant impulses one coil — innermost lead grounded, 45 kV on the sheet or 125 kV on the layer at the outermost — and grounds both
+leads of the other, so the coil under test is driven directly rather than by transfer and the coil beside it is at a known
+potential.
+
+**Which lead is which matters here and is not a guess.** A sheet or layer coil is one BasicSection and so one Segment, and
+`AppController`'s segment-building loop gives it exactly two floating leads: `.inside_lower` in and `.outside_upper` out. So
+`.coilEnd(end: .bottom)` *is* the innermost lead on these coils and `.coilEnd(end: .top)` *is* the outermost. The TERMINATIONS
+section prints the location each one landed on, so a future geometry change says so rather than silently testing the winding
+backwards.
+
+`S0738-sheet-floating` is kept as the second sheet case — a coil taking its voltage by *transfer* rather than directly, which is
+the ordinary way an LV sheet winding sees anything at all. It exists because every other S0738 variant grounds coil 0 at both ends,
+and a winding shorted end to end has identically zero volts across it, so its profile is a correct but useless flat line.
+
+A useful thing the SHEETLAYER runs show, which is easy to mistake for a bug: **the shorted coil still has voltage across its
+gaps.** In `SHEETLAYER-sheet` the grounded layer coil reports 4.2 kV on its outermost gap against a reference of zero — the
+impulsed coil beside it drives the layers capacitively even though its own terminals are tied together. The profile reports the
+enhancement as `n/a` there rather than as `1.00x`, which would say the opposite of what is happening.
 
 The `VerifySelf()` formula checks have their own gate, separate from all of this and needing no fixture:
 

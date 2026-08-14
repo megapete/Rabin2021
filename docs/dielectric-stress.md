@@ -286,6 +286,19 @@ what makes the distribution non-uniform: without a path out of the winding the n
 collapses to the linear one. Layers alternate direction, so each starts where the previous ended and a short final layer sits at
 the end it actually occupies.
 
+**Cross-checked against α/tanh α on a real design.** On the `SheetAndLayer` fixture (938 turns over 12 layers, 125 kV on the
+outermost lead) the solve puts **51.3 kV** on the outermost inter-layer gap where twice the volts per layer is 20.9 kV — a 2.46×
+concentration at the line end, at 70% of the oil allowable. The classical screen, α = √(Cg/Cs) = 2.69 and a line-end gradient of
+α/tanh α, gives 2.71×. Those are independent routes — a turn-level network against two lumped capacitances — and agreeing to 9% is
+the best evidence available that the network is assembled correctly. The window reports both side by side, as the turn ladder's
+alert already does for a disc. Neither is asserted against the other: they are not quite the same quantity (a continuum line-end
+gradient of a uniform winding, against the worst discrete inter-layer gap), so a tolerance would be fitted rather than tested.
+
+**A coil grounded at both ends still has voltage across its gaps**, and the profile says so. Its terminals are tied together, so
+the reference is zero and the enhancement reads `n/a` rather than `1.00x`; but the winding beside it drives its layers
+capacitively, and on the `SHEETLAYER-sheet` run the shorted layer coil carries 4.2 kV on its outermost gap. That is a real
+stress on a coil a designer would not think to look at.
+
 **Two assumptions the design file cannot support**, both surfaced in the window's note: `PCH_ExcelDesignFile.Winding` carries a
 layer *count* and a duct *count* and nothing per layer, so `Segment.LayerTurnCounts` assumes equal layers with a short last one,
 and `LayerGapCapacitances` spreads the ducts evenly over the gaps. A deliberately graded winding, or ducts at particular gaps,

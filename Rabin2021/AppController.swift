@@ -2689,6 +2689,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         let usesCornerModel:Bool
         let cornerRadius:Double?
         var notes:[(label:String, value:String)] = []
+        var screenEstimate:Double? = nil
 
         guard let bs = await segment.basicSections.first else {
 
@@ -2787,6 +2788,19 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             usesCornerModel = true
             cornerRadius = DielectricStress.CornerRadius(thickness: bs.wdgData.turn.strandRadial, width: bs.wdgData.turn.strandAxial)
 
+            // The classical screen for the same quantity, from the coil's LUMPED capacitances rather than from the turn network:
+            // alpha = sqrt(Cg/Cs) and a line-end gradient of alpha/tanh(alpha). This is the layer-winding counterpart of the alpha
+            // figure the turn ladder reports beside its own answer, and it is worth having for exactly the same reason - the two
+            // are independent routes to one number, so agreement is real evidence and a large disagreement is worth understanding
+            // before trusting either. They are not the SAME quantity (this solves for the worst inter-layer gap against twice the
+            // volts per layer, while alpha/tanh alpha is the continuum line-end gradient of a uniform winding), so they are not
+            // expected to agree exactly - on the SheetAndLayer fixture they come out at 2.46x and 2.71x.
+            if let Cs = try? await model.CoilSeriesCapacitance(coil: coil), Cs > 0.0 {
+
+                let alpha = sqrt((innerGround + outerGround) / Cs)
+                screenEstimate = alpha > 0.0 ? alpha / tanh(alpha) : nil
+            }
+
             notes.append((label: "Winding:", value: "layer, \(turnCounts.count) layers, \(turnCounts.map { String($0) }.joined(separator: "/")) turns"))
             notes.append((label: "Sense:", value: "starts at the innermost layer, at the lower node"))
         }
@@ -2832,13 +2846,14 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
         notes.append((label: "Coil voltage:", value: String(format: "%.2f kV", abs(profile.segmentVoltage) / 1000.0)))
         notes.append((label: "At:", value: instant.label))
-        notes.append((label: profile.referenceName + ":", value: String(format: "%.1f V", profile.reference)))
+        notes.append((label: profile.referenceName + ":", value: RadialProfileWindow.Volts(profile.reference)))
 
         return RadialProfileWindow.Contents(coil: coil,
                                             isSheet: wdgType == .sheet,
                                             points: points,
                                             enhancement: profile.enhancementOverReference,
                                             reference: profile.reference,
+                                            screenEstimate: screenEstimate,
                                             notes: notes)
     }
 

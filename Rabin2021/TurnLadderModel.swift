@@ -321,9 +321,13 @@ struct TurnLadderModel:Sendable {
             return gaps.max { abs($0.deltaV) < abs($1.deltaV) }
         }
 
-        var enhancementOverReference:Double {
+        /// Nil where there is no reference to be over. That is not a degenerate case worth papering over: a coil grounded at both
+        /// ends has zero volts across it and so a reference of zero, yet its gaps still carry voltage - the winding beside it drives
+        /// them capacitively even though its own terminals are tied together. Reporting "1.00x" there would say the opposite of what
+        /// is happening.
+        var enhancementOverReference:Double? {
 
-            guard reference > 0.0, let worst else { return 1.0 }
+            guard reference > 0.0, let worst else { return nil }
 
             return abs(worst.deltaV) / reference
         }
@@ -943,7 +947,7 @@ struct TurnLadderModel:Sendable {
             // 2 x volts-per-layer everywhere. If this ever comes back at 1.00 the ground capacitances have stopped reaching the
             // network and the answer has quietly collapsed to the linear one.
             report.append(String(format: "INFO layer enhancement over 2 x volts-per-layer: %.3fx (worst gap %d of %d)",
-                                 forward.enhancementOverReference,
+                                 forward.enhancementOverReference ?? 0.0,
                                  (forward.worst?.index ?? -1) + 1,
                                  forward.gaps.count))
         }
