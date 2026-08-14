@@ -142,11 +142,19 @@ Two inputs are still assumed, because `PCH_ExcelDesignFile.Winding` does not car
   at those gaps and a higher one everywhere else, and neither routine will show it.
 
 Turns per layer needs a field in `BasicSectionWindingData.LayerData` and somewhere to fill it from. **Duct positions no longer do
-(2026-08-14):** `Segment.DuctGaps` spaces them evenly over the gaps — duct *j* of *n* at gap `round(j·gaps/n)`, with the count
-clamped to the gap count — so `LayerGapCapacitances` and `SheetGapCapacitances` place them instead of smearing them. It is a rule
-rather than a reading, and one property of it is worth knowing: *j = n* lands exactly on `gaps`, so **the outermost gap always
-carries a duct and the innermost never does**. A centred variant, duct *j* at `(j − ½)·gaps/n`, would put insulation-only gaps at
-both ends; it is one line in `DuctGaps` if shop practice turns out to be that one.
+(2026-08-14):** `Segment.DuctGaps` spaces them evenly and centres the run — duct *j* of *n* at gap `round((j − ½)·gaps/n)`, count
+clamped to the gap count — so 3 ducts in a 12-layer winding (11 gaps) land at gaps 2, 6 and 9, with insulation-only gaps at both
+ends. `LayerGapCapacitances` and `SheetGapCapacitances` place them instead of smearing them. `TurnLadderModel.VerifySelf` pins the
+worked example, both ends being free, and that every clamped duct lands on its own gap over all counts to 40 × 45 — a rounding
+change that collided two ducts would cost one of them and be invisible in the graph, three spikes and two spikes looking equally
+plausible.
+
+**The reported worst case is sensitive to this rule, and that is the argument for real positions.** It is still an assumption, and
+on the `SheetAndLayer` layer coil it is worth better than a factor of two: with the ducts at 4/7/11 the outermost gap carries one
+and the worst inter-layer voltage is 76.8 kV (3.68× twice the volts per layer); centred at 2/6/9 the line-end gap is plain
+insulation and the worst is 32.0 kV (1.54×). Both are the same coil at the same instant. The concentration at the line end and the
+low capacitance of a duct are independent, and what the number comes out at depends on whether they coincide — which is exactly the
+thing the design file does not tell us.
 
 ### 8c. `LayerToLayerCapacitance` still spreads the ducts, and the α screen inherits it
 

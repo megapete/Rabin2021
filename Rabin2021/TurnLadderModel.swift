@@ -957,6 +957,40 @@ struct TurnLadderModel:Sendable {
             report.append("FAIL mirror-symmetry layer solve threw")
         }
 
+        // 6. Duct placement. Not part of the solve, but it decides which gaps the solve is handed, and on a ducted winding that
+        // matters more than anything else in this file: a gap holding an oil duct carries some fifty times the volts of one holding
+        // only turn insulation, so a duct in the wrong place - or a duct silently lost - moves the answer by that much.
+        //
+        // The count is what a rounding change would break. Two ducts rounding onto the same gap costs a duct AND leaves the
+        // insulation-only gaps too thin, and it is invisible in the profile unless the count is checked, since three spikes and two
+        // spikes both look like a plausible graph.
+        let ductPlacement = Segment.DuctGaps(gapCount: 11, ductCount: 3)
+
+        check("3 ducts over 11 gaps are centred at 2, 6, 9", Double(ductPlacement == Set([1, 5, 8]) ? 1 : 0), 1.0, tolerance: 0.0)
+
+        // Both ends must be free. That IS the centred rule - the obvious form, round(j*gaps/n), always ducts the outermost gap.
+        check("the centred rule leaves the innermost gap free", Double(ductPlacement.contains(0) ? 0 : 1), 1.0, tolerance: 0.0)
+        check("the centred rule leaves the outermost gap free", Double(ductPlacement.contains(10) ? 0 : 1), 1.0, tolerance: 0.0)
+
+        var placementFailures = 0
+
+        for gapCount in 1...40 {
+
+            for requested in 1...45 {
+
+                let expected = Segment.DuctCount(gapCount: gapCount, requested: requested)
+                let placed = Segment.DuctGaps(gapCount: gapCount, ductCount: requested)
+
+                // Every duct placed, none lost to a collision, and every one of them inside the winding.
+                if placed.count != expected || placed.contains(where: { $0 < 0 || $0 >= gapCount }) {
+
+                    placementFailures += 1
+                }
+            }
+        }
+
+        check("every clamped duct lands on its own gap, over all counts to 40 x 45", Double(placementFailures), 0.0, tolerance: 0.0)
+
         report.insert(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED", at: 0)
 
         UserDefaults.standard.set(report, forKey: "TurnLadderVerification")

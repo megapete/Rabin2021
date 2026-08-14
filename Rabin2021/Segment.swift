@@ -1479,17 +1479,18 @@ actor Segment: Equatable /*, Hashable */ {
 
     /// Which radial gaps carry a cooling duct, spaced as evenly as the gap count allows. Gap 0 is the innermost.
     ///
-    /// The rule: with `gapCount` gaps and `ductCount` ducts, one goes every `gapCount/ductCount` gaps, rounded to the nearest gap.
-    /// Duct j (counting from 1) therefore sits at gap round(j · gapCount / ductCount), 1-based - so 3 ducts in a 12-layer winding,
-    /// which has 11 gaps, land at gaps 4, 7 and 11 (11/3 = 3.67, 7.33, 11.0).
+    /// The rule: with `gapCount` gaps and `ductCount` ducts, one goes every `gapCount/ductCount` gaps, and the run of ducts is
+    /// CENTRED in the winding rather than started from one end. Duct j (counting from 1) sits at gap round((j − ½)·gapCount/ductCount),
+    /// 1-based - so 3 ducts in a 12-layer winding, which has 11 gaps, land at gaps 2, 6 and 9.
     ///
-    /// NOTE WHAT THAT MEANS AT THE OUTSIDE: j = ductCount gives exactly gapCount, so the outermost gap ALWAYS carries a duct under
-    /// this rule, whatever the counts are, while the innermost never does. That is the rule as specified and it is a defensible
-    /// reading of "evenly spaced"; a centred variant - duct j at (j − ½)·gapCount/ductCount, which for the same winding gives 2, 6
-    /// and 9 - would leave insulation-only gaps at both ends instead. One line, if the shop practice turns out to be the other one.
+    /// The half-step is what centres it, and it is the whole difference between this and the obvious form. Placing duct j at
+    /// round(j·gapCount/ductCount) also spaces them evenly, but j = ductCount then lands exactly on gapCount, so the outermost gap
+    /// would carry a duct in every winding ever built while the innermost never did. The half-step leaves insulation-only gaps at
+    /// both ends, which is how a winding is actually wound.
     ///
     /// The positions cannot collide once `ductCount` is clamped to `gapCount`: the step is then at least one gap, so successive
-    /// rounded positions differ by at least one. The Set is belt and braces.
+    /// rounded positions differ by at least one, and the first is at least ½ a step in from the inside so it cannot round below
+    /// gap 1. The Set and the clamp below are belt and braces.
     static func DuctGaps(gapCount:Int, ductCount:Int) -> Set<Int> {
 
         guard gapCount > 0, ductCount > 0 else {
@@ -1505,7 +1506,7 @@ actor Segment: Equatable /*, Hashable */ {
         for j in 1...ducts {
 
             // ...rounded, then back to a 0-based index, and held inside the range against any rounding surprise.
-            let position = Int((Double(j) * step).rounded()) - 1
+            let position = Int(((Double(j) - 0.5) * step).rounded()) - 1
             result.insert(min(max(position, 0), gapCount - 1))
         }
 

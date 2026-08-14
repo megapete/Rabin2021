@@ -303,9 +303,11 @@ stress on a coil a designer would not think to look at.
 
 ### Cooling ducts are placed, not smeared, and they dominate both winding types
 
-`Segment.DuctGaps` spaces the ducts evenly over the radial gaps — duct *j* of *n* at gap `round(j·gaps/n)`, count clamped to the
-gap count by `DuctCount`, so 3 ducts in a 12-layer winding (11 gaps) land at gaps 4, 7 and 11. The design file gives a count and a
-size and no positions, so this is a rule rather than a reading; `TODO.md` §8a records the one asymmetry it has.
+`Segment.DuctGaps` spaces the ducts evenly over the radial gaps and centres the run — duct *j* of *n* at gap
+`round((j − ½)·gaps/n)`, count clamped to the gap count by `DuctCount`, so 3 ducts in a 12-layer winding (11 gaps) land at gaps 2,
+6 and 9, with insulation-only gaps at both ends. The half-step is what centres it: the obvious form, `round(j·gaps/n)`, spaces them
+just as evenly but puts *j = n* exactly on the last gap, so the outermost gap would carry a duct in every winding ever built. The
+design file gives a count and a size and no positions, so this is a rule rather than a reading.
 
 **It matters more for a sheet winding than for a layer one, and that is not obvious.** `electricalRadialBuild` in
 `PCH_ExcelDesignFile.Winding` is `(numTurnsRadially·turnRadialDimn + numRadialDucts·radialDuctDimension)·overbuild`, so a sheet
@@ -316,9 +318,15 @@ gaps identical when three of them are oil ducts. The ducts now come out of the b
 
 The effect is large, because an oil duct is not a perturbation on a foil gap — it is some **fifty times** the reduced thickness of
 the turn insulation beside it, and takes about fifty times the volts. The sheet coil's worst gap goes from 4.1 kV at the innermost
-gap (1.09× an even division, the pure 1/r story) to **15.2 kV at gap 4** (4.03×), and the profile stops being a gentle slope and
-becomes a floor with a spike on every ducted gap. The layer coil's worst gap goes from 51.3 kV to **76.8 kV**, 3.68× twice the
-volts per layer. Both shapes are real; the note under the graph says which one is on screen.
+gap (1.09× an even division, the pure 1/r story) to **15.2 kV at gap 2** (4.05×), and the profile stops being a gentle slope and
+becomes a floor with a spike on every ducted gap. Both shapes are real; the note under the graph says which one is on screen.
+
+**WHERE the ducts are matters as much as whether they are placed**, on a layer winding, and this is worth understanding before
+trusting a number off that graph. A duct's low capacitance and the line-end concentration are independent effects, so what the
+worst gap comes out at depends on whether the two coincide. On the `SheetAndLayer` layer coil, the same coil at the same instant
+reads **76.8 kV (3.68×)** with the ducts at 4/7/11, where the outermost gap carries one, and **32.0 kV (1.54×)** centred at 2/6/9,
+where the line-end gap is plain insulation and the ducts sit down in the low-voltage part of the winding. A sheet winding is not
+sensitive this way — its chain is uniform apart from 1/r, so a duct carries much the same wherever it is put. `TODO.md` §8a.
 
 **The remaining assumption the design file cannot support** is per-layer turn counts: `Winding` carries a layer *count* and nothing
 per layer, so `Segment.LayerTurnCounts` assumes equal layers with a short last one. A deliberately graded winding needs a new field
