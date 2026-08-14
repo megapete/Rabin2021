@@ -329,8 +329,13 @@ where the line-end gap is plain insulation and the ducts sit down in the low-vol
 sensitive this way — its chain is uniform apart from 1/r, so a duct carries much the same wherever it is put. `TODO.md` §8a.
 
 **The remaining assumption the design file cannot support** is per-layer turn counts: `Winding` carries a layer *count* and nothing
-per layer, so `Segment.LayerTurnCounts` assumes equal layers with a short last one. A deliberately graded winding needs a new field
-in `BasicSectionWindingData.LayerData`.
+per layer, so `Segment.LayerTurnCounts` splits the turns equally — *N/L* per layer, **fractions and all**. 938 turns over 12 layers
+is twelve layers of 78.1666…, not eleven of 79 and a last one of 69: the winding is wound to one pitch over one height, so every
+layer holds the same amount and the conductor crosses over part way through a turn wherever the count runs out. `SolveLayer` turns
+that back into whole turns by giving each turn to the layer holding its **midpoint**, so a layer carries 78 or 79 whole turns and
+the pattern steps up the winding — the real geometry, and exactly the old rectangular map when *N/L* is whole. A deliberately
+graded winding, where the counts are chosen rather than falling out of the height, still needs a new field in
+`BasicSectionWindingData.LayerData`.
 
 **`LayerToLayerCapacitance` still smears**, deliberately — see `TODO.md` §8c. It feeds `SeriesCapacitance`, so changing it moves
 every existing layer-winding result, and there is no obviously right single Cll for a coil whose gaps genuinely differ. The α screen

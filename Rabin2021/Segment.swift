@@ -1620,15 +1620,21 @@ actor Segment: Equatable /*, Hashable */ {
 
     /// How the turns of a LAYER winding are shared out over its layers, innermost layer first.
     ///
-    /// THIS IS AN ASSUMPTION, and the design file cannot confirm it: `PCH_ExcelDesignFile.Winding` carries a layer COUNT
-    /// (`numRadialSections`) and a total turn count, and nothing per layer. What is assumed here is the ordinary construction - every
-    /// layer is wound to the same axial pitch, so all but the last hold the same number of turns and the last one is short:
+    /// EVERY LAYER HOLDS THE SAME NUMBER OF TURNS, N/L, AND THAT NUMBER IS NOT IN GENERAL A WHOLE ONE. 938 turns over 12 layers is
+    /// twelve layers of 78.1666… turns, not eleven of 79 and a last one of 69. The winding is wound to one axial pitch over one
+    /// height, so what a layer holds is set by the height and is the same for every layer; the conductor crosses into the next layer
+    /// wherever the count runs out, part way through a turn if that is where it falls. The fractional part is physically real - it is
+    /// the axial offset by which each layer's turns sit above the previous layer's - and rounding it into a short final layer is both
+    /// wrong about the geometry and wrong about the last layer's voltage.
     ///
-    ///     full = ceil(N / L),   last = N − (L − 1)·full
+    /// Which whole turn ends up in which layer is then the caller's business: `TurnLadderModel.SolveLayer` assigns each turn to the
+    /// layer holding its midpoint, so a layer carries floor(N/L) or ceil(N/L) whole turns and the pattern steps up the winding.
     ///
-    /// A deliberately graded winding, where the layer turn counts are chosen rather than falling out of the height, will not match.
-    /// Carrying the real counts needs a per-layer field in `BasicSectionWindingData.LayerData` and somewhere to fill it from.
-    func LayerTurnCounts() throws -> [Int] {
+    /// The layer COUNT is a reading - `PCH_ExcelDesignFile.Winding.numRadialSections` - and the split is still an assumption in the
+    /// one respect that the file cannot confirm it: a deliberately graded winding, where the layer turn counts are chosen rather than
+    /// falling out of the height, will not match. Carrying the real counts needs a per-layer field in
+    /// `BasicSectionWindingData.LayerData` and somewhere to fill it from.
+    func LayerTurnCounts() throws -> [Double] {
 
         guard self.wdgType == .layer, let bs = self.basicSections.first else {
 
@@ -1643,24 +1649,9 @@ actor Segment: Equatable /*, Hashable */ {
             throw SegmentError(info: "The layer winding has \(turns) turns over \(layers) layers, which is fewer than one turn per layer", type: .IllegalWindingType)
         }
 
-        guard layers > 1 else {
-
-            return [turns]
-        }
-
-        let full = Int((Double(turns) / Double(layers)).rounded(.up))
-        let last = turns - (layers - 1) * full
-
-        guard last >= 1 else {
-
-            // ceil() overshot far enough to empty the last layer, which happens when L is large against N. Fall back to an even
-            // split with the remainder spread over the innermost layers - no layer is left empty and the total is still N.
-            let base = turns / layers
-            let extra = turns % layers
-            return (0..<layers).map { $0 < extra ? base + 1 : base }
-        }
-
-        return Array(repeating: full, count: layers - 1) + [last]
+        // The rounded whole-turn total is divided, not N itself, so that the counts sum to exactly the number of turn nodes the
+        // network will have.
+        return [Double](repeating: Double(turns) / Double(layers), count: layers)
     }
 
     /// The layer-to-layer capacitance of every radial gap of a LAYER winding, innermost gap first, each formed at its own radius.

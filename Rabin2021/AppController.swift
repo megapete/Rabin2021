@@ -2753,22 +2753,6 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
             let zBottom = await segment.z1
             let zTop = await segment.z2
-            let slots = turnCounts.max() ?? 1
-
-            // The neighbours' potentials at THIS instant, sampled at the height of each axial slot. A core or a tank is at ground; a
-            // coil is at whatever its own profile says at that height, held at the nearest value past its ends - the same rule the
-            // radial stress screen uses for coils of unequal height.
-            let innerProfile = coil > 0 ? try? await model.CoilVoltageProfile(coil: coil - 1) : nil
-            let outerProfile = coil + 1 < coilCount ? try? await model.CoilVoltageProfile(coil: coil + 1) : nil
-
-            func Sampled(_ points:[PhaseModel.CoilProfilePoint]?) -> [Double] {
-
-                return (0..<slots).map { slot in
-
-                    let z = zBottom + (Double(slot) + 0.5) * (zTop - zBottom) / Double(slots)
-                    return AppController.PotentialAt(profile: points, z: z, volts: instant.volts)
-                }
-            }
 
             let geometry = TurnLadderModel.LayerGeometry(turnCounts: turnCounts,
                                                          gapCapacitances: gaps.map { $0.capacitance },
@@ -2778,6 +2762,21 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                                                          outerGroundCapacitance: outerGround,
                                                          zBottom: zBottom,
                                                          zTop: zTop)
+
+            // The neighbours' potentials at THIS instant, sampled at the height of each axial slot. A core or a tank is at ground; a
+            // coil is at whatever its own profile says at that height, held at the nearest value past its ends - the same rule the
+            // radial stress screen uses for coils of unequal height. The slot grid is the geometry's own, so the sample heights are
+            // the ones the solve puts its turns at.
+            let innerProfile = coil > 0 ? try? await model.CoilVoltageProfile(coil: coil - 1) : nil
+            let outerProfile = coil + 1 < coilCount ? try? await model.CoilVoltageProfile(coil: coil + 1) : nil
+
+            func Sampled(_ points:[PhaseModel.CoilProfilePoint]?) -> [Double] {
+
+                return (0..<geometry.slotCount).map { slot in
+
+                    return AppController.PotentialAt(profile: points, z: geometry.SlotHeight(slot), volts: instant.volts)
+                }
+            }
 
             profile = try TurnLadderModel.SolveLayer(geometry: geometry,
                                                      vStart: instant.vBelow,
@@ -2818,7 +2817,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
             ductedGapCount = gaps.filter { $0.duct > 0.0 }.count
 
-            notes.append((label: "Winding:", value: "layer, \(turnCounts.count) layers, \(turnCounts.map { String($0) }.joined(separator: "/")) turns"))
+            // The turns per layer is N/L and is generally fractional, so it is shown as the one number every layer holds rather than
+            // as a list of whole counts that the winding does not actually have.
+            let totalTurns = turnCounts.reduce(0.0, +)
+
+            notes.append((label: "Winding:", value: String(format: "layer, %d layers, %.0f turns, %.4g turns/layer", turnCounts.count, totalTurns, totalTurns / Double(turnCounts.count))))
             notes.append((label: "Sense:", value: "starts at the innermost layer, at the lower node"))
             notes.append((label: "Ducts:", value: ductedGapCount > 0 ? "\(ductedGapCount), at gaps \(gaps.enumerated().filter { $0.element.duct > 0.0 }.map { String($0.offset + 1) }.joined(separator: ", "))" : "none"))
         }

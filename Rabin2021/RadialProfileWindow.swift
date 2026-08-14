@@ -262,7 +262,7 @@ class RadialProfileWindow:NSWindowController {
         }
         else {
 
-            noteLabel.stringValue = "Layer winding: solved as a turn-level capacitive network at the stated instant — turn-to-turn along each layer, layer-to-layer between them, and out of the innermost and outermost layers to the neighbouring coils at their own potentials. Layer turn counts are assumed equal with a short last layer, and the cooling ducts are placed at evenly spaced gaps; the design file gives counts and sizes but neither per-layer turns nor duct positions, so both are rules rather than readings. A ducted gap has a much lower layer-to-layer capacitance and so carries much more voltage. The reference is the textbook figure, twice the volts per layer."
+            noteLabel.stringValue = "Layer winding: solved as a turn-level capacitive network at the stated instant — turn-to-turn along each layer, layer-to-layer between them, and out of the innermost and outermost layers to the neighbouring coils at their own potentials. Every layer is assumed to hold the same number of turns — N/L, fractions included, so the layers step axially as the boundary walks through a turn — and the cooling ducts are placed at evenly spaced gaps; the design file gives counts and sizes but neither per-layer turns nor duct positions, so both are rules rather than readings. A ducted gap has a much lower layer-to-layer capacitance and so carries much more voltage. The reference is the textbook figure, twice the volts per layer."
         }
     }
 }

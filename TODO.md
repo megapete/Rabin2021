@@ -135,8 +135,9 @@ rather than tested against it. Standing rule 8.
 
 Two inputs are still assumed, because `PCH_ExcelDesignFile.Winding` does not carry them:
 
-- **Turns per layer.** It has `numRadialSections` and a total turn count, nothing per layer, so `Segment.LayerTurnCounts` assumes
-  equal layers with a short last one. A graded winding will not match.
+- **Turns per layer.** It has `numRadialSections` and a total turn count, nothing per layer, so `Segment.LayerTurnCounts` splits
+  them equally at *N/L* per layer, fractions included, and `SolveLayer` assigns each whole turn to the layer holding its midpoint.
+  A graded winding, whose layer counts are chosen rather than falling out of the height, will not match.
 - **Duct positions.** It has `numRadialDucts` and `radialDuctDimension` — a count and a size — so `LayerGapCapacitances` spreads
   them evenly, exactly as `LayerToLayerCapacitance` already did. A winding whose ducts sit at particular gaps has a much lower Cll
   at those gaps and a higher one everywhere else, and neither routine will show it.
