@@ -1467,6 +1467,51 @@ actor Segment: Equatable /*, Hashable */ {
     // below give each radial gap its own radius, which is where a sheet winding's entire non-uniformity lives and where a layer
     // winding's shunt varies. They deliberately do NOT feed SeriesCapacitance - changing that would move every existing result.
 
+    /// How many ducts a winding with this many radial gaps can actually hold.
+    ///
+    /// A duct lives IN a gap, so there can be no more of them than there are gaps: a design file asking for more is asking for
+    /// something that cannot be built, and the excess is dropped rather than being allowed to consume radial build that does not
+    /// exist. (Nothing in the reader enforces this, so the clamp belongs here.)
+    static func DuctCount(gapCount:Int, requested:Int) -> Int {
+
+        return max(0, min(requested, gapCount))
+    }
+
+    /// Which radial gaps carry a cooling duct, spaced as evenly as the gap count allows. Gap 0 is the innermost.
+    ///
+    /// The rule: with `gapCount` gaps and `ductCount` ducts, one goes every `gapCount/ductCount` gaps, rounded to the nearest gap.
+    /// Duct j (counting from 1) therefore sits at gap round(j · gapCount / ductCount), 1-based - so 3 ducts in a 12-layer winding,
+    /// which has 11 gaps, land at gaps 4, 7 and 11 (11/3 = 3.67, 7.33, 11.0).
+    ///
+    /// NOTE WHAT THAT MEANS AT THE OUTSIDE: j = ductCount gives exactly gapCount, so the outermost gap ALWAYS carries a duct under
+    /// this rule, whatever the counts are, while the innermost never does. That is the rule as specified and it is a defensible
+    /// reading of "evenly spaced"; a centred variant - duct j at (j − ½)·gapCount/ductCount, which for the same winding gives 2, 6
+    /// and 9 - would leave insulation-only gaps at both ends instead. One line, if the shop practice turns out to be the other one.
+    ///
+    /// The positions cannot collide once `ductCount` is clamped to `gapCount`: the step is then at least one gap, so successive
+    /// rounded positions differ by at least one. The Set is belt and braces.
+    static func DuctGaps(gapCount:Int, ductCount:Int) -> Set<Int> {
+
+        guard gapCount > 0, ductCount > 0 else {
+
+            return []
+        }
+
+        let ducts = DuctCount(gapCount: gapCount, requested: ductCount)
+        let step = Double(gapCount) / Double(ducts)
+
+        var result:Set<Int> = []
+
+        for j in 1...ducts {
+
+            // ...rounded, then back to a 0-based index, and held inside the range against any rounding surprise.
+            let position = Int((Double(j) * step).rounded()) - 1
+            result.insert(min(max(position, 0), gapCount - 1))
+        }
+
+        return result
+    }
+
     /// The turn-to-turn capacitance of every radial gap of a SHEET winding, innermost gap first, each formed at its own radius.
     ///
     /// Each turn of a sheet winding is a full-height cylinder, so the turns screen each other completely: no interior turn has a
@@ -1486,7 +1531,7 @@ actor Segment: Equatable /*, Hashable */ {
     ///
     /// The build is taken from the Segment's LIVE radii rather than the BasicSection's pristine `width` - see standing rule 7. The
     /// `.sheet` branch of `CapacitanceTurnToTurn` still uses `width`; the two agree unless the coil has been built up.
-    func SheetGapCapacitances() throws -> [(radius:Double, capacitance:Double, insulation:Double)] {
+    func SheetGapCapacitances() throws -> [(radius:Double, capacitance:Double, insulation:Double, duct:Double)] {
 
         guard !self.isStaticRing else {
 
@@ -1510,23 +1555,63 @@ actor Segment: Equatable /*, Hashable */ {
             return []
         }
 
+        let gapCount = turns - 1
+
         let t = bs.wdgData.turn.radialDimn
         let build = self.r2 - self.r1
-        let tau = (build - Double(turns) * t) / Double(turns - 1)
+
+        // THE DUCTS COME OUT OF THE BUILD FIRST, and this is the whole of the correction. `electricalRadialBuild` in
+        // PCH_ExcelDesignFile.Winding is (numTurnsRadially · turnRadialDimn + numRadialDucts · radialDuctDimension) · overbuild, so
+        // a sheet coil's ducts are already inside the radial build this routine measures. Dividing what is left over by the gap
+        // count without taking them out first spreads every millimetre of oil duct across every gap as though it were paper - on
+        // the SheetAndLayer fixture that is 3 × 6.35 mm of duct smeared over 12 gaps, which puts 1.77 mm of "paper" in a gap that
+        // really holds about 0.3 mm, and makes all twelve gaps identical when three of them are oil ducts.
+        let ductCount = Segment.DuctCount(gapCount: gapCount, requested: bs.wdgData.layers.ducts.numDucts)
+        let ductDimension = ductCount > 0 ? bs.wdgData.layers.ducts.ductDimn : 0.0
+        let ductGaps = Segment.DuctGaps(gapCount: gapCount, ductCount: ductCount)
+
+        let tau = (build - Double(turns) * t - Double(ductCount) * ductDimension) / Double(gapCount)
 
         guard tau > 0.0 else {
 
-            throw SegmentError(info: "The sheet winding's turns fill its whole radial build, leaving no insulation between them", type: .IllegalWindingType)
+            throw SegmentError(info: "The sheet winding's turns and ducts fill its whole radial build, leaving no insulation between the turns", type: .IllegalWindingType)
         }
 
         let h = bs.height
 
-        var result:[(radius:Double, capacitance:Double, insulation:Double)] = []
+        // The stick fraction of the circumference, where a duct is held open by axial sticks - the same substitution
+        // LayerToLayerCapacitance makes for the inter-layer ducts. It is re-formed at each gap's own radius below.
+        let stickWidth = Double(bs.wdgData.discData.numAxialColumns) * bs.wdgData.discData.axialColumnWidth
 
-        for gap in 0..<(turns - 1) {
+        var result:[(radius:Double, capacitance:Double, insulation:Double, duct:Double)] = []
+        var radius = self.r1 + t
 
-            let radius = self.r1 + Double(gap + 1) * t + (Double(gap) + 0.5) * tau
-            result.append((radius: radius, capacitance: ε0 * εPaper * 2.0 * π * radius * (h + 2.0 * tau) / tau, insulation: tau))
+        for gap in 0..<gapCount {
+
+            let duct = ductGaps.contains(gap) ? ductDimension : 0.0
+            let thickness = tau + duct
+
+            // The gap is a cylindrical capacitor at its own radius, through whatever is in it. Written as a reduced thickness
+            // Σ(ℓ/ε) so that a gap holding a duct and one holding only paper come out of the same expression:
+            //
+            //     C = ε0 · 2π·r · (h + 2·t) · [ fs/(τ/εPaper + d/εBoard) + (1 − fs)/(τ/εPaper + d/εOil) ]
+            //
+            // With d = 0 and fs = 0 that is exactly ε0·εPaper·2π·r·(h + 2τ)/τ - DelVecchio 12.47's form, which is what this
+            // routine and the .sheet branch of CapacitanceTurnToTurn have always used - so a coil with no ducts is unchanged to
+            // the last bit. The (h + 2t) fringing term is small here either way, h being the full electrical height.
+            let centre = radius + thickness / 2.0
+            let fs = stickWidth > 0.0 ? stickWidth / (2 * π * centre) : 0.0
+
+            let solid = tau / εPaper
+            let stickColumn = fs / (solid + duct / εBoard)
+            let oilColumn = (1 - fs) / (solid + duct / εOil)
+
+            result.append((radius: centre,
+                           capacitance: ε0 * 2.0 * π * centre * (h + 2.0 * thickness) * (stickColumn + oilColumn),
+                           insulation: tau,
+                           duct: duct))
+
+            radius += thickness + t
         }
 
         return result
@@ -1582,10 +1667,11 @@ actor Segment: Equatable /*, Hashable */ {
     /// This is `LayerToLayerCapacitance` gap by gap: the same DelVecchio 12.60 composite, with each gap's own radius in place of the
     /// one Rmean that routine uses for all of them. Gap k sits between layer k and layer k + 1 at r1 + (k + 1)·(build/L).
     ///
-    /// The ducts are still spread evenly over the L − 1 gaps, exactly as `LayerToLayerCapacitance` does, because that is all the
-    /// design file supports: `Winding` carries `numRadialDucts` and `radialDuctDimension` - a count and a size - and no positions. A
-    /// winding whose ducts sit at particular gaps has a much lower Cll at those gaps and a higher one everywhere else, and this will
-    /// not show it. Carrying duct positions needs a field in `BasicSectionWindingData.LayerData.DuctData`.
+    /// The ducts are PLACED rather than smeared - see `DuctGaps` for the spacing rule. The design file gives a count and a size and
+    /// no positions, so where they go is a rule rather than a reading, but spacing them evenly is much closer to a real winding than
+    /// spreading a fraction of a duct into every gap: a gap holding a duct has a far lower Cll than one holding only solid
+    /// insulation, and the smeared form reports neither value anywhere. `LayerToLayerCapacitance`, which feeds the series
+    /// capacitance, still smears them - see TODO.md.
     func LayerGapCapacitances() throws -> [(radius:Double, capacitance:Double, insulation:Double, duct:Double)] {
 
         guard !self.isStaticRing else {
@@ -1610,13 +1696,18 @@ actor Segment: Equatable /*, Hashable */ {
             return []
         }
 
+        let gapCount = layers - 1
+
         let H = bs.height
         let tIns = bs.wdgData.layers.interLayerInsulation
-        let tDuct = Double(bs.wdgData.layers.ducts.numDucts) * bs.wdgData.layers.ducts.ductDimn / Double(layers - 1)
+
+        let ductCount = Segment.DuctCount(gapCount: gapCount, requested: bs.wdgData.layers.ducts.numDucts)
+        let ductDimension = ductCount > 0 ? bs.wdgData.layers.ducts.ductDimn : 0.0
+        let ductGaps = Segment.DuctGaps(gapCount: gapCount, ductCount: ductCount)
 
         let solid = tIns / εPaper
 
-        guard solid + tDuct > 0.0 else {
+        guard solid + ductDimension > 0.0 else {
 
             throw SegmentError(info: "Layer winding has no insulation between layers", type: .IllegalWindingType)
         }
@@ -1625,9 +1716,10 @@ actor Segment: Equatable /*, Hashable */ {
 
         var result:[(radius:Double, capacitance:Double, insulation:Double, duct:Double)] = []
 
-        for gap in 0..<(layers - 1) {
+        for gap in 0..<gapCount {
 
             let radius = self.r1 + Double(gap + 1) * pitch
+            let tDuct = ductGaps.contains(gap) ? ductDimension : 0.0
 
             // The stick fraction is a fraction of THIS gap's circumference, so it has to be re-formed at each radius rather than
             // carried over from the mean one - the same substitution LayerToLayerCapacitance makes, evaluated in the right place.

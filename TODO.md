@@ -141,7 +141,26 @@ Two inputs are still assumed, because `PCH_ExcelDesignFile.Winding` does not car
   them evenly, exactly as `LayerToLayerCapacitance` already did. A winding whose ducts sit at particular gaps has a much lower Cll
   at those gaps and a higher one everywhere else, and neither routine will show it.
 
-Both need a field in `BasicSectionWindingData.LayerData` and somewhere to fill it from.
+Turns per layer needs a field in `BasicSectionWindingData.LayerData` and somewhere to fill it from. **Duct positions no longer do
+(2026-08-14):** `Segment.DuctGaps` spaces them evenly over the gaps — duct *j* of *n* at gap `round(j·gaps/n)`, with the count
+clamped to the gap count — so `LayerGapCapacitances` and `SheetGapCapacitances` place them instead of smearing them. It is a rule
+rather than a reading, and one property of it is worth knowing: *j = n* lands exactly on `gaps`, so **the outermost gap always
+carries a duct and the innermost never does**. A centred variant, duct *j* at `(j − ½)·gaps/n`, would put insulation-only gaps at
+both ends; it is one line in `DuctGaps` if shop practice turns out to be that one.
+
+### 8c. `LayerToLayerCapacitance` still spreads the ducts, and the α screen inherits it
+
+The per-gap routines place the ducts; the aggregate `LayerToLayerCapacitance`, which feeds `SeriesCapacitance` and so the whole
+simulation, still uses `tDuct = numDucts·ductDimn/(numLayers − 1)` — a fraction of a duct in every gap. **This was left alone on
+purpose**, because changing it moves every existing layer-winding result and there is no obviously right single Cll for a coil whose
+gaps genuinely differ: the Stein layer formula wants one representative value, and the smeared duct is a defensible way to get one.
+
+It has a visible consequence. The radial profile's α screen (`α = √(Cg/Cs)`, line-end gradient `α/tanh α`) reads Cs through
+`CoilSeriesCapacitance` and so through the smeared aggregate, while the profile itself is solved with the ducts placed. On a coil
+with no ducts the two agree closely — 2.46× against 2.71× on the `SheetAndLayer` layer coil before the ducts were placed. With them
+placed the solve goes to 3.68× while the screen stays at 2.71×, and that gap is the two models describing different windings rather
+than a disagreement about one. Both the window and the report say which basis the screen is on. Resolving it means deciding what a
+single representative Cll should be for a ducted layer winding, which is a modelling question and not a bug.
 
 ### 8b. The sheet series capacitance still uses the pristine BasicSection width
 

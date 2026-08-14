@@ -22,9 +22,12 @@
 //  WHAT THE SHAPE MEANS is not the same for the two winding types, and the note under the picker says which is on screen:
 //
 //   - A SHEET winding is a pure series chain, because every turn is a full-height cylinder that completely screens the next from
-//     everything outside the coil. So the profile is nothing but the variation of the gap capacitance with radius: C ∝ r makes
-//     ΔV ∝ 1/r, and the innermost gap is always the worst, by exactly the ratio of the outer radius to the inner. A gentle, entirely
-//     predictable slope - and if it comes out FLAT, the per-gap radii have stopped reaching the solve.
+//     everything outside the coil. What the chain does depends entirely on whether the coil has COOLING DUCTS in it. With none, the
+//     only thing that varies is the gap capacitance's growth with radius - C ∝ r makes ΔV ∝ 1/r, so the innermost gap is worst by
+//     exactly the ratio of the radii, a gentle and entirely predictable slope of a few per cent. Put an oil duct in a gap and that
+//     is swamped: a 6 mm duct beside 0.2 mm of paper has some fifty times the reduced thickness, so it takes some fifty times the
+//     volts, and the profile becomes a flat floor with a spike standing on every ducted gap. Both shapes are real and the picture
+//     says which one this coil has.
 //
 //   - A LAYER winding is a solved network and its profile carries real information: how much more than its share the layer at the
 //     line end takes at the wavefront. The reference line in the annotation is the textbook figure, twice the volts per layer, which
@@ -75,8 +78,15 @@ class RadialProfileWindow:NSWindowController {
         /// What a simple assumption gives for every gap, in volts - an even division for a sheet winding, twice the volts per layer
         /// for a layer one.
         let reference:Double
+        /// How many of the gaps hold a cooling duct. Nothing else about the picture changes as much: a ducted gap carries some
+        /// fifty times the volts of a gap holding only turn insulation, so the note under the graph says which shape is on screen.
+        let ductedGapCount:Int
         /// The classical alpha/tanh(alpha) line-end gradient from the coil's lumped Cs and Cg, for a layer winding. Nil for a
         /// sheet winding, whose model is a closed-form series chain with no alpha in it at all.
+        ///
+        /// NOTE THAT ITS BASIS IS NOT THIS MODEL'S. Cs comes through CoilSeriesCapacitance and so through LayerToLayerCapacitance,
+        /// which still SPREADS the ducts evenly over the gaps rather than placing them. The two therefore describe slightly
+        /// different windings, and on a ducted coil they no longer have to agree closely - see TODO.md.
         let screenEstimate:Double?
         /// Rows for the annotation block, as (label, value) pairs.
         let notes:[(label:String, value:String)]
@@ -87,6 +97,7 @@ class RadialProfileWindow:NSWindowController {
     private let enhancement:Double?
     private let reference:Double
     private let screenEstimate:Double?
+    private let ductedGapCount:Int
     private let notes:[(label:String, value:String)]
     private let peakTestVoltage:Double
 
@@ -100,6 +111,7 @@ class RadialProfileWindow:NSWindowController {
         self.enhancement = contents.enhancement
         self.reference = contents.reference
         self.screenEstimate = contents.screenEstimate
+        self.ductedGapCount = contents.ductedGapCount
         self.notes = contents.notes
         self.peakTestVoltage = peakTestVoltage
 
@@ -235,11 +247,22 @@ class RadialProfileWindow:NSWindowController {
 
         if isSheet {
 
-            noteLabel.stringValue = "Sheet winding: a series chain. Every turn is a full-height cylinder and screens the next completely, so no interior turn has a capacitance to anything outside the coil and the neighbouring coil cannot perturb the distribution — it attaches only to the two driven end turns. The whole of the variation is therefore the gap capacitance's growth with radius (C ∝ r, so ΔV ∝ 1/r), which makes the innermost gap the worst by exactly the ratio of the radii. One instant: every gap is driven by the same coil voltage, so they all peak together."
+            var note = "Sheet winding: a series chain. Every turn is a full-height cylinder and screens the next completely, so no interior turn has a capacitance to anything outside the coil and the neighbouring coil cannot perturb the distribution — it attaches only to the two driven end turns. One instant: every gap is driven by the same coil voltage, so they all peak together."
+
+            if ductedGapCount > 0 {
+
+                note += " The spikes are the COOLING DUCTS. An oil duct is some fifty times the reduced thickness of the turn insulation beside it, so it takes some fifty times the volts, and it swamps the gentle 1/r slope that the radius alone would produce. Duct positions are a spacing rule, not a reading — the design file gives a count and a size only."
+            }
+            else {
+
+                note += " With no duct in the winding the only thing that varies is the gap capacitance's growth with radius (C ∝ r, so ΔV ∝ 1/r), which makes the innermost gap the worst by exactly the ratio of the radii."
+            }
+
+            noteLabel.stringValue = note
         }
         else {
 
-            noteLabel.stringValue = "Layer winding: solved as a turn-level capacitive network at the stated instant — turn-to-turn along each layer, layer-to-layer between them, and out of the innermost and outermost layers to the neighbouring coils at their own potentials. Layer turn counts are assumed equal with a short last layer, and ducts are spread evenly over the gaps; the design file carries neither per-layer turns nor duct positions. The reference is the textbook figure, twice the volts per layer."
+            noteLabel.stringValue = "Layer winding: solved as a turn-level capacitive network at the stated instant — turn-to-turn along each layer, layer-to-layer between them, and out of the innermost and outermost layers to the neighbouring coils at their own potentials. Layer turn counts are assumed equal with a short last layer, and the cooling ducts are placed at evenly spaced gaps; the design file gives counts and sizes but neither per-layer turns nor duct positions, so both are rules rather than readings. A ducted gap has a much lower layer-to-layer capacitance and so carries much more voltage. The reference is the textbook figure, twice the volts per layer."
         }
     }
 }

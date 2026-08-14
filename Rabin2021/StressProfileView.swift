@@ -430,6 +430,9 @@ class StressProfileView:NSView {
 
         let boxSize = NSSize(width: labelWidth + 10.0 + valueWidth + padding * 2.0, height: lineHeight * Double(rows.count) + padding * 2.0)
 
+        /// How finely each segment of the curve is sampled when measuring what a candidate box would cover.
+        let samplesPerSegment = 24
+
         // WHERE THE BOX GOES is measured, not guessed. Six places are tried - left or right, under the allowable line, up in the
         // top corner or down in the bottom one - and the one covering the least of the curve wins. Anything that would sit on the
         // allowable line is rejected outright unless every candidate does: the curve is what the reader came for and the allowable
@@ -454,6 +457,11 @@ class StressProfileView:NSView {
 
         tops.append(plotBottom + boxSize.height + 6.0)
 
+        // And the middle. A profile that is high in places and low in others - a sheet winding with cooling ducts is the case, a few
+        // tall spikes over a floor - leaves its clear space in a BAND between the two, and a box anchored only at the top or the
+        // bottom has to sit on something. Offered last again, so a plot with a clean corner still uses it.
+        tops.append((plotTop + plotBottom + boxSize.height) / 2.0)
+
         var candidates:[NSRect] = []
 
         for top in tops where top - boxSize.height > plotBottom && top <= plotTop {
@@ -466,12 +474,32 @@ class StressProfileView:NSView {
 
         func Cost(_ rect:NSRect) -> Int {
 
-            // One per plotted point the box would cover, and a flat penalty - larger than any profile's point count - for hiding
-            // the allowable line.
-            let covered = curve.filter { rect.contains($0) }.count
+            // The cost is how much of the drawn CURVE the box covers, and the curve is the polyline, not its vertices. Counting
+            // vertices alone reads a box as empty when a steep segment runs straight through it between two points that both fall
+            // outside - which is exactly what a sheet winding's profile does, three tall spikes with everything else on the floor,
+            // and it put the annotation on top of the peak the graph exists to show. The segments are sampled instead.
+            var covered = 0
+
+            for i in 0..<curve.count {
+
+                if rect.contains(curve[i]) { covered += samplesPerSegment }
+
+                guard i + 1 < curve.count else { continue }
+
+                let from = curve[i], to = curve[i + 1]
+
+                for step in 1..<samplesPerSegment {
+
+                    let fraction = CGFloat(step) / CGFloat(samplesPerSegment)
+                    let at = NSPoint(x: from.x + (to.x - from.x) * fraction, y: from.y + (to.y - from.y) * fraction)
+
+                    if rect.contains(at) { covered += 1 }
+                }
+            }
+
             let hidesAllowable = allowableY.map { $0 >= rect.minY && $0 <= rect.maxY } ?? false
 
-            return covered + (hidesAllowable ? 10000 : 0)
+            return covered + (hidesAllowable ? 1000000 : 0)
         }
 
         let box = candidates.min { Cost($0) < Cost($1) } ?? NSRect(x: plotLeft + 12.0, y: topCorner - boxSize.height, width: boxSize.width, height: boxSize.height)

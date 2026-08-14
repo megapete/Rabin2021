@@ -287,22 +287,47 @@ collapses to the linear one. Layers alternate direction, so each starts where th
 the end it actually occupies.
 
 **Cross-checked against α/tanh α on a real design.** On the `SheetAndLayer` fixture (938 turns over 12 layers, 125 kV on the
-outermost lead) the solve puts **51.3 kV** on the outermost inter-layer gap where twice the volts per layer is 20.9 kV — a 2.46×
-concentration at the line end, at 70% of the oil allowable. The classical screen, α = √(Cg/Cs) = 2.69 and a line-end gradient of
-α/tanh α, gives 2.71×. Those are independent routes — a turn-level network against two lumped capacitances — and agreeing to 9% is
-the best evidence available that the network is assembled correctly. The window reports both side by side, as the turn ladder's
-alert already does for a disc. Neither is asserted against the other: they are not quite the same quantity (a continuum line-end
-gradient of a uniform winding, against the worst discrete inter-layer gap), so a tolerance would be fitted rather than tested.
+outermost lead), *before the ducts were placed*, the solve put **51.3 kV** on the outermost inter-layer gap where twice the volts
+per layer is 20.9 kV — a 2.46× concentration at the line end — against **2.71×** for the classical screen, α = √(Cg/Cs) = 2.69 and
+a line-end gradient of α/tanh α. Those are independent routes, a turn-level network against two lumped capacitances, and agreeing
+to 9% is the best evidence available that the network is assembled correctly. That comparison is now historical: with the ducts
+placed the solve reads 3.68× while the screen, which still reads a smeared Cs, stays at 2.71×. The window reports both side by side
+with the basis of each, as the turn ladder's alert already does for a disc. Neither is asserted against the other: they are not
+quite the same quantity (a continuum line-end gradient of a uniform winding, against the worst discrete inter-layer gap), so a
+tolerance would be fitted rather than tested.
 
 **A coil grounded at both ends still has voltage across its gaps**, and the profile says so. Its terminals are tied together, so
 the reference is zero and the enhancement reads `n/a` rather than `1.00x`; but the winding beside it drives its layers
 capacitively, and on the `SHEETLAYER-sheet` run the shorted layer coil carries 4.2 kV on its outermost gap. That is a real
 stress on a coil a designer would not think to look at.
 
-**Two assumptions the design file cannot support**, both surfaced in the window's note: `PCH_ExcelDesignFile.Winding` carries a
-layer *count* and a duct *count* and nothing per layer, so `Segment.LayerTurnCounts` assumes equal layers with a short last one,
-and `LayerGapCapacitances` spreads the ducts evenly over the gaps. A deliberately graded winding, or ducts at particular gaps,
-needs new fields in `BasicSectionWindingData.LayerData`.
+### Cooling ducts are placed, not smeared, and they dominate both winding types
+
+`Segment.DuctGaps` spaces the ducts evenly over the radial gaps — duct *j* of *n* at gap `round(j·gaps/n)`, count clamped to the
+gap count by `DuctCount`, so 3 ducts in a 12-layer winding (11 gaps) land at gaps 4, 7 and 11. The design file gives a count and a
+size and no positions, so this is a rule rather than a reading; `TODO.md` §8a records the one asymmetry it has.
+
+**It matters more for a sheet winding than for a layer one, and that is not obvious.** `electricalRadialBuild` in
+`PCH_ExcelDesignFile.Winding` is `(numTurnsRadially·turnRadialDimn + numRadialDucts·radialDuctDimension)·overbuild`, so a sheet
+coil's ducts are *already inside* the radial build. `SheetGapCapacitances` originally took what was left after the copper and
+divided it by the gap count — which silently spread every millimetre of oil duct across every gap as paper. On the `SheetAndLayer`
+fixture that is 3 × 6.35 mm of duct smeared over 12 gaps: 1.77 mm of "paper" in a gap really holding about 0.18 mm, and all twelve
+gaps identical when three of them are oil ducts. The ducts now come out of the build first.
+
+The effect is large, because an oil duct is not a perturbation on a foil gap — it is some **fifty times** the reduced thickness of
+the turn insulation beside it, and takes about fifty times the volts. The sheet coil's worst gap goes from 4.1 kV at the innermost
+gap (1.09× an even division, the pure 1/r story) to **15.2 kV at gap 4** (4.03×), and the profile stops being a gentle slope and
+becomes a floor with a spike on every ducted gap. The layer coil's worst gap goes from 51.3 kV to **76.8 kV**, 3.68× twice the
+volts per layer. Both shapes are real; the note under the graph says which one is on screen.
+
+**The remaining assumption the design file cannot support** is per-layer turn counts: `Winding` carries a layer *count* and nothing
+per layer, so `Segment.LayerTurnCounts` assumes equal layers with a short last one. A deliberately graded winding needs a new field
+in `BasicSectionWindingData.LayerData`.
+
+**`LayerToLayerCapacitance` still smears**, deliberately — see `TODO.md` §8c. It feeds `SeriesCapacitance`, so changing it moves
+every existing layer-winding result, and there is no obviously right single Cll for a coil whose gaps genuinely differ. The α screen
+reads Cs through it, so on a ducted coil the screen and the profile now describe slightly different windings and no longer have to
+agree closely; both the window and the report say so.
 
 **The y axis may drop the allowable.** Turn-to-turn in a sheet or layer winding runs at a per cent or two of what the paper
 withstands, and scaling to the allowable flattens the profile onto the x axis. `StressProfileView.Plot.allowableMayGoOffScale` is

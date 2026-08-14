@@ -2690,6 +2690,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         let cornerRadius:Double?
         var notes:[(label:String, value:String)] = []
         var screenEstimate:Double? = nil
+        let ductedGapCount:Int
 
         guard let bs = await segment.basicSections.first else {
 
@@ -2704,15 +2705,29 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                                                      gapRadii: gaps.map { $0.radius },
                                                      segmentVoltage: instant.vAbove - instant.vBelow)
 
-            // Two smooth broad faces of foil, so the whole gap is one column of turn insulation and there is NO conductor corner to
-            // concentrate the field - which is the physical difference between this and a disc's turn-to-turn site, where the strand
-            // corner is what governs. A foil EDGE is a different site altogether and is not this check.
-            gapColumns = gaps.map { [DielectricLayer.Paper($0.insulation)] }
+            // Two smooth broad faces of foil, so there is NO conductor corner to concentrate the field - the physical difference
+            // between this and a disc's turn-to-turn site, where the strand corner is what governs. A foil EDGE is a different site
+            // altogether and is not this check. Where a cooling duct sits in the gap, the oil goes into the column behind the paper.
+            gapColumns = gaps.map { gap in
+
+                var column = [DielectricLayer.Paper(gap.insulation)]
+
+                if gap.duct > 0.0 {
+
+                    column.append(DielectricLayer.Oil(gap.duct))
+                }
+
+                return column
+            }
+
             usesCornerModel = false
             cornerRadius = nil
 
+            ductedGapCount = gaps.filter { $0.duct > 0.0 }.count
+
             notes.append((label: "Winding:", value: "sheet, \(Int((await segment.N).rounded())) turns"))
             notes.append((label: "Model:", value: "series chain, each gap at its own radius"))
+            notes.append((label: "Ducts:", value: ductedGapCount > 0 ? "\(ductedGapCount), at gaps \(gaps.enumerated().filter { $0.element.duct > 0.0 }.map { String($0.offset + 1) }.joined(separator: ", "))" : "none"))
         }
         else if wdgType == .layer {
 
@@ -2801,8 +2816,11 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                 screenEstimate = alpha > 0.0 ? alpha / tanh(alpha) : nil
             }
 
+            ductedGapCount = gaps.filter { $0.duct > 0.0 }.count
+
             notes.append((label: "Winding:", value: "layer, \(turnCounts.count) layers, \(turnCounts.map { String($0) }.joined(separator: "/")) turns"))
             notes.append((label: "Sense:", value: "starts at the innermost layer, at the lower node"))
+            notes.append((label: "Ducts:", value: ductedGapCount > 0 ? "\(ductedGapCount), at gaps \(gaps.enumerated().filter { $0.element.duct > 0.0 }.map { String($0.offset + 1) }.joined(separator: ", "))" : "none"))
         }
         else {
 
@@ -2853,6 +2871,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                                             points: points,
                                             enhancement: profile.enhancementOverReference,
                                             reference: profile.reference,
+                                            ductedGapCount: ductedGapCount,
                                             screenEstimate: screenEstimate,
                                             notes: notes)
     }

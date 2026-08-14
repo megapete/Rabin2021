@@ -2925,7 +2925,7 @@ enum SelfTest {
                 // tolerance here would be fitted to one design rather than tested against it. Standing rule 8.
                 if let screen = contents.screenEstimate {
 
-                    text += String(format: "    alpha screen on the same coil: %.2fx (alpha/tanh alpha from lumped Cs and Cg)\n", screen)
+                    text += String(format: "    alpha screen on the same coil: %.2fx (alpha/tanh alpha from lumped Cs and Cg, which still SPREADS the ducts)\n", screen)
                 }
 
                 windows.append(("radialProfile-coil\(contents.coil)", RadialProfileWindow(contents: contents, peakTestVoltage: scenario.peakVoltage)))
