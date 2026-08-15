@@ -62,6 +62,35 @@ class RadialProfileWindow:NSWindowController {
         let worstHeight:Double?
         /// The material carrying the governing field, for the annotation.
         let material:String
+        /// Whether this gap holds a cooling duct. A ducted gap and a plain one are not comparable: the duct is some fifty times the
+        /// reduced thickness of the insulation beside it, so it takes some fifty times the volts AND is allowed a great deal more,
+        /// and the annotation reports the worst of each kind rather than making the reader guess which kind the worst gap was.
+        let hasDuct:Bool
+    }
+
+    /// The worst pair of axially adjacent turns within one layer of a layer winding, already evaluated against the turn insulation.
+    ///
+    /// The gaps this window plots are LAYER-to-layer. This is the other site in the same winding, turn-to-turn, and it is not on the
+    /// graph because it is not per gap - it is one number for the coil. Nil for a sheet winding, whose plotted gaps already are its
+    /// turn-to-turn sites.
+    ///
+    /// READ AT THE SAME SINGLE INSTANT AS THE GAPS, with the same caveat the header note gives: that instant is the one where this
+    /// coil's terminals are furthest apart (t = 0+ is one of the candidates), and it is not necessarily the instant of the steepest
+    /// turn-to-turn gradient, which in a real winding lives at the wavefront. It is a reading at a stated instant, not an envelope.
+    struct TurnToTurnPoint {
+
+        let deltaV:Double
+        /// The voltage that would put the turn paper exactly at its allowable, or nil where it could not be evaluated.
+        let allowableDeltaV:Double?
+        let utilization:Double
+        /// 0 is the innermost layer.
+        let layer:Int
+        /// Where the pair sits, in metres from the top of the bottom yoke.
+        let height:Double
+        /// The paper in the gap between the two turns, in metres. This is the TWO-SIDED turn insulation: half of it belongs to each
+        /// of the two turns, so the two halves together are exactly one turn's figure.
+        let insulation:Double
+        let material:String
     }
 
     /// Everything one of these windows draws. Built by AppController.BuildRadialProfile, so that the menu command and the scripted
@@ -88,6 +117,8 @@ class RadialProfileWindow:NSWindowController {
         /// which still SPREADS the ducts evenly over the gaps rather than placing them. The two therefore describe slightly
         /// different windings, and on a ducted coil they no longer have to agree closely - see TODO.md.
         let screenEstimate:Double?
+        /// The worst turn-to-turn pair of a layer winding. Nil for a sheet winding.
+        let turnToTurn:TurnToTurnPoint?
         /// Rows for the annotation block, as (label, value) pairs.
         let notes:[(label:String, value:String)]
     }
@@ -98,6 +129,7 @@ class RadialProfileWindow:NSWindowController {
     private let reference:Double
     private let screenEstimate:Double?
     private let ductedGapCount:Int
+    private let turnToTurn:TurnToTurnPoint?
     private let notes:[(label:String, value:String)]
     private let peakTestVoltage:Double
 
@@ -112,6 +144,7 @@ class RadialProfileWindow:NSWindowController {
         self.reference = contents.reference
         self.screenEstimate = contents.screenEstimate
         self.ductedGapCount = contents.ductedGapCount
+        self.turnToTurn = contents.turnToTurn
         self.notes = contents.notes
         self.peakTestVoltage = peakTestVoltage
 
@@ -185,46 +218,119 @@ class RadialProfileWindow:NSWindowController {
         return abs(value) >= 1.0 ? String(format: "%.1f V", value) : String(format: "%.3g V", value)
     }
 
+    /// The worst gap of a group, by UTILIZATION rather than by raw volts - the same ranking the report table uses, and for the same
+    /// reason: a gap with a duct in it is allowed a great deal more than one with only paper, so the largest ΔV is not reliably the
+    /// gap in trouble. Where nothing in the group could be evaluated there is no utilization to rank on and the volts are all there
+    /// is, which is better than silently returning whichever gap happened to be last.
+    private static func WorstOf(_ group:[GapPoint]) -> GapPoint? {
+
+        guard group.contains(where: { $0.utilization > 0.0 }) else {
+
+            return group.max { $0.deltaV < $1.deltaV }
+        }
+
+        return group.max { $0.utilization < $1.utilization }
+    }
+
     private func ShowProfile() {
 
-        // The worst gap is chosen by UTILIZATION rather than by raw volts, for the same reason the report table is ranked that way:
-        // a gap with a duct in it is allowed a great deal more than one with only paper, so the largest ΔV is not reliably the gap
-        // in trouble. On a sheet winding the two agree - every gap has the same insulation - but on a layer winding with ducts at
-        // some gaps and not others they do not.
-        let worst = points.max { $0.utilization < $1.utilization } ?? points.max { $0.deltaV < $1.deltaV }
+        // WHICH GAP IS WORST HAS TWO ANSWERS ON A DUCTED WINDING, and reporting only one of them is what this block exists to avoid.
+        // The gap carrying the most VOLTS is the spike on the graph, and it is a ducted gap wherever the coil has one: an oil duct is
+        // some fifty times the reduced thickness of the paper beside it, so it takes some fifty times the volts. The gap nearest its
+        // ALLOWABLE is the one the design turns on, and it is usually a gap with no duct in it, because the duct is allowed most of
+        // what it takes. Neither number answers the other's question, so both are reported, each against its own kind, and the one
+        // that governs is marked. On a winding with no duct there is only one kind and only one block.
+        let ducted = points.filter { $0.hasDuct }
+        let plain = points.filter { !$0.hasDuct }
+        let worstDucted = RadialProfileWindow.WorstOf(ducted)
+        let worstPlain = RadialProfileWindow.WorstOf(plain)
+        let split = worstDucted != nil && worstPlain != nil
+        let governing = [worstPlain, worstDucted].compactMap { $0 }.max { $0.utilization < $1.utilization }
 
         var annotation = notes
 
-        if let worst {
+        /// One gap as two rows: where it is and what it carries, then what that is against its allowable.
+        func Describe(_ gap:GapPoint, label:String) {
 
-            annotation.append((label: "Worst gap:", value: "\(worst.index + 1) of \(points.count), at r = \(String(format: "%.1f mm", worst.radius * 1000.0))"))
-            annotation.append((label: "ΔV there:", value: RadialProfileWindow.Volts(worst.deltaV)))
+            var summary = "\(gap.index + 1) of \(points.count), at r = \(String(format: "%.1f mm", gap.radius * 1000.0)) — ΔV \(RadialProfileWindow.Volts(gap.deltaV))"
 
-            if let allowable = worst.allowableDeltaV {
+            if let height = gap.worstHeight {
 
-                // Turn-to-turn in a sheet or layer winding is normally a small fraction of what the paper withstands, which puts
-                // the allowable far off the top of a y axis scaled to the data - see StressProfileView's note on
-                // allowableScaleLimit. Say so, so that a reader does not go looking for a dashed line that is not there.
-                let offScale = allowable > StressProfileView.allowableScaleLimit * worst.deltaV
-
-                annotation.append((label: "Allowable ΔV:", value: "\(RadialProfileWindow.Volts(allowable)) (\(worst.material))\(offScale ? " — off scale" : "")"))
-                annotation.append((label: "Utilization:", value: String(format: "%.1f%% of allowable", worst.utilization * 100.0)))
+                summary += String(format: ", at height %.0f mm", height * 1000.0)
             }
 
-            if let height = worst.worstHeight {
+            annotation.append((label: label, value: summary))
 
-                annotation.append((label: "At height:", value: String(format: "%.0f mm", height * 1000.0)))
+            guard let allowable = gap.allowableDeltaV else {
+
+                annotation.append((label: "Utilization:", value: "not evaluated — no insulation in the gap, or no volts across it"))
+                return
             }
 
+            // Turn-to-turn in a sheet or layer winding is normally a small fraction of what the paper withstands, which puts the
+            // allowable far off the top of a y axis scaled to the data - see StressProfileView's note on allowableScaleLimit. Say
+            // so, so that a reader does not go looking for a dashed line that is not there.
+            let offScale = allowable > StressProfileView.allowableScaleLimit * gap.deltaV
+            var reading = String(format: "%.1f%% of %@ allowable (%@)", gap.utilization * 100.0, RadialProfileWindow.Volts(allowable), gap.material)
+
+            if offScale {
+
+                reading += " — off scale"
+            }
+
+            // Only worth saying where there are two kinds to choose between.
+            if split, gap.index == governing?.index {
+
+                reading += " — governs"
+            }
+
+            annotation.append((label: "Utilization:", value: reading))
+        }
+
+        if let worstPlain {
+
+            Describe(worstPlain, label: split ? "Worst gap (no duct):" : "Worst gap:")
+        }
+
+        if let worstDucted {
+
+            Describe(worstDucted, label: split ? "Worst gap (with duct):" : "Worst gap:")
+        }
+
+        // The turn-to-turn site, which is not on the graph because it is one number for the coil rather than one per gap. It is the
+        // other thing a layer winding has to withstand and it is nowhere else in the program - AppendTurnToTurnSites takes .disc and
+        // skips everything else.
+        if let turnToTurn {
+
+            annotation.append((label: "Worst turn-to-turn:", value: String(format: "%@ in layer %d, at height %.0f mm, across %.2f mm of paper",
+                                                                           RadialProfileWindow.Volts(turnToTurn.deltaV),
+                                                                           turnToTurn.layer + 1,
+                                                                           turnToTurn.height * 1000.0,
+                                                                           turnToTurn.insulation * 1000.0)))
+
+            if let allowable = turnToTurn.allowableDeltaV {
+
+                annotation.append((label: "Utilization:", value: String(format: "%.1f%% of %@ allowable (%@)",
+                                                                        turnToTurn.utilization * 100.0,
+                                                                        RadialProfileWindow.Volts(allowable),
+                                                                        turnToTurn.material)))
+            }
+        }
+
+        if !points.isEmpty {
+
+            // The largest ΔV anywhere in the winding against the simple assumption - so on a ducted coil this is the ducted gap's
+            // number, whichever gap governs. That is the comparison the reference exists for: it asks how far the real distribution
+            // departs from an even one, not how close anything is to breaking down.
             if let enhancement {
 
-                annotation.append((label: "Over reference:", value: String(format: "%.2fx", enhancement)))
+                annotation.append((label: "Peak ΔV over reference:", value: String(format: "%.2fx", enhancement)))
             }
             else {
 
                 // A coil grounded at both ends. Its gaps still carry voltage - the winding beside it drives them capacitively -
                 // but there is no terminal voltage to measure them against, and saying so beats printing 1.00x.
-                annotation.append((label: "Over reference:", value: "n/a — the coil has no voltage across its terminals"))
+                annotation.append((label: "Peak ΔV over reference:", value: "n/a — the coil has no voltage across its terminals"))
             }
 
             if let screenEstimate {
@@ -262,7 +368,7 @@ class RadialProfileWindow:NSWindowController {
         }
         else {
 
-            noteLabel.stringValue = "Layer winding: solved as a turn-level capacitive network at the stated instant — turn-to-turn along each layer, layer-to-layer between them, and out of the innermost and outermost layers to the neighbouring coils at their own potentials. Every layer is assumed to hold the same number of turns — N/L, fractions included, so the layers step axially as the boundary walks through a turn — and the cooling ducts are placed at evenly spaced gaps; the design file gives counts and sizes but neither per-layer turns nor duct positions, so both are rules rather than readings. A ducted gap has a much lower layer-to-layer capacitance and so carries much more voltage. The reference is the textbook figure, twice the volts per layer."
+            noteLabel.stringValue = "Layer winding: solved as a turn-level capacitive network at the stated instant — turn-to-turn along each layer, layer-to-layer between them, and out of the innermost and outermost layers to the neighbouring coils at their own potentials. Every layer is assumed to hold the same number of turns — N/L, fractions included, so the layers step axially as the boundary walks through a turn — and the cooling ducts are placed at evenly spaced gaps; the design file gives counts and sizes but neither per-layer turns nor duct positions, so both are rules rather than readings. A ducted gap has a much lower layer-to-layer capacitance and so carries much more voltage — and is allowed a great deal more of it — so the worst gap WITH a duct and the worst gap WITHOUT one are reported separately, and the one nearer its allowable is marked as governing. The last pair of rows is a different site again: the worst two axially adjacent turns within a layer, across one turn's own paper. The reference is the textbook figure, twice the volts per layer."
         }
     }
 }

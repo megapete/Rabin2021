@@ -268,7 +268,8 @@ Two things that fed it were also wrong, and both **understated** every number it
 
 `DielectricStress.AppendTurnToTurnSites` takes `.disc` and skips everything else, so **a sheet or layer winding got no
 turn-to-turn or layer-to-layer number anywhere in the report**. `RadialProfileWindow` is where they are looked at: one value per
-radial gap, innermost first, with the paper-impulse allowable from the same `DielectricStress.Evaluate` the report uses.
+radial gap, innermost first, with the paper-impulse allowable from the same `DielectricStress.Evaluate` the report uses, plus a
+layer winding's worst turn-to-turn pair beside them (see below — the gaps are layer-to-layer and do not cover it).
 
 **A sheet winding is a pure series chain, and this is a physical result, not a simplification.** Every turn is a full-height
 cylinder, so each turn completely screens the next from everything outside the coil: no interior turn has a capacitance to
@@ -327,6 +328,33 @@ worst gap comes out at depends on whether the two coincide. On the `SheetAndLaye
 reads **76.8 kV (3.68×)** with the ducts at 4/7/11, where the outermost gap carries one, and **32.0 kV (1.54×)** centred at 2/6/9,
 where the line-end gap is plain insulation and the ducts sit down in the low-voltage part of the winding. A sheet winding is not
 sensitive this way — its chain is uniform apart from 1/r, so a duct carries much the same wherever it is put. `TODO.md` §8a.
+
+### The worst gap has two answers on a ducted coil, and the turn-to-turn pair is a third site
+
+Rank the gaps by **volts** and the answer is a ducted gap in every ducted winding, for the reason above: the duct is some fifty
+times the reduced thickness of the paper beside it, so it takes some fifty times the volts and it is the spike on the graph. Rank
+them by **utilization** and the answer is usually a gap with no duct in it, because the duct is *allowed* most of what it takes.
+Reporting only one of the two invites the reader to check the graph, find a bigger number on it than the annotation quotes, and
+distrust both. `RadialProfileWindow` therefore reports the worst of **each kind**, each against its own allowable, and marks the
+one that governs; the graph's own marker stays on the governing gap, which is what `StressProfileView.Plot.worst` picks. Where the
+coil has no duct there is one kind and one block, exactly as before. The self-test line prints both as well — it used to print the
+largest ΔV under the *governing* gap's index, which read as one gap with two numbers on it.
+
+**Turn-to-turn in a layer winding is a different site again, and it is now reported.** The gaps are layer-to-layer, across the
+interlayer insulation and any duct; turn-to-turn is across one turn's own paper, between two turns that are axially adjacent within
+a layer. Neither implies the other — the volts are smaller by roughly the turns per layer and so is the insulation — so which is
+nearer its limit is a fact about the design. `SolveLayer` already has the answer in the network it solved (these are the pairs the
+`Ctt` edges were built on) and returns the worst of them with its layer and height; `BuildRadialProfile` evaluates it **exactly as
+`AppendTurnToTurnSites` evaluates a disc's**: laminar rather than coaxial, two half-wraps of τ/2 rather than one span of τ, and the
+same conductor corner at both ends. The half-wrap split is not cosmetic — the allowable is taken at the governing layer's *own*
+thickness and thinner paper is allowed a higher field, so the two forms give different utilizations for the same volts, and a disc
+and a layer coil in one report must not disagree about what a turn's paper withstands.
+
+It is read at the **same single instant as the gaps**, which is the one where that coil's terminals are furthest apart (`t = 0+` is
+among the candidates `WorstInstant` weighs). That is the right instant for the gaps — they are one network driven by one coil
+voltage and they peak together — but it need not be the instant of the steepest turn-to-turn gradient, which in a real winding
+lives at the wavefront. Where a later instant wins on terminal volts, treat the turn-to-turn figure as a reading at the stated
+instant rather than as an envelope over the run.
 
 **The remaining assumption the design file cannot support** is per-layer turn counts: `Winding` carries a layer *count* and nothing
 per layer, so `Segment.LayerTurnCounts` splits the turns equally — *N/L* per layer, **fractions and all**. 938 turns over 12 layers

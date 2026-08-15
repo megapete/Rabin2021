@@ -2686,6 +2686,10 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         let wdgType = await segment.wdgType
         let profile:TurnLadderModel.RadialProfile
         let gapColumns:[[DielectricLayer]]
+        /// Which gaps hold a cooling duct, gap for gap with the profile. The annotation reports the worst ducted gap and the worst
+        /// plain one separately, because a duct takes some fifty times the volts of the paper beside it and is allowed a great deal
+        /// more, so the two are not on the same scale and the larger ΔV is not the gap in trouble.
+        let gapHasDuct:[Bool]
         let usesCornerModel:Bool
         let cornerRadius:Double?
         var notes:[(label:String, value:String)] = []
@@ -2722,6 +2726,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
             usesCornerModel = false
             cornerRadius = nil
+            gapHasDuct = gaps.map { $0.duct > 0.0 }
 
             ductedGapCount = gaps.filter { $0.duct > 0.0 }.count
 
@@ -2801,6 +2806,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
             usesCornerModel = true
             cornerRadius = DielectricStress.CornerRadius(thickness: bs.wdgData.turn.strandRadial, width: bs.wdgData.turn.strandAxial)
+            gapHasDuct = gaps.map { $0.duct > 0.0 }
 
             // The classical screen for the same quantity, from the coil's LUMPED capacitances rather than from the turn network:
             // alpha = sqrt(Cg/Cs) and a line-end gradient of alpha/tanh(alpha). This is the layer-winding counterpart of the alpha
@@ -2862,7 +2868,51 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                                                        allowableDeltaV: check.flatMap { $0.averageUtilization > 0.0 ? gap.deltaV / $0.averageUtilization : nil },
                                                        utilization: check?.averageUtilization ?? 0.0,
                                                        worstHeight: gap.worstHeight,
-                                                       material: check.map { "\($0.material)" } ?? "-"))
+                                                       material: check.map { "\($0.material)" } ?? "-",
+                                                       hasDuct: gap.index < gapHasDuct.count ? gapHasDuct[gap.index] : false))
+        }
+
+        // The TURN-TO-TURN site of a layer winding, which the solve found in the same network the gaps came out of. It is not a gap
+        // and does not go on the graph: the graph is per gap and this is one number for the coil.
+        //
+        // The site is two conductors stacked AXIALLY at the same radius, so the field is laminar rather than coaxial - hence no
+        // innerRadius, where every gap above has one - and the stack between them is the turns' own paper. τ is the TWO-SIDED turn
+        // insulation, which is the whole of what is in the gap because each of the two turns contributes half of it (standing rule 4,
+        // and the same τ CapacitanceTurnToTurn builds the Ctt this ΔV was solved through).
+        //
+        // Built EXACTLY as AppendTurnToTurnSites builds a disc's turn-to-turn site - two half-wraps rather than one span of τ, and
+        // the same conductor corner at both ends - so that the two screens cannot disagree about what a turn's paper withstands. The
+        // split is not cosmetic: the allowable is evaluated at the GOVERNING LAYER'S own thickness, and thinner paper is allowed a
+        // higher field, so one layer of τ and two of τ/2 give different utilizations for the same volts.
+        var turnToTurn:RadialProfileWindow.TurnToTurnPoint? = nil
+
+        if let pair = profile.turnToTurn, bs.wdgData.turn.turnInsulation > 0.0 {
+
+            let tau = bs.wdgData.turn.turnInsulation
+
+            var site = DielectricStress.StressSite(kind: .turnToTurn,
+                                                   location: "Coil \(coil), layer \(pair.layer + 1), turn to turn",
+                                                   voltageTerms: [],
+                                                   columns: [[DielectricLayer.Paper(tau / 2.0), DielectricLayer.Paper(tau / 2.0)]],
+                                                   innerRadius: nil,
+                                                   usesCornerModel: usesCornerModel,
+                                                   gapLength: tau)
+
+            if let cornerRadius {
+
+                site.cornerRadius = cornerRadius
+                site.farCornerRadius = cornerRadius
+            }
+
+            let check = DielectricStress.Evaluate(site: site, deltaV: pair.deltaV, time: 0.0)
+
+            turnToTurn = RadialProfileWindow.TurnToTurnPoint(deltaV: pair.deltaV,
+                                                             allowableDeltaV: check.flatMap { $0.averageUtilization > 0.0 ? pair.deltaV / $0.averageUtilization : nil },
+                                                             utilization: check?.averageUtilization ?? 0.0,
+                                                             layer: pair.layer,
+                                                             height: pair.height,
+                                                             insulation: tau,
+                                                             material: check.map { "\($0.material)" } ?? "-")
         }
 
         notes.append((label: "Coil voltage:", value: String(format: "%.2f kV", abs(profile.segmentVoltage) / 1000.0)))
@@ -2876,6 +2926,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
                                             reference: profile.reference,
                                             ductedGapCount: ductedGapCount,
                                             screenEstimate: screenEstimate,
+                                            turnToTurn: turnToTurn,
                                             notes: notes)
     }
 

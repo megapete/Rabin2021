@@ -2904,20 +2904,48 @@ enum SelfTest {
 
                 let contents = try await AppController.BuildRadialProfile(model: model, segment: segment, instant: instant)
 
-                // %g, not %.1f, on both voltages. A coil grounded at both ends comes out at a few nanovolts rather than at exactly
+                // TWO WORSTS, printed separately and never merged into one. The gap carrying the most volts is a ducted gap wherever
+                // the coil has one, and the gap nearest its allowable is usually a plain one, because the duct is allowed most of
+                // what it takes. Printing the larger voltage under the governing gap's index - which this line used to do - reads as
+                // one gap with two numbers on it.
+                //
+                // %g, not %.1f, on the voltages. A coil grounded at both ends comes out at a few nanovolts rather than at exactly
                 // zero, and %.1f prints that as "0.0 V" beside a perfectly real enhancement ratio - the shape is scale-invariant and
                 // survives however small the driving voltage gets. Printing "1.04x the reference of 0.0 V" reads as a bug in the
                 // ratio when it is only a bug in the format.
-                text += String(format: "  coil %d (%@): %d gaps, worst %g V at gap %d of %d, %@ the reference of %g V, at %@\n",
+                let peakGap = contents.points.max { $0.deltaV < $1.deltaV }
+                let governingGap = contents.points.max { $0.utilization < $1.utilization }
+
+                func Kind(_ gap:RadialProfileWindow.GapPoint?) -> String {
+
+                    return gap.map { $0.hasDuct ? " (with duct)" : " (no duct)" } ?? ""
+                }
+
+                text += String(format: "  coil %d (%@): %d gaps, peak ΔV %g V at gap %d%@, worst utilization %.1f%% at gap %d%@, %@ the reference of %g V, at %@\n",
                                contents.coil,
                                wdgType == .sheet ? "sheet" : "layer",
                                contents.points.count,
-                               contents.points.map { $0.deltaV }.max() ?? 0.0,
-                               (contents.points.max { $0.utilization < $1.utilization }?.index ?? -1) + 1,
-                               contents.points.count,
+                               peakGap?.deltaV ?? 0.0,
+                               (peakGap?.index ?? -1) + 1,
+                               Kind(peakGap),
+                               (governingGap?.utilization ?? 0.0) * 100.0,
+                               (governingGap?.index ?? -1) + 1,
+                               Kind(governingGap),
                                contents.enhancement.map { String(format: "%.2fx", $0) } ?? "n/a against",
                                contents.reference,
                                instant.label)
+
+                // The other site in a layer winding, and the only place in the program it is reported: two axially adjacent turns
+                // across one turn's paper, out of the same network solve as the gaps.
+                if let turnToTurn = contents.turnToTurn {
+
+                    text += String(format: "    turn-to-turn on the same coil: %g V in layer %d at height %.0f mm, %.1f%% of allowable across %.2f mm of paper\n",
+                                   turnToTurn.deltaV,
+                                   turnToTurn.layer + 1,
+                                   turnToTurn.height * 1000.0,
+                                   turnToTurn.utilization * 100.0,
+                                   turnToTurn.insulation * 1000.0)
+                }
 
                 // The independent check on a layer solve, and the reason it is printed rather than asserted: alpha/tanh(alpha) comes
                 // from the coil's LUMPED Cs and Cg while the profile comes from a turn-level network, so agreement is real evidence

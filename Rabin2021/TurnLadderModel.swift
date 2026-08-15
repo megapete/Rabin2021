@@ -315,6 +315,26 @@ struct TurnLadderModel:Sendable {
         /// gap voltages from zero, since the chain's magnitudes do not depend on which terminal is at the inside; for a layer
         /// winding it is the solved network. Kept mainly so VerifySelf can assert on it.
         let turnPotentials:[Double]
+        /// The worst pair of AXIALLY adjacent turns within one layer, for a layer winding.
+        ///
+        /// A DIFFERENT SITE from the gaps above, and the other half of what a layer winding has to withstand: the gaps are
+        /// layer-to-layer, across the interlayer insulation and any duct, while this is turn-to-turn, across one turn's paper. The
+        /// volts are far smaller and so is the insulation, so neither one implies the other and both belong in the report.
+        ///
+        /// Nil for a sheet winding, whose turns ARE the radial gaps - every turn is a full-height cylinder, so its neighbours are
+        /// radial and the gaps above already are the turn-to-turn sites.
+        let turnToTurn:TurnToTurn?
+
+        /// The worst turn-to-turn pair of a layer winding, and where it is.
+        struct TurnToTurn:Sendable {
+
+            /// The volts between the two turns.
+            let deltaV:Double
+            /// The layer they are in, 0 being the innermost.
+            let layer:Int
+            /// The height of the pair, in metres from the top of the bottom yoke.
+            let height:Double
+        }
 
         var worst:RadialGap? {
 
@@ -379,7 +399,8 @@ struct TurnLadderModel:Sendable {
                              segmentVoltage: segmentVoltage,
                              reference: abs(segmentVoltage) / Double(gapCapacitances.count),
                              referenceName: "even division (V/gaps)",
-                             turnPotentials: potentials)
+                             turnPotentials: potentials,
+                             turnToTurn: nil)
     }
 
     /// Everything SolveLayer needs about the winding's geometry.
@@ -512,6 +533,7 @@ struct TurnLadderModel:Sendable {
 
         /// The layer each turn is in, and the axial slot it occupies within that layer.
         var layerOfTurn = [Int](repeating: 0, count: turnCount)
+        var slotOfTurn = [Int](repeating: 0, count: turnCount)
         /// nodeAtSlot[k][s] is the turn at axial slot s of layer k, or nil where that layer has no turn there.
         var nodeAtSlot = [[Int?]](repeating: [Int?](repeating: nil, count: slotCount), count: layerCount)
 
@@ -532,6 +554,7 @@ struct TurnLadderModel:Sendable {
             let slot = min(slotCount - 1, max(0, Int(height.rounded(.down))))
 
             layerOfTurn[turn] = layer
+            slotOfTurn[turn] = slot
             nodeAtSlot[layer][slot] = turn
         }
 
@@ -697,6 +720,24 @@ struct TurnLadderModel:Sendable {
                                   worstHeight: geometry.SlotHeight(worstSlot)))
         }
 
+        // The other site in the winding: two AXIALLY adjacent turns of one layer, across one turn's paper. These are the same pairs
+        // the Ctt edges were built on, so this reads the answer the network already has rather than modelling anything new. It is
+        // worth having beside the gaps because the two do not track each other - the turn-to-turn volts are of order the volts across
+        // one turn while a gap carries a whole layer's worth, and the insulation is smaller by about as much, so which of the two is
+        // nearer its allowable is a fact about the design rather than something known in advance.
+        var worstTurnToTurn:RadialProfile.TurnToTurn? = nil
+
+        for turn in 0..<(turnCount - 1) where layerOfTurn[turn] == layerOfTurn[turn + 1] {
+
+            let difference = abs(potentials[turn] - potentials[turn + 1])
+
+            guard difference > (worstTurnToTurn?.deltaV ?? -1.0) else { continue }
+
+            worstTurnToTurn = RadialProfile.TurnToTurn(deltaV: difference,
+                                                       layer: layerOfTurn[turn],
+                                                       height: (geometry.SlotHeight(slotOfTurn[turn]) + geometry.SlotHeight(slotOfTurn[turn + 1])) / 2.0)
+        }
+
         // A layer winding's textbook figure. Adjacent layers are wound in opposite directions and joined at one end, so at the far
         // end they are two whole layers of voltage apart - which is the number a designer reaches for, and the thing this solve
         // exists to check rather than assume.
@@ -706,7 +747,8 @@ struct TurnLadderModel:Sendable {
                              segmentVoltage: vEnd - vStart,
                              reference: 2.0 * voltsPerLayer,
                              referenceName: "2 x volts per layer",
-                             turnPotentials: potentials)
+                             turnPotentials: potentials,
+                             turnToTurn: worstTurnToTurn)
     }
 
     /// Conjugate gradient with Jacobi preconditioning, on the symmetric positive definite system SolveLayer assembles.
@@ -964,6 +1006,19 @@ struct TurnLadderModel:Sendable {
 
             check("layer network holds a constant potential", worstDeviation, 0.0, tolerance: 1.0E-9)
             check("layer network has no gap voltage at constant potential", uniform.gaps.map { $0.deltaV }.max() ?? 0.0, 0.0, tolerance: 1.0E-9)
+
+            // The turn-to-turn site comes out of the same solved potentials, and the same argument covers it. Its absence is a
+            // failure in its own right: every layer here holds ten turns, so there are pairs to find, and a nil means the scan
+            // never ran rather than that the winding has no such site.
+            if let pair = uniform.turnToTurn {
+
+                check("layer network has no turn-to-turn voltage at constant potential", pair.deltaV, 0.0, tolerance: 1.0E-9)
+            }
+            else {
+
+                failures += 1
+                report.append("FAIL the layer solve found no turn-to-turn pair in a winding of ten turns per layer")
+            }
         }
         else {
 
@@ -990,6 +1045,14 @@ struct TurnLadderModel:Sendable {
             }
 
             check("layer solution is symmetric under conductor reversal", worstDeviation, 0.0, tolerance: 1.0E-6)
+
+            // Reversing the conductor maps every adjacent PAIR onto a pair, so the worst turn-to-turn voltage is the same number
+            // read off either solution. This catches a scan that walked over a layer boundary - the crossover pair is a turn apart
+            // electrically but a whole layer apart radially, and picking it up would break this while leaving the profile alone.
+            check("worst turn-to-turn is the same under conductor reversal",
+                  forward.turnToTurn?.deltaV ?? 0.0,
+                  reversed.turnToTurn?.deltaV ?? -1.0,
+                  tolerance: 1.0E-6)
 
             // And the thing the solve exists to show: with a real path out of the winding the profile is NOT the textbook
             // 2 x volts-per-layer everywhere. If this ever comes back at 1.00 the ground capacitances have stopped reaching the
