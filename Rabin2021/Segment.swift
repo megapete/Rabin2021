@@ -1265,6 +1265,10 @@ actor Segment: Equatable /*, Hashable */ {
                 // winding facing it. What lies across 'radialGaps' is a different coil, at an unrelated potential, and that path is a
                 // shunt capacitance handled by PhaseModel.CalculateCapacitanceMatrix, not series energy inside this winding. So Cs alone
                 // is the whole story, and radialGaps is deliberately unused.
+                //
+                // That Cs is now the EXACT series chain 1/Σ(1/C_k) over the coil's gaps rather than a formula in one representative
+                // turn-to-turn capacitance - see BasicSectionSeriesCapacitance. Nothing here has to change for it: the chain is the
+                // same quantity, computed without the averaging.
                 return Cs
             }
             else if self.wdgType == .helical {
@@ -1513,6 +1517,54 @@ actor Segment: Equatable /*, Hashable */ {
         return result
     }
 
+    /// The solid insulation between two adjacent turns of a SHEET winding, in metres.
+    ///
+    /// IT IS A DESIGN DIMENSION, NOT A LEFTOVER. `PCH_ExcelDesignFile.Winding.interLayerInsulation` carries it for a sheet winding as
+    /// well as for a layer one - a foil turn IS a layer - and `LayerGapCapacitances` has always read it. Backing it out of the radial
+    /// build instead measures something else entirely: `electricalRadialBuild` is
+    /// (numTurnsRadially·turnRadialDimn + numRadialDucts·radialDuctDimension)·overbuild and has NO term for the insulation between the
+    /// turns, so (build − copper − ducts)/gaps returns the OVERBUILD ALLOWANCE spread over the gaps and nothing else. On the
+    /// SheetAndLayer fixture that is 0.178 mm - 6% of 35.6 mm over 12 gaps - where the design file says 0.254 mm, and the two being
+    /// the same order of magnitude is a coincidence of that one allowance rather than a reason to trust the derivation.
+    ///
+    /// The leftover survives as a FALLBACK for a file that leaves the field at zero, because a zero gap is an infinite capacitance and
+    /// would take the whole series chain to zero volts with it. It takes the ducts out of the build first, since they are inside it.
+    ///
+    /// The build comes from the Segment's LIVE radii rather than the BasicSection's pristine `width` - standing rule 7 - so every
+    /// route to a sheet winding's insulation now agrees, which they did not before: `CapacitanceTurnToTurn` used `width`.
+    func SheetTurnInsulation() throws -> Double {
+
+        guard self.wdgType == .sheet, let bs = self.basicSections.first else {
+
+            throw SegmentError(info: "", type: .IllegalWindingType)
+        }
+
+        if bs.wdgData.layers.interLayerInsulation > 0.0 {
+
+            return bs.wdgData.layers.interLayerInsulation
+        }
+
+        let turns = Int(bs.N.rounded())
+
+        guard turns >= 2 else {
+
+            throw SegmentError(info: "A sheet winding of one turn has no gap between turns", type: .IllegalWindingType)
+        }
+
+        let gapCount = turns - 1
+        let ductCount = Segment.DuctCount(gapCount: gapCount, requested: bs.wdgData.layers.ducts.numDucts)
+        let ductDimension = ductCount > 0 ? bs.wdgData.layers.ducts.ductDimn : 0.0
+
+        let leftover = ((self.r2 - self.r1) - Double(turns) * bs.wdgData.turn.radialDimn - Double(ductCount) * ductDimension) / Double(gapCount)
+
+        guard leftover > 0.0 else {
+
+            throw SegmentError(info: "The sheet winding has no insulation between its turns, and its turns and ducts fill its whole radial build", type: .IllegalWindingType)
+        }
+
+        return leftover
+    }
+
     /// The turn-to-turn capacitance of every radial gap of a SHEET winding, innermost gap first, each formed at its own radius.
     ///
     /// Each turn of a sheet winding is a full-height cylinder, so the turns screen each other completely: no interior turn has a
@@ -1563,7 +1615,6 @@ actor Segment: Equatable /*, Hashable */ {
         let gapCount = turns - 1
 
         let t = bs.wdgData.turn.radialDimn
-        let build = self.r2 - self.r1
 
         // THE DUCTS ARE PLACED, not smeared: a gap either holds one or it does not, and one that does has some fifty times the
         // reduced thickness of one that does not. Smearing them - which is what dividing the leftover build by the gap count does -
@@ -1572,23 +1623,7 @@ actor Segment: Equatable /*, Hashable */ {
         let ductDimension = ductCount > 0 ? bs.wdgData.layers.ducts.ductDimn : 0.0
         let ductGaps = Segment.DuctGaps(gapCount: gapCount, ductCount: ductCount)
 
-        // THE INSULATION IN A PLAIN GAP IS A DESIGN DIMENSION, NOT A LEFTOVER. `PCH_ExcelDesignFile.Winding.interLayerInsulation`
-        // carries it for a sheet winding as well as for a layer one - a foil turn IS a layer - and `LayerGapCapacitances` has always
-        // read it. Backing it out of the radial build instead measures something else entirely: `electricalRadialBuild` is
-        // (numTurnsRadially·turnRadialDimn + numRadialDucts·radialDuctDimension)·overbuild and has NO term for the insulation between
-        // the turns, so (build − copper − ducts)/gaps returns the OVERBUILD ALLOWANCE spread over the gaps and nothing else. On the
-        // SheetAndLayer fixture that is 0.178 mm - 6% of 35.6 mm over 12 gaps - where the design file says 0.254 mm, and the two
-        // being the same order of magnitude is a coincidence of that one overbuild allowance rather than a reason to trust it.
-        //
-        // The leftover is kept as a FALLBACK for a file that leaves the field at zero: a zero gap is an infinite capacitance and
-        // would take the whole series chain to zero volts with it.
-        let leftover = (build - Double(turns) * t - Double(ductCount) * ductDimension) / Double(gapCount)
-        let tau = bs.wdgData.layers.interLayerInsulation > 0.0 ? bs.wdgData.layers.interLayerInsulation : leftover
-
-        guard tau > 0.0 else {
-
-            throw SegmentError(info: "The sheet winding has no insulation between its turns, and its turns and ducts fill its whole radial build", type: .IllegalWindingType)
-        }
+        let tau = try self.SheetTurnInsulation()
 
         let h = bs.height
 
@@ -1968,6 +2003,42 @@ actor Segment: Equatable /*, Hashable */ {
             return 0.0
         }
 
+        // A SHEET WINDING IS A SERIES CHAIN AND ITS SERIES CAPACITANCE IS EXACT, so it does not go through the "Ctt times a function
+        // of N" shape below at all.
+        //
+        // Every turn is a full-height cylinder and screens the next completely (the argument is in docs/dielectric-stress.md), so no
+        // interior turn has a capacitance to anything but its two radial neighbours and the coil is literally N − 1 capacitors in
+        // series between its two terminals:
+        //
+        //     Cs = 1 / Σ(1/C_k)
+        //
+        // with C_k from SheetGapCapacitances. Nothing is assumed or averaged: the cooling ducts are carried at the gaps they are
+        // actually in, and the 1/r growth of C across the build is carried gap by gap.
+        //
+        // WHAT THIS REPLACES, and why the obvious repair was the wrong one. This used to return DelVecchio's disc formula
+        // Cs = Ctt·(N − 1)/N², with Ctt from the .sheet branch of CapacitanceTurnToTurn - which took τ = (width − N·t)/(N − 1), the
+        // whole leftover build, INCLUDING the ducts. On the SheetAndLayer fixture that is 1.77 mm of notional paper in a gap holding
+        // 0.254 mm. Substituting the real insulation into that formula would have been much worse than leaving it alone: the ducts
+        // would then be gone entirely and Cs would come out about 9x the exact chain, where the smear was 1.33x it. The smear was
+        // wrong twice in opposite directions and mostly cancelling. The chain needs no representative τ at all.
+        //
+        // The disc formula was never derived for this winding: it is an energy argument for N turns lying in a plane, each pair at
+        // V/N, which is the right shape for a disc and merely an approximation of a series chain (Ctt(N − 1)/N² against Ctt/(N − 1),
+        // 17% apart at N = 13 even with a correct τ).
+        if self.wdgType == .sheet {
+
+            let gaps = try self.SheetGapCapacitances()
+
+            guard !gaps.isEmpty, gaps.allSatisfy({ $0.capacitance > 0.0 }) else {
+
+                // One turn, so there is no gap and no series path through the turns. Zero is the honest answer and the callers all
+                // test for it; the old expression divided by N − 1 and returned an infinity.
+                return 0.0
+            }
+
+            return 1.0 / gaps.reduce(0.0) { $0 + 1.0 / $1.capacitance }
+        }
+
         do {
 
             let Ctt = try self.CapacitanceTurnToTurn()
@@ -1994,11 +2065,11 @@ actor Segment: Equatable /*, Hashable */ {
 
                 return Cs
             }
-            else if self.wdgType == .disc || self.wdgType == .sheet {
-                
-                // Del Vecchio method
+            else if self.wdgType == .disc {
+
+                // Del Vecchio method. A sheet winding used to share this branch and no longer does - see the note above.
                 let Cs = Ctt * (N - 1) / (N * N)
-                
+
                 return Cs
             }
             else if self.wdgType == .layer {
@@ -2190,16 +2261,27 @@ actor Segment: Equatable /*, Hashable */ {
             return Ctt
         }
         else if self.wdgType == .sheet {
-            
+
+            // ONE PLAIN GAP, at the mean radius. τ is the design file's insulation between the turns, through
+            // `SheetTurnInsulation`, so this is now what its name says: the capacitance between two adjacent turns across their
+            // paper.
+            //
+            // IT IS NOT THE COIL'S SERIES CAPACITANCE and must not be used as one. A sheet winding's turns are in SERIES, and three
+            // of this fixture's twelve gaps hold a 6.35 mm oil duct that this value knows nothing about - the ducts are 40 times the
+            // reduced thickness of the paper and they dominate the chain. `BasicSectionSeriesCapacitance` takes the exact chain over
+            // `SheetGapCapacitances` instead; see the note there, including why feeding a correct τ into the disc formula was the
+            // worse of the two errors.
+            //
+            // What this used to compute was τ = (width − N·t)/(N − 1) - the whole leftover build, ducts and overbuild allowance
+            // included, 1.77 mm against a real 0.254 mm - and it was the route to Cs.
             let bs = self.basicSections[0]
-            let copperAxial = bs.N * bs.wdgData.turn.radialDimn
-            let tau = (bs.width - copperAxial) / (bs.N - 1)
+            let tau = try self.SheetTurnInsulation()
             let h = bs.height
-            
+
             var Ctt:Double = ε0 * εPaper
             Ctt *= π * (self.r1 + self.r2)
             Ctt *= (h + 2 * tau) / tau
-            
+
             return Ctt
         }
         
@@ -2368,6 +2450,101 @@ actor Segment: Equatable /*, Hashable */ {
         }
 
         report.append(String(format: "floating linearity in n at fixed radius:  worst relative 2nd difference %.2e  %@", worstSecondDifference, worstSecondDifference < 1.0E-10 ? "PASS" : "FAIL"))
+
+        return report
+    }
+
+    /// Self-check for a SHEET winding's capacitances, run from `AppDelegate` under `-PCH_Verify YES`.
+    ///
+    /// Three things are pinned here, all of which have been wrong at some point and none of which a graph would show:
+    ///
+    ///  1. **The gap insulation is READ, not derived.** A plain gap's capacitance must be exactly DelVecchio 12.47's cylindrical
+    ///     form at its own radius, through the design file's τ. The routine this replaced backed τ out of the radial build, which
+    ///     returns the overbuild allowance and not a dimension - see `SheetTurnInsulation`.
+    ///  2. **The series capacitance is the exact chain, and it agrees with the profile.** `BasicSectionSeriesCapacitance` and
+    ///     `TurnLadderModel.SolveSheet` are independent routes over the same gaps: the first says Cs = 1/Σ(1/C_k), the second says
+    ///     ΔV_k = V·(1/C_k)/Σ(1/C_j). Both are statements about ONE charge Q on a series chain, so Q = Cs·V must equal C_k·ΔV_k at
+    ///     every single gap. Putting the disc formula Cs = Ctt(N−1)/N² back breaks this at once, which is the point - it is the
+    ///     substitution that looks harmless.
+    ///  3. **The ducts are in the answer.** A coil with three oil ducts must have a far smaller series capacitance than the same
+    ///     coil without them, since a chain is governed by its smallest links. The failure this catches is the tempting "fix" of
+    ///     feeding the real τ into the disc formula, which drops the ducts entirely and raises Cs about ninefold.
+    static func VerifySheetCapacitance() async -> [String] {
+
+        var report:[String] = ["Sheet winding capacitance self-check"]
+
+        // Roughly the SheetAndLayer fixture's sheet coil: 13 foil turns of 1.27 mm, 0.254 mm between them, three 6.35 mm ducts.
+        let turns = 13.0
+        let turnRadial = 0.00127
+        let insulation = 0.000254
+        let ductDimension = 0.00635
+        let innerRadius = 0.17335
+        let height = 0.6097
+
+        func SheetSegment(ducts:Int, interLayerInsulation:Double) -> Segment? {
+
+            let wdgData = BasicSectionWindingData(type: .sheet,
+                                                  discData: BasicSectionWindingData.DiscData(numAxialColumns: 0, axialColumnWidth: 0.0),
+                                                  layers: BasicSectionWindingData.LayerData(numLayers: 1,
+                                                                                            interLayerInsulation: interLayerInsulation,
+                                                                                            ducts: BasicSectionWindingData.LayerData.DuctData(numDucts: ducts, ductDimn: ductDimension)),
+                                                  turn: BasicSectionWindingData.TurnData(radialDimn: turnRadial, axialDimn: height, turnInsulation: insulation, resistancePerMeter: 0.0, strandRadial: turnRadial, strandAxial: height))
+
+            // The build is the real stack, so that the fallback below has something sensible to divide up.
+            let build = turns * turnRadial + (turns - 1.0) * insulation + Double(ducts) * ductDimension
+            let section = BasicSection(location: LocStruct(radial: 0, axial: 0), N: turns, I: 0.0, wdgData: wdgData, rect: NSRect(x: innerRadius, y: 0.0, width: build, height: height))
+
+            return try? Segment(basicSections: [section], realWindowHeight: 1.0, useWindowHeight: 1.0)
+        }
+
+        guard let ducted = SheetSegment(ducts: 3, interLayerInsulation: insulation),
+              let plain = SheetSegment(ducts: 0, interLayerInsulation: insulation),
+              let gaps = try? await ducted.SheetGapCapacitances(),
+              let Cs = try? await ducted.BasicSectionSeriesCapacitance(),
+              let CsNoDucts = try? await plain.BasicSectionSeriesCapacitance() else {
+
+            return report + ["could not build the sheet segments - FAIL"]
+        }
+
+        // 1. A plain gap against DelVecchio 12.47 written out here, with the design file's τ and no reference to the build.
+        if let firstPlain = gaps.first(where: { $0.duct == 0.0 }) {
+
+            let expected = ε0 * εPaper * 2.0 * π * firstPlain.radius * (height + 2.0 * insulation) / insulation
+            let error = abs(firstPlain.capacitance - expected) / expected
+
+            report.append(String(format: "plain gap is 12.47 at its own radius through the design file's τ:  %.6e vs %.6e  rel %.2e  %@",
+                                 firstPlain.capacitance, expected, error, error < 1.0E-12 ? "PASS" : "FAIL"))
+            report.append(String(format: "  τ used: %.4f mm (the design file's), NOT the leftover build", firstPlain.insulation * 1000.0))
+        }
+        else {
+
+            report.append("no plain gap in a 12-gap coil with 3 ducts - FAIL")
+        }
+
+        // 2. One charge on the chain: Cs·V against C_k·ΔV_k at every gap, through SolveSheet.
+        let V = 45000.0
+
+        if let profile = try? TurnLadderModel.SolveSheet(gapCapacitances: gaps.map { $0.capacitance }, gapRadii: gaps.map { $0.radius }, segmentVoltage: V) {
+
+            let charge = Cs * V
+            var worst = 0.0
+
+            for gap in profile.gaps {
+
+                worst = max(worst, abs(gaps[gap.index].capacitance * gap.deltaV - charge) / charge)
+            }
+
+            report.append(String(format: "series capacitance is the chain the profile solves:  Q = %.6e C, worst gap disagreement %.2e  %@",
+                                 charge, worst, worst < 1.0E-9 ? "PASS" : "FAIL"))
+        }
+        else {
+
+            report.append("the sheet profile would not solve - FAIL")
+        }
+
+        // 3. The ducts are in the answer at all.
+        report.append(String(format: "three oil ducts lower the series capacitance:  %.4f nF with, %.4f nF without (%.1fx)  %@",
+                             Cs * 1.0E9, CsNoDucts * 1.0E9, CsNoDucts / Cs, Cs < CsNoDucts ? "PASS" : "FAIL"))
 
         return report
     }

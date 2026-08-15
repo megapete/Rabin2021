@@ -330,21 +330,36 @@ One consequence worth knowing: with real dimensions the stack (copper + insulati
 because the build carries a percentage allowance rather than a dimensioned insulation. It is 0.9 mm over on the fixture. Only the
 gap radii are affected, and C goes as r, so that is 0.3% on the outermost gap.
 
-`CapacitanceTurnToTurn`'s `.sheet` branch does **neither** of these things and feeds the coil's series capacitance. See `TODO.md`
-§8b — the substitution is not safe on its own there, because that τ is doing double duty as a smear of the ducts.
+**A sheet coil's series capacitance is now the exact chain.** The screening argument above says the coil *is* N − 1 capacitors in
+series between its terminals, so its terminal-to-terminal series capacitance is `1/Σ(1/C_k)` over `SheetGapCapacitances` — no
+representative τ, ducts at the gaps they are in, the 1/r growth carried gap by gap. `BasicSectionSeriesCapacitance` used to return
+DelVecchio's disc formula `Ctt(N−1)/N²` with a `Ctt` built on `τ = (width − N·t)/(N−1)`: the whole leftover build, **ducts
+included**, 1.77 mm of notional paper on the fixture. On `SheetAndLayer` the coil goes from **0.923 nF to 0.695 nF**, ×0.753.
+
+Note which error was which, because the obvious repair was the wrong one. The smeared τ was wrong twice in opposite directions —
+far too much paper, but that paper standing in for the ducts — and the two mostly cancelled, leaving Cs about 1.33× the exact value.
+Substituting the real 0.254 mm into the disc formula would have dropped the ducts altogether and taken Cs to about **9×** it; the
+self-check below measures 10.3× between the ducted coil and the same coil with the ducts removed, which is that error's size. The
+disc formula was never derived for this winding anyway: it is an energy argument for N turns in a plane each at V/N, and even with a
+correct τ it differs from a series chain by 17% at N = 13. `CapacitanceTurnToTurn`'s `.sheet` branch now reads the design file's τ
+too and means what its name says — one plain gap at the mean radius — but it is no longer the route to Cs, and must not be made one.
+
+**`Segment.VerifySheetCapacitance` pins all three of these** and runs under `-PCH_Verify YES` beside the other two self-checks
+(`defaults read com.huberistech.rabin2021 SheetCapacitanceVerification`). The middle check is the one worth knowing about: Cs and
+`TurnLadderModel.SolveSheet` are independent routes over the same gaps, and both are statements about one charge on one chain, so
+`Q = Cs·V` must equal `C_k·ΔV_k` at *every* gap. Putting the disc formula back breaks it immediately.
 
 The effect is large, because an oil duct is not a perturbation on a foil gap — it is some **fifty times** the reduced thickness of
 the turn insulation beside it, and takes about fifty times the volts. The sheet coil's worst gap goes from 4.1 kV at the innermost
 gap (1.09× an even division, the pure 1/r story) to **15.2 kV at gap 2** (4.05×), and the profile stops being a gentle slope and
-becomes a floor with a spike on every ducted gap. Both shapes are real; the note under the graph says which one is on screen. (Those
-two figures were read with the derived τ of 0.178 mm. Reading 0.254 mm from the design file makes each ducted gap a little thinner
-in *reduced* terms relative to the rest of the chain, so the spikes come down about 2% and the plain gaps come up about 40% — from
-roughly 250 V to roughly 340 V, still a floor.)
+becomes a floor with a spike on every ducted gap. Both shapes are real; the note under the graph says which one is on screen. (The
+15.2 kV was read with the derived τ of 0.178 mm; reading the design file's 0.254 mm brings it to **14.9 kV (3.97×)** and lifts the
+plain gaps from about 250 V to about 340 V, still a floor.)
 
 **WHERE the ducts are matters as much as whether they are placed**, on a layer winding, and this is worth understanding before
 trusting a number off that graph. A duct's low capacitance and the line-end concentration are independent effects, so what the
 worst gap comes out at depends on whether the two coincide. On the `SheetAndLayer` layer coil, the same coil at the same instant
-reads **76.8 kV (3.68×)** with the ducts at 4/7/11, where the outermost gap carries one, and **32.0 kV (1.54×)** centred at 2/6/9,
+reads **76.8 kV (3.68×)** with the ducts at 4/7/11, where the outermost gap carries one, and **35.2 kV (1.69×)** centred at 2/6/9,
 where the line-end gap is plain insulation and the ducts sit down in the low-voltage part of the winding. A sheet winding is not
 sensitive this way — its chain is uniform apart from 1/r, so a duct carries much the same wherever it is put. `TODO.md` §8a.
 

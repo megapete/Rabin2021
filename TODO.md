@@ -171,28 +171,24 @@ placed the solve goes to 3.68× while the screen stays at 2.71×, and that gap i
 than a disagreement about one. Both the window and the report say which basis the screen is on. Resolving it means deciding what a
 single representative Cll should be for a ducted layer winding, which is a modelling question and not a bug.
 
-### 8b. The sheet series capacitance is built on a smeared τ that swallows the ducts
+### 8b. ~~The sheet series capacitance is built on a smeared τ that swallows the ducts~~ — DONE (2026-08-15)
 
-`Segment.SheetGapCapacitances` now reads the gap insulation from the design file (`interLayerInsulation`, the same field the layer
-path has always used) and places the ducts. The `.sheet` branch of `CapacitanceTurnToTurn` — which feeds `SeriesCapacitance`, so the
-capacitance matrix and the whole simulation — still does neither: it takes `τ = (width − N·turnRadialDimn)/(N − 1)`, which on the
-`SheetAndLayer` fixture is **1.77 mm** of notional paper in a gap that holds **0.254 mm** of it, because the leftover it divides up
-is three 6.35 mm oil ducts plus a 6% overbuild allowance.
+**Resolved.** `BasicSectionSeriesCapacitance` now returns the exact series chain `1/Σ(1/C_k)` for a sheet winding, and
+`Segment.VerifySheetCapacitance` (under `-PCH_Verify YES`) pins it against `SolveSheet` through the common-charge identity. On the
+`SheetAndLayer` fixture the sheet coil went from 0.923 nF to 0.695 nF (×0.753), which moves every sheet-winding transient result.
+**The trap, kept because it is worth not walking into again.** What was there was DelVecchio's disc formula `Cs = Ctt(N−1)/N²` with
+`Ctt` built on `τ = (width − N·turnRadialDimn)/(N − 1)` — the whole leftover build, three 6.35 mm oil ducts and a 6% overbuild
+allowance included, 1.77 mm of notional paper in a gap holding 0.254 mm. The obvious repair, substituting the design file's
+`interLayerInsulation` into the same formula, would have been **much worse than leaving it alone**: the ducts would have gone
+entirely and Cs would have landed about 9× the exact chain, where the smear was 1.33×. The smear was wrong twice in opposite
+directions and mostly cancelling. The lesson generalises — a wrong input feeding a wrong formula is not repaired one at a time.
 
-**Do not "fix" this by substituting `interLayerInsulation`.** That τ is doing double duty as a smear of the ducts, and dropping them
-would raise the sheet coil's Cs by about 9×. The smear is crude but self-cancelling: Cs comes out ~1.3× the exact value, where
-ignoring the ducts would be ~9×.
+Note this was never the same situation as §8c. For a layer winding there is a genuine modelling question about what one
+representative Cll should be; for a sheet winding there was none, because the exact answer is available in closed form.
 
-The right repair is to stop using the DelVecchio disc formula for a winding it was not derived for. A sheet coil is a **pure series
-chain** (the screening argument in `docs/dielectric-stress.md`), so its terminal-to-terminal series capacitance is exactly
-`1/Σ(1/C_k)` over `SheetGapCapacitances` — no representative τ needed, ducts and the 1/r variation both carried exactly. On the
-fixture that is about 0.75× today's value. It is left for now because it moves every existing sheet-winding simulation result, which
-is a decision and not a bug fix. Note this is *not* the same situation as §8c: for a layer winding there is a real modelling question
-about what one representative Cll should be, and here there is not — the exact answer is available in closed form.
-
-Also, and separately: `SheetGapCapacitances` takes the radial build from the Segment's live `r2 − r1`, per standing rule 7, while
-`CapacitanceTurnToTurn` still uses `basicSections[0].width`. The two agree unless a sheet coil has been built up to carry shields,
-which nothing does today.
+**Still open, and unrelated:** `SheetGapCapacitances` takes the radial build from the Segment's live `r2 − r1`, per standing rule 7,
+while `CapacitanceTurnToTurn` uses `basicSections[0].width`. The two agree unless a sheet coil has been built up to carry shields,
+which nothing does today. (`SheetTurnInsulation`, which both now go through for τ, uses the live radii.)
 
 ### 9. `SteinParameters.gradientEnhancement` interpolates the intermediate case
 

@@ -28,11 +28,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         //     open -a ImpulseDistribution --args -PCH_Verify YES
         //     defaults read com.huberistech.rabin2021 TurnLadderVerification
         //     defaults read com.huberistech.rabin2021 DielectricStressVerification
+        //     defaults read com.huberistech.rabin2021 SheetCapacitanceVerification
         if UserDefaults.standard.bool(forKey: "PCH_Verify") {
 
             TurnLadderModel.VerifySelf()
             DielectricStress.VerifySelf()
-            NSApp.terminate(nil)
+
+            // This one builds Segments, so it is async and the terminate has to wait for it rather than race it.
+            Task {
+
+                UserDefaults.standard.set(await Segment.VerifySheetCapacitance().joined(separator: "\n"), forKey: "SheetCapacitanceVerification")
+                NSApp.terminate(nil)
+            }
+
             return
         }
 
