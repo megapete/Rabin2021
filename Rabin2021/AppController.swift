@@ -2675,6 +2675,22 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         }
     }
 
+    /// The solid insulation in a plain gap, for the annotation, and where the figure came from.
+    ///
+    /// Worth a row of its own because it is the one dimension the whole profile turns on and the only one a reader cannot check
+    /// against the picture: every gap voltage is proportional to its reduced thickness, so a wrong τ moves every number here. Both
+    /// winding types read `interLayerInsulation` from the design file - a foil turn is a layer - and both fall back to what is left
+    /// of the radial build when the file leaves it at zero. The fallback is NOT the same quantity: the build carries a percentage
+    /// overbuild allowance and no insulation term, so what is left over is that allowance and not a dimension. The row says which
+    /// one is in force rather than leaving a reader to work it out.
+    static func GapInsulationNote(gaps:[(radius:Double, capacitance:Double, insulation:Double, duct:Double)], basicSection:BasicSection, between:String) -> String {
+
+        let tau = gaps.first?.insulation ?? 0.0
+        let fromDesignFile = basicSection.wdgData.layers.interLayerInsulation > 0.0
+
+        return String(format: "%.3f mm between %@%@", tau * 1000.0, between, fromDesignFile ? "" : ", derived from the radial build — the design file gives none")
+    }
+
     /// Everything the radial profile window draws, assembled from the model.
     ///
     /// This is separate from the command above it so that the scripted self-test can build the same window from the same numbers
@@ -2732,6 +2748,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
             notes.append((label: "Winding:", value: "sheet, \(Int((await segment.N).rounded())) turns"))
             notes.append((label: "Model:", value: "series chain, each gap at its own radius"))
+            notes.append((label: "Insulation:", value: AppController.GapInsulationNote(gaps: gaps, basicSection: bs, between: "turns")))
             notes.append((label: "Ducts:", value: ductedGapCount > 0 ? "\(ductedGapCount), at gaps \(gaps.enumerated().filter { $0.element.duct > 0.0 }.map { String($0.offset + 1) }.joined(separator: ", "))" : "none"))
         }
         else if wdgType == .layer {
@@ -2829,6 +2846,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
 
             notes.append((label: "Winding:", value: String(format: "layer, %d layers, %.0f turns, %.4g turns/layer", turnCounts.count, totalTurns, totalTurns / Double(turnCounts.count))))
             notes.append((label: "Sense:", value: "starts at the innermost layer, at the lower node"))
+            notes.append((label: "Insulation:", value: AppController.GapInsulationNote(gaps: gaps, basicSection: bs, between: "layers")))
             notes.append((label: "Ducts:", value: ductedGapCount > 0 ? "\(ductedGapCount), at gaps \(gaps.enumerated().filter { $0.element.duct > 0.0 }.map { String($0.offset + 1) }.joined(separator: ", "))" : "none"))
         }
         else {

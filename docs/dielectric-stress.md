@@ -314,13 +314,32 @@ design file gives a count and a size and no positions, so this is a rule rather 
 `PCH_ExcelDesignFile.Winding` is `(numTurnsRadially·turnRadialDimn + numRadialDucts·radialDuctDimension)·overbuild`, so a sheet
 coil's ducts are *already inside* the radial build. `SheetGapCapacitances` originally took what was left after the copper and
 divided it by the gap count — which silently spread every millimetre of oil duct across every gap as paper. On the `SheetAndLayer`
-fixture that is 3 × 6.35 mm of duct smeared over 12 gaps: 1.77 mm of "paper" in a gap really holding about 0.18 mm, and all twelve
-gaps identical when three of them are oil ducts. The ducts now come out of the build first.
+fixture that is 3 × 6.35 mm of duct smeared over 12 gaps: 1.77 mm of "paper" in a gap really holding 0.254 mm, and all twelve
+gaps identical when three of them are oil ducts. The ducts are now placed, and the insulation is read rather than derived.
+
+**The plain gap is a design dimension and is read as one.** `PCH_ExcelDesignFile.Winding.interLayerInsulation` carries it for a
+sheet winding as well as for a layer one — a foil turn *is* a layer — and the layer path has always used it. The sheet path used to
+back it out of the radial build instead, and that measures something else: `electricalRadialBuild` is
+`(numTurnsRadially·turnRadialDimn + numRadialDucts·radialDuctDimension)·overbuild`, with **no insulation term at all**, so
+`(build − copper − ducts)/gaps` returns the overbuild allowance spread over the gaps. On the fixture that is 0.178 mm — 6% of
+35.6 mm over 12 gaps — against the 0.254 mm the file actually specifies. The two landing within 40% of each other is a property of
+that one overbuild allowance and not a reason to trust the derivation. The leftover survives only as a fallback for a file that
+leaves the field at zero, since a zero gap is an infinite capacitance; the window's `Insulation:` row says which is in force.
+
+One consequence worth knowing: with real dimensions the stack (copper + insulation + ducts) need not add up to the radial build,
+because the build carries a percentage allowance rather than a dimensioned insulation. It is 0.9 mm over on the fixture. Only the
+gap radii are affected, and C goes as r, so that is 0.3% on the outermost gap.
+
+`CapacitanceTurnToTurn`'s `.sheet` branch does **neither** of these things and feeds the coil's series capacitance. See `TODO.md`
+§8b — the substitution is not safe on its own there, because that τ is doing double duty as a smear of the ducts.
 
 The effect is large, because an oil duct is not a perturbation on a foil gap — it is some **fifty times** the reduced thickness of
 the turn insulation beside it, and takes about fifty times the volts. The sheet coil's worst gap goes from 4.1 kV at the innermost
 gap (1.09× an even division, the pure 1/r story) to **15.2 kV at gap 2** (4.05×), and the profile stops being a gentle slope and
-becomes a floor with a spike on every ducted gap. Both shapes are real; the note under the graph says which one is on screen.
+becomes a floor with a spike on every ducted gap. Both shapes are real; the note under the graph says which one is on screen. (Those
+two figures were read with the derived τ of 0.178 mm. Reading 0.254 mm from the design file makes each ducted gap a little thinner
+in *reduced* terms relative to the rest of the chain, so the spikes come down about 2% and the plain gaps come up about 40% — from
+roughly 250 V to roughly 340 V, still a floor.)
 
 **WHERE the ducts are matters as much as whether they are placed**, on a layer winding, and this is worth understanding before
 trusting a number off that graph. A duct's low capacitance and the line-end concentration are independent effects, so what the

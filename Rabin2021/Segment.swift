@@ -1527,11 +1527,15 @@ actor Segment: Equatable /*, Hashable */ {
     /// outermost, about 13% for a 30 mm build at a 200 mm inner radius. Small, but it is the whole of the non-uniformity a sheet
     /// winding has, and `CapacitanceTurnToTurn`'s single mean-radius value reports none of it.
     ///
-    /// Geometry: N sheets of `turn.radialDimn` stacked across the build with the remainder shared equally over the N − 1 gaps, so
-    /// gap k lies between sheet k and sheet k + 1, centred at r1 + (k + 1)·t + (k + ½)·τ.
+    /// Geometry: N sheets of `turn.radialDimn` stacked outwards from r1, with τ of insulation in every gap and a duct in some of
+    /// them, so gap k lies between sheet k and sheet k + 1, centred at r1 + (k + 1)·t + (k + ½)·τ plus whatever ducts are below it.
     ///
-    /// The build is taken from the Segment's LIVE radii rather than the BasicSection's pristine `width` - see standing rule 7. The
-    /// `.sheet` branch of `CapacitanceTurnToTurn` still uses `width`; the two agree unless the coil has been built up.
+    /// τ is the design file's `interLayerInsulation` - see the note on it below, and note that the `.sheet` branch of
+    /// `CapacitanceTurnToTurn` does NOT use it and does not remove the ducts either, so it and this routine describe different
+    /// windings. TODO.md §8c.
+    ///
+    /// The build is taken from the Segment's LIVE radii rather than the BasicSection's pristine `width` - see standing rule 7. It is
+    /// used only for the duct-free fallback below; the walk itself is made of dimensions.
     func SheetGapCapacitances() throws -> [(radius:Double, capacitance:Double, insulation:Double, duct:Double)] {
 
         guard !self.isStaticRing else {
@@ -1561,21 +1565,29 @@ actor Segment: Equatable /*, Hashable */ {
         let t = bs.wdgData.turn.radialDimn
         let build = self.r2 - self.r1
 
-        // THE DUCTS COME OUT OF THE BUILD FIRST, and this is the whole of the correction. `electricalRadialBuild` in
-        // PCH_ExcelDesignFile.Winding is (numTurnsRadially · turnRadialDimn + numRadialDucts · radialDuctDimension) · overbuild, so
-        // a sheet coil's ducts are already inside the radial build this routine measures. Dividing what is left over by the gap
-        // count without taking them out first spreads every millimetre of oil duct across every gap as though it were paper - on
-        // the SheetAndLayer fixture that is 3 × 6.35 mm of duct smeared over 12 gaps, which puts 1.77 mm of "paper" in a gap that
-        // really holds about 0.3 mm, and makes all twelve gaps identical when three of them are oil ducts.
+        // THE DUCTS ARE PLACED, not smeared: a gap either holds one or it does not, and one that does has some fifty times the
+        // reduced thickness of one that does not. Smearing them - which is what dividing the leftover build by the gap count does -
+        // makes all twelve gaps of the SheetAndLayer fixture identical when three of them are oil ducts.
         let ductCount = Segment.DuctCount(gapCount: gapCount, requested: bs.wdgData.layers.ducts.numDucts)
         let ductDimension = ductCount > 0 ? bs.wdgData.layers.ducts.ductDimn : 0.0
         let ductGaps = Segment.DuctGaps(gapCount: gapCount, ductCount: ductCount)
 
-        let tau = (build - Double(turns) * t - Double(ductCount) * ductDimension) / Double(gapCount)
+        // THE INSULATION IN A PLAIN GAP IS A DESIGN DIMENSION, NOT A LEFTOVER. `PCH_ExcelDesignFile.Winding.interLayerInsulation`
+        // carries it for a sheet winding as well as for a layer one - a foil turn IS a layer - and `LayerGapCapacitances` has always
+        // read it. Backing it out of the radial build instead measures something else entirely: `electricalRadialBuild` is
+        // (numTurnsRadially·turnRadialDimn + numRadialDucts·radialDuctDimension)·overbuild and has NO term for the insulation between
+        // the turns, so (build − copper − ducts)/gaps returns the OVERBUILD ALLOWANCE spread over the gaps and nothing else. On the
+        // SheetAndLayer fixture that is 0.178 mm - 6% of 35.6 mm over 12 gaps - where the design file says 0.254 mm, and the two
+        // being the same order of magnitude is a coincidence of that one overbuild allowance rather than a reason to trust it.
+        //
+        // The leftover is kept as a FALLBACK for a file that leaves the field at zero: a zero gap is an infinite capacitance and
+        // would take the whole series chain to zero volts with it.
+        let leftover = (build - Double(turns) * t - Double(ductCount) * ductDimension) / Double(gapCount)
+        let tau = bs.wdgData.layers.interLayerInsulation > 0.0 ? bs.wdgData.layers.interLayerInsulation : leftover
 
         guard tau > 0.0 else {
 
-            throw SegmentError(info: "The sheet winding's turns and ducts fill its whole radial build, leaving no insulation between the turns", type: .IllegalWindingType)
+            throw SegmentError(info: "The sheet winding has no insulation between its turns, and its turns and ducts fill its whole radial build", type: .IllegalWindingType)
         }
 
         let h = bs.height
@@ -1587,6 +1599,12 @@ actor Segment: Equatable /*, Hashable */ {
         var result:[(radius:Double, capacitance:Double, insulation:Double, duct:Double)] = []
         var radius = self.r1 + t
 
+        // The walk starts at the winding ID, which is a real dimension, and accumulates real ones. Note that the stack it builds -
+        // copper, insulation and ducts - need NOT come out at exactly r2: the build is the copper and the ducts plus a percentage
+        // overbuild allowance, which does not have to match the insulation the designer actually specified. It is 0.9 mm short on the
+        // SheetAndLayer fixture. Only the radii are affected and only in the last decimal - C goes as r, so 0.9 mm on a 260 mm radius
+        // is 0.3% on the outermost gap - and putting the real dimensions in the real order beats stretching them to fit a number that
+        // carries an allowance.
         for gap in 0..<gapCount {
 
             let duct = ductGaps.contains(gap) ? ductDimension : 0.0
