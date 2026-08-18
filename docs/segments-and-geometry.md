@@ -10,10 +10,12 @@ BasicSection — and is **never renumbered**. It equals the Segment's ordinal po
 exactly one BasicSection, which the load path guarantees (`AppController:955` wraps each BasicSection in its own Segment) and which
 a combine, an interleave, or a wound-in-shield pairing destroys: 8 discs interleaved into 4 Segments leaves the coordinates at
 0/2/4/6. The **ordinal is a Segment's position in `PhaseModel.CoilSegments()`**, which is what `CreateFePhase` walks to build the
-FE sections, what `SimulationModel` sizes `vDropInd` by, and what the capacitance assembly indexes.
+FE sections, what `SimulationModel` sizes `vDropInd` by, and what the capacitance assembly indexes. In the FE model that ordinal
+is load-bearing three times over: it is the section's index in `FePhase.sections`, its *terminal number*, and its row and column
+in the inductance matrix — all the same number by construction.
 
 Deriving one from the other — `GetHighestSection(coil:) + …`, or `+ segment.axialPos` — was a real bug at **four** sites (fixed
-2026-08-04/05): it crashed *Interleave* inside `PchFePhase.SetSeriesRmsCurrentForSection` with "Index out of range", and when the
+2026-08-04/05): it crashed *Interleave* inside the FE model's per-section current assignment with "Index out of range", and when the
 restructured coil was not the last one it instead wrote one coil's currents over the next coil's sections and returned a plausible,
 wrong inductance matrix with no error at all. The fourth was `ShowWaveFormsDialog`, which was handed `GetHighestSection` values and
 rebuilt the flat per-coil offsets itself; it now takes `coilRanges:[ClosedRange<Int>]` from `SegmentRange(coil:)`, which deletes
@@ -22,7 +24,7 @@ that arithmetic rather than repairing it.
 **When something needs a range of `CoilSegments()` indices, get it from `SegmentRange(coil:)` — do not recompute it.**
 `GetHighestSection` is still correct where it is **compared against another `axialPos`** (`TransformerView`'s end-disc tests,
 `PhaseModel:1483/2189/2245`); it is never a count. `CreateFePhase` asserts the `(radialPos, axialPos)` sort that the ordinal
-depends on, and `recalculateModel` guards `window.sections.count == coilSegments.count`.
+depends on, and `recalculateModel` guards `fePhase.sections.count == coilSegments.count`.
 
 ## The other half of the same rule: `CoilSegments()` is not `segments`
 

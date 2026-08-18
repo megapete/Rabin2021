@@ -155,3 +155,41 @@ changes the interior distribution by exactly nothing. What was actually missing 
 Past the end of a shorter adjacent coil the field is genuinely two-dimensional. The screen holds the nearest inner potential, marks
 the finding "beyond end of …, value indicative only", and the profile graph names the height. No Schwaiger-type end enhancement and
 no oblique-spill estimate is attempted — both were considered and declined.
+
+---
+
+## §12 — the finite-element engine was replaced (2026-08-18): `PchFiniteElementPackage` → `PchAxiSymFE`
+
+The inductance matrix and the eddy losses now come from `PchAxiSymFePackage`, taken as a **local** package at
+`../PchAxiSymFePackage`. Nothing in the project references `PchFiniteElementPackage` any more. The app talks to the new library
+through one file, `Rabin2021/FePhase.swift`; `AppController` does not import it, because the package publishes a `Core` of its own
+and the program has a `currentCore:Core?`.
+
+Three things had to be decided rather than translated.
+
+**One terminal per Segment.** The new library builds its flux-linkage matrix per *terminal* — `Λ_ts = b_tᵀ x_s`, one solve per
+terminal against a single factorization — which at winding granularity is a 2×2 impedance matrix. Giving every Segment its own
+terminal makes the same matrix the segment-to-segment inductance matrix. The real (amp-turn-balanced) excitation is still
+expressible in that model, one current per terminal, so the loss run and the inductance sweep share one mesh and one
+factorization. The old package instead rebuilt and re-solved an entire mesh per section.
+
+**The tank is a flux line; the core leg and both yokes are flux-normal.** This is Rabin's arrangement, and it is forced rather
+than preferred. Every column of an inductance matrix excites one section alone, which is net-ampere-turn *unbalanced*. A model
+with every boundary flux-normal — Andersen's arrangement, and what the old package used — is pure Neumann, has no solution for
+such an excitation, and `PchAxiSymFE` rejects it rather than let the pinned gauge node absorb the imbalance and return a
+plausible, meaningless field. The old package had no such check: it pinned a point at mid-tank-wall and solved anyway, which
+amounts to a fictitious current sink at that one node. Making the whole tank wall the return path is the well-posed version of
+the same idea, and it is also the closer reading of a real tank, whose steel is many skin depths thick at 60 Hz.
+
+**What was added to the package rather than worked around.** `linkageMatrix(progress:)` / `inductanceMatrix(progress:)` — the
+existing `linkageMatrix()` is written for a handful of terminals and does not scale to a few hundred: it keeps all N solution
+vectors alive at once and reduces in `N²·dimension`. The added sweep holds one solution vector, uses only the support of each
+load vector, reports progress per column and checks cancellation before each solve. It is pinned against the original in the
+package's own test suite, along with the boundary arrangement above.
+
+**Validation.** On STME-0999 the leakage inductance implied by the matrix at balanced ampere-turns is 0.2295 H referred to the
+HV, against 0.2358 H from the classical concentric-winding formula with a 0.95 Rogowski factor — 2.7% low, where a 2D FE answer
+belongs — and `IᵀLI` matches `2W` from the field to 11 digits. Refining the mesh 4× moves the leakage by 0.005% and the worst
+self-inductance by 0.08%. In the self-test the **line-end gap is unchanged to the last digit** (36.84 kV/mm, 185% of allowable),
+which is right: that gap is set by the initial capacitive distribution and no inductance enters it. The interior gaps move by
+around 20%, which is the oscillation, which is exactly what a new inductance matrix is expected to change.

@@ -18,7 +18,7 @@ reason the pattern works where ad-hoc main-thread hops historically didn't.
 Two things learned the hard way, both worth preserving:
 
 - **An indeterminate `NSProgressIndicator` animates off the main run loop**, so it keeps spinning even when the main thread is wedged. A determinate bar does not. If a converted bar stalls, that is a real main-thread block being *exposed*, not introduced.
-- **A bar that never moves usually means the work isn't completing incrementally**, not that the plumbing is broken. Check whether the underlying units of work actually finish at different times before touching the UI code — see the bounded-concurrency note in `PchFiniteElementPackage`'s `CLAUDE.md`.
+- **A bar that never moves usually means the work isn't completing incrementally**, not that the plumbing is broken. Check whether the underlying units of work actually finish at different times before touching the UI code. The inductance bar is one update per Segment, which is one solve against a single shared factorization; those solves are serialized inside `PchAxiSymFE` (one factorization, one solve at a time), so there is no bounded-concurrency knob at this level and none is wanted.
 
 Throttle the emitting side to roughly what the bar can show. `SimulateRK45` reports only when its fraction advances ≥0.2% (a run is
 10⁵+ steps; a 100pt bar has ~100 useful positions) and checks `Task.isCancelled` at the **top of its loop** rather than at the

@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 55;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -41,7 +41,7 @@
 		F561C3CC2B4838AF00C9CEDE /* PchExcelDesignFilePackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3CB2B4838AF00C9CEDE /* PchExcelDesignFilePackage */; };
 		F561C3CE2B4838AF00C9CEDE /* PchMatrixPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3CD2B4838AF00C9CEDE /* PchMatrixPackage */; };
 		F561C3D02B4838AF00C9CEDE /* PchProgressIndicatorPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3CF2B4838AF00C9CEDE /* PchProgressIndicatorPackage */; };
-		F561C3D32B4B528800C9CEDE /* PchFiniteElementPackage in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3D22B4B528800C9CEDE /* PchFiniteElementPackage */; };
+		F561C3D32B4B528800C9CEDE /* PchAxiSymFE in Frameworks */ = {isa = PBXBuildFile; productRef = F561C3D22B4B528800C9CEDE /* PchAxiSymFE */; };
 		F5A15CE02C0A100000000002 /* AxisScale.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE02C0A100000000001 /* AxisScale.swift */; };
 		F5A15CE12C0A110000000002 /* DielectricStress.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE12C0A110000000001 /* DielectricStress.swift */; };
 		F5A15CE22C0A120000000002 /* StressReportWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE22C0A120000000001 /* StressReportWindow.swift */; };
@@ -52,6 +52,7 @@
 		F5A15CE32C0A130000000042 /* StressProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE32C0A130000000041 /* StressProfileView.swift */; };
 		F5A15CE32C0A130000000052 /* RadialProfileWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE32C0A130000000051 /* RadialProfileWindow.swift */; };
 		F5A15CE42C0A140000000002 /* TurnLadderModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5A15CE42C0A140000000001 /* TurnLadderModel.swift */; };
+		F5AA15FE2C0A140000000012 /* FePhase.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5AA15FE2C0A140000000011 /* FePhase.swift */; };
 		F5C0DE012C50000100AA0001 /* ConductorImpedance.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C0DE002C50000100AA0001 /* ConductorImpedance.swift */; };
 		F5C0DE032C50000100AA0002 /* NumericalLaplaceTransform.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C0DE022C50000100AA0002 /* NumericalLaplaceTransform.swift */; };
 		F5C0DE052C50000100AA0003 /* FrequencyDomainSolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5C0DE042C50000100AA0003 /* FrequencyDomainSolver.swift */; };
@@ -100,6 +101,7 @@
 		F5A15CE32C0A130000000041 /* StressProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressProfileView.swift; sourceTree = "<group>"; };
 		F5A15CE32C0A130000000051 /* RadialProfileWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadialProfileWindow.swift; sourceTree = "<group>"; };
 		F5A15CE42C0A140000000001 /* TurnLadderModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnLadderModel.swift; sourceTree = "<group>"; };
+		F5AA15FE2C0A140000000011 /* FePhase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FePhase.swift; sourceTree = "<group>"; };
 		F5C0DE002C50000100AA0001 /* ConductorImpedance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConductorImpedance.swift; sourceTree = "<group>"; };
 		F5C0DE022C50000100AA0002 /* NumericalLaplaceTransform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NumericalLaplaceTransform.swift; sourceTree = "<group>"; };
 		F5C0DE042C50000100AA0003 /* FrequencyDomainSolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrequencyDomainSolver.swift; sourceTree = "<group>"; };
@@ -123,7 +125,7 @@
 				D3F020132B1BBF4200CBD0F0 /* Numerics in Frameworks */,
 				F561C3CC2B4838AF00C9CEDE /* PchExcelDesignFilePackage in Frameworks */,
 				D3F020112B1BBF4200CBD0F0 /* ComplexModule in Frameworks */,
-				F561C3D32B4B528800C9CEDE /* PchFiniteElementPackage in Frameworks */,
+				F561C3D32B4B528800C9CEDE /* PchAxiSymFE in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -171,6 +173,7 @@
 				F5A15CE32C0A130000000001 /* StressProfileWindow.swift */,
 				F5A15CE32C0A130000000011 /* InitialDistributionWindow.swift */,
 				F5A15CE32C0A130000000021 /* SelfTest.swift */,
+				F5AA15FE2C0A140000000011 /* FePhase.swift */,
 				F5A15CE32C0A130000000031 /* AxialStressProfileWindow.swift */,
 				F5A15CE32C0A130000000051 /* RadialProfileWindow.swift */,
 				F5A15CE32C0A130000000041 /* StressProfileView.swift */,
@@ -230,7 +233,7 @@
 				F561C3CB2B4838AF00C9CEDE /* PchExcelDesignFilePackage */,
 				F561C3CD2B4838AF00C9CEDE /* PchMatrixPackage */,
 				F561C3CF2B4838AF00C9CEDE /* PchProgressIndicatorPackage */,
-				F561C3D22B4B528800C9CEDE /* PchFiniteElementPackage */,
+				F561C3D22B4B528800C9CEDE /* PchAxiSymFE */,
 			);
 			productName = Rabin2021;
 			productReference = D30D3AD4270E2F2C00A39051 /* ImpulseDistribution.app */;
@@ -263,7 +266,7 @@
 			packageReferences = (
 				D3F0200F2B1BBF4200CBD0F0 /* XCRemoteSwiftPackageReference "swift-numerics" */,
 				F561C3C62B4838AF00C9CEDE /* XCRemoteSwiftPackageReference "PchBasePackage" */,
-				F561C3D12B4B528800C9CEDE /* XCRemoteSwiftPackageReference "PchFiniteElementPackage" */,
+				F5AA15FE2C0A140000000001 /* XCLocalSwiftPackageReference "../PchAxiSymFePackage" */,
 			);
 			productRefGroup = D30D3AD5270E2F2C00A39051 /* Products */;
 			projectDirPath = "";
@@ -310,6 +313,7 @@
 				F5A15CE32C0A130000000002 /* StressProfileWindow.swift in Sources */,
 				F5A15CE32C0A130000000012 /* InitialDistributionWindow.swift in Sources */,
 				F5A15CE32C0A130000000022 /* SelfTest.swift in Sources */,
+				F5AA15FE2C0A140000000012 /* FePhase.swift in Sources */,
 				F5A15CE32C0A130000000032 /* AxialStressProfileWindow.swift in Sources */,
 				F5A15CE32C0A130000000052 /* RadialProfileWindow.swift in Sources */,
 				F5A15CE32C0A130000000042 /* StressProfileView.swift in Sources */,
@@ -494,7 +498,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3030D783;
+				CURRENT_PROJECT_VERSION = 3034CB8B;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -507,7 +511,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.huberistech.Rabin2021;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -527,7 +531,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3030D783;
+				CURRENT_PROJECT_VERSION = 3034CB8B;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -540,7 +544,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.2;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.huberistech.Rabin2021;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -574,6 +578,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		F5AA15FE2C0A140000000001 /* XCLocalSwiftPackageReference "../PchAxiSymFePackage" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../PchAxiSymFePackage;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		D3F0200F2B1BBF4200CBD0F0 /* XCRemoteSwiftPackageReference "swift-numerics" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -586,14 +597,6 @@
 		F561C3C62B4838AF00C9CEDE /* XCRemoteSwiftPackageReference "PchBasePackage" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/megapete/PchBasePackage.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-		F561C3D12B4B528800C9CEDE /* XCRemoteSwiftPackageReference "PchFiniteElementPackage" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/megapete/PchFiniteElementPackage.git";
 			requirement = {
 				branch = main;
 				kind = branch;
@@ -642,10 +645,9 @@
 			package = F561C3C62B4838AF00C9CEDE /* XCRemoteSwiftPackageReference "PchBasePackage" */;
 			productName = PchProgressIndicatorPackage;
 		};
-		F561C3D22B4B528800C9CEDE /* PchFiniteElementPackage */ = {
+		F561C3D22B4B528800C9CEDE /* PchAxiSymFE */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = F561C3D12B4B528800C9CEDE /* XCRemoteSwiftPackageReference "PchFiniteElementPackage" */;
-			productName = PchFiniteElementPackage;
+			productName = PchAxiSymFE;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

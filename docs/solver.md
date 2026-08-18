@@ -77,8 +77,24 @@ derivative quietly emptied V and I and surfaced several steps later as "Could no
 
 ## The inductance matrix
 
-The active path computes the inductance matrix via the finite-element package (`PchFiniteElementPackage`), through
-`PchFePhase.CalculateInductanceMatrix`.
+The active path computes the inductance matrix by finite element, in `PchAxiSymFE`, driven through the app's own `FePhase`
+actor (`Rabin2021/FePhase.swift`) — `FePhase.CalculateInductanceMatrix(progress:)`. Read that file's header before changing the
+FE model; the two things in it that are not free choices are recorded there:
+
+- **One terminal per Segment.** The package builds its flux-linkage matrix per *terminal* (`Λ_ts = b_tᵀ x_s`, one solve per
+  terminal against one factorization). Giving every Segment its own terminal number — equal to its index in `CoilSegments()` —
+  is what turns that into the segment-to-segment self- and mutual-inductance matrix this program runs on. It also means the real
+  excitation is expressible in the same model, so the eddy-loss solve and the inductance sweep share one mesh and one
+  factorization.
+- **The tank is a flux line, the core and yokes are flux-normal.** Rabin's arrangement. Every column of an inductance matrix
+  excites one section alone, which is net-ampere-turn *unbalanced*; a model with every boundary flux-normal (Andersen's
+  arrangement, correct for a balanced leakage run) is pure Neumann and has no solution for it — the package rejects such an
+  excitation rather than let its gauge node absorb the imbalance.
+
+Checked end to end on STME-0999: the leakage inductance the matrix implies at balanced ampere-turns is 0.2295 H referred to the
+HV, against 0.2358 H from the classical concentric-winding formula with a 0.95 Rogowski factor — 2.7% below it, which is where a
+2D FE answer belongs. Refining the mesh (16k → 64k nodes) moves that by 0.005% and the worst individual self-inductance by 0.08%,
+so the sizing in `FePhase` is not the limiting error.
 
 **`EslamianVahidiModel.swift`** (`EslamianVahidiSegment`) is an **alternative inductance-matrix implementation that is not compiled
 into the app** using the double-Fourier-series method from the Eslamian & Vahidi paper ("New Methods for Computation of the

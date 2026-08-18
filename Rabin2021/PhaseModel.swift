@@ -12,7 +12,6 @@ import ComplexModule
 import RealModule
 import PchBasePackage
 import PchMatrixPackage
-import PchFiniteElementPackage
 
 actor PhaseModel /*:Codable */ {
     

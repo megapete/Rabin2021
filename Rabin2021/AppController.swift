@@ -25,7 +25,6 @@ import PchMatrixPackage
 import PchExcelDesignFilePackage
 import PchDialogBoxPackage
 import PchProgressIndicatorPackage
-import PchFiniteElementPackage
 
 extension PchMatrix {
     
@@ -78,7 +77,7 @@ extension PchMatrix {
 }
 
 @MainActor
-class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePhaseDelegate*/ {
+class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate {
     
     
     /// The main window of the program
@@ -420,7 +419,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     }
 
     /// The current FE model that is stored in memory (this is required becuase the inductance calcualtion takes really long and so is put into a different thread)
-    var currentFePhase:PchFePhase? = nil
+    var currentFePhase:FePhase? = nil
     
     /// The current core in memory
     var currentCore:Core? = nil
@@ -508,13 +507,13 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     
     // MARK: Long-running function completion routine(s)
     
-    /// - Parameter phase: the PchFePhase the finished calculation ran on. It is passed in rather than read back out of
+    /// - Parameter phase: the FePhase the finished calculation ran on. It is passed in rather than read back out of
     /// `currentFePhase` because that property says only which phase is *newest*, not which one this call is reporting on. While
     /// recalculateModel could be re-entered, those were two different things: a run that finished while a second recalculation was
     /// under way read the second run's half-built phase here, found no inductance matrix on it, turned the light red and returned
     /// before setting inductanceIsValid - having already zeroed and hidden the progress bar the still-running calculation was
     /// using. The gate in recalculateModel makes that overlap impossible; taking the phase as an argument makes it unstateable.
-    func didFinishInductanceCalculation(phase fePhase:PchFePhase) async {
+    func didFinishInductanceCalculation(phase fePhase:FePhase) async {
 
         DLog("Got inductance completion message!")
         self.inductanceLight.textColor = await fePhase.inductanceMatrix != nil ? .green : .red
@@ -565,19 +564,6 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         // only hide the "Working..." label if the inductance calculation is not currently running
         self.workingLabel.isHidden = self.indCalcProgInd.isHidden
     }
-    
-    /*
-    func updatePuCompletedInductanceCalculation(puComplete: Double, phase: PchFePhase) async {
-        
-        // the '===' operator compares references
-        guard let fePhase = self.currentFePhase, fePhase === phase else {
-            
-            DLog("PchFePhase does not match the one in memory!")
-            return
-        }
-        
-        self.indCalcProgInd.doubleValue = puComplete * 100.0
-    } */
     
     // MARK: Transformer update routines
     
@@ -971,7 +957,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         // makes the two sides impossible to disagree.
         let coilSegments = await model.CoilSegments()
 
-        let feSectionCount = await fePhase.window.sections.count
+        let feSectionCount = await fePhase.sections.count
 
         guard feSectionCount == coilSegments.count else {
 
@@ -999,21 +985,23 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             // with neither kVA nor line volts evaluates 0/0 and seeds a NaN that would run silently through the whole FE solve.
             guard terminalNumber > 0 else {
 
-                await fePhase.SetSeriesRmsCurrentForSection(segIndex, rmsAmps: .zero)
+                await fePhase.SetSeriesRmsCurrentForSection(segIndex, rmsAmps: 0.0)
                 continue
             }
 
             let currentDirection = terminalNumber == 2 ? -1.0 : 1.0
             // let currentDivider = excelFile.windings[nextSegment.radialPos].isDoubleStack ? 2.0 : 1.0
-            await fePhase.SetSeriesRmsCurrentForSection(segIndex, rmsAmps: Complex(currents[terminalNumber - 1] * currentDirection))
+            await fePhase.SetSeriesRmsCurrentForSection(segIndex, rmsAmps: currents[terminalNumber - 1] * currentDirection)
         }
         
+        // One solve of the whole model at the currents just assigned, and the eddy losses read off the field it gives. This is
+        // also what meshes and factorizes the model, so the inductance sweep below pays for neither.
+        let eddyLossesPU:[FePhase.EddyLossPU]
+
         do {
-            
-            let fullMesh = try await fePhase.GetFullModelAndSolve(withEddyCurrents: true)
-            DLog("Energy (mesh): \(await fullMesh.MagneticEnergy())")
-            DLog("Energy (phase): \(await fePhase.MagneticEnergy(useMesh: fullMesh))")
-            try await fePhase.SetEddyLosses()
+
+            eddyLossesPU = try await fePhase.CalculateEddyLosses()
+            DLog("Energy (mesh): \(await fePhase.magneticEnergy)")
         }
         catch {
 
@@ -1040,21 +1028,19 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         // for the same reason (CreateFePhase built the sections by walking that array).
         //
         // This used to run over model.segments, which is the FULL store, static rings and radial shields included. CoilSegments()
-        // filters those out, so the FE array is SHORTER than the store by the number of shielding elements in the model and
-        // window.sections[i] ran off the end of it: "Index out of range", raised by the first recalculation after a static ring
+        // filters those out, so the FE array is SHORTER than the store by the number of shielding elements in the model and the
+        // indexing ran off the end of it: "Index out of range", raised by the first recalculation after a static ring
         // was added. Before it overran it was also writing each coil Segment's eddy losses onto whatever Segment happened to sit
         // at that index - a static ring sorts to the FRONT of its coil's block, since its axial coordinate is negative, so the
         // misalignment started at the first shielded coil and quietly shifted every coil outside it.
         for (segIndex, nextSegment) in coilSegments.enumerated() {
 
-            let feSection = await fePhase.window.sections[segIndex]
-            let axialPU = await feSection.eddyLossDueToAxialFlux / feSection.resistiveLoss
-            let radialPU = await feSection.eddyLossDueToRadialFlux / feSection.resistiveLoss
-            await nextSegment.SetEddyLossesPU(radial: radialPU, axial: axialPU)
+            let eddyPU = eddyLossesPU[segIndex]
+            await nextSegment.SetEddyLossesPU(radial: eddyPU.radial, axial: eddyPU.axial)
         }
         
         // The inductance calculation reports one update per section (ie: per row of the matrix). Same pattern as the simulation bar: '.bufferingNewest(1)' so the solver never blocks on the UI, and the stream is drained on the main actor so AppKit can actually redraw between updates.
-        let (indProgressStream, indProgressContinuation) = AsyncStream<PchFePhase.InductanceProgress>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let (indProgressStream, indProgressContinuation) = AsyncStream<FePhase.InductanceProgress>.makeStream(bufferingPolicy: .bufferingNewest(1))
 
         let indProgressTask = Task { @MainActor in
 
@@ -1076,7 +1062,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         // The calculation is wrapped in its own Task purely so that it can be cancelled - updateModel() itself is called from several places, none of which hold onto a Task we could reach.
         let inductanceTask = Task { @MainActor in
 
-            try await fePhase.CalculateInductanceMatrix(useConcurrency: true, assumeSymmetric: true, progress: indProgressContinuation)
+            try await fePhase.CalculateInductanceMatrix(progress: indProgressContinuation)
         }
 
         self.runningInductanceTask = inductanceTask
@@ -1480,7 +1466,7 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
     }
     
     /// Function to create the finite-element model that we'll use to get the inductance matrix and eddy losses for the current PhaseModel. It is assumed that 'model' has already been updated (or created) using 'xlFile'.
-    func CreateFePhase(xlFile:PCH_ExcelDesignFile, model:PhaseModel) async -> PchFePhase? {
+    func CreateFePhase(xlFile:PCH_ExcelDesignFile, model:PhaseModel) async -> FePhase? {
         
         let coilSegments = await model.CoilSegments()
         // do some simple checks to see if the xlFile and the model match, at least in terms of the number of coils and their basic sections
@@ -1528,37 +1514,37 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
         // matrix. Note the count itself needs no assertion - it is one append per iteration - so ordering is the real invariant.
         assert(zip(coilSegments, coilSegments.dropFirst()).allSatisfy({ ($0.radialPos, $0.axialPos) < ($1.radialPos, $1.axialPos) }), "CoilSegments() is not sorted by (radialPos, axialPos)!")
 
-        // Ok, we'll assume that the two models are compatible. Create the finite element sections & window
-        var feSections:[PchFePhase.Section] = []
-        for nextSegment in coilSegments {
+        // Ok, we'll assume that the two models are compatible. Create the finite element sections & window.
+        //
+        // The current seeded here is Winding.I, which is legVA/legVolts and is only ever a starting value: recalculateModel
+        // overwrites every one of them from the amp-turn balance before it asks for a loss. It plays no part at all in the
+        // inductance sweep, which excites one ampere in one section at a time.
+        var feSections:[FePhase.SectionInput] = []
+        for (segIndex, nextSegment) in coilSegments.enumerated() {
             
             let wdg = await xlFile.windings[nextSegment.radialPos]
             let wdgTurn = wdg.turnDefinition
             let strandsPerTurn = wdgTurn.numCablesAxial * wdgTurn.numCablesRadial * (wdgTurn.cable.conductor == .ctc ? wdgTurn.cable.numCTCstrands :  wdgTurn.cable.numStrandsAxial * wdgTurn.cable.numStrandsRadial)
-            // default to a layer (or multi-start) winding (we always assume a 1-layer winding for this)
-            var numTurnsRadially = Double(wdg.numRadialSections)
-            if wdg.windingType == .disc || wdg.windingType == .sheet {
-                
-                numTurnsRadially = wdg.numTurns.max / Double(wdg.numAxialSections)
-            }
-            else if wdg.windingType == .helix {
-                
-                numTurnsRadially = 1.0
-            }
             
-            let newFeSection = await PchFePhase.Section(innerRadius: nextSegment.r1, radialBuild: nextSegment.r2 - nextSegment.r1, zMin: nextSegment.z1, zMax: nextSegment.z2, totalTurns: nextSegment.N, activeTurns: nextSegment.N, seriesRmsCurrent: Complex(nextSegment.I), frequency: xlFile.frequency, strandsPerTurn: Double(strandsPerTurn), strandsPerLayer: numTurnsRadially * Double(wdgTurn.numCablesRadial) * Double(wdgTurn.cable.numStrandsRadial), strandRadial: wdgTurn.cable.strandRadialDimension, strandAxial: wdgTurn.cable.strandAxialDimension, strandConductor: .CU, numAxialColumns: Double(wdg.numAxialColumns), axialColumnWidth: wdg.spacerWidth)
+            let newFeSection = await FePhase.SectionInput(name: "Segment \(segIndex)", innerRadius: nextSegment.r1, outerRadius: nextSegment.r2, zMin: nextSegment.z1, zMax: nextSegment.z2, turns: nextSegment.N, strandsPerTurn: Double(strandsPerTurn), strandRadial: wdgTurn.cable.strandRadialDimension, strandAxial: wdgTurn.cable.strandAxialDimension, seriesRmsCurrent: nextSegment.I)
             
             feSections.append(newFeSection)
         }
         
         let coreCenterToTank = await xlFile.tankDepth / 2.0
         let windowHt = await xlFile.core.windowHeight
-        let constPotPt = NSPoint(x: coreCenterToTank, y: windowHt / 2)
-        let feWindow = await PchFePhase.Window(zMin: 0.0, zMax: windowHt, rMin: xlFile.core.radius, rMax: coreCenterToTank, constPotentialPoint: constPotPt, sections: feSections)
         
-        let fePhase = PchFePhase(window: feWindow)
-        
-        return fePhase
+        do {
+            
+            return try await FePhase(coreRadius: xlFile.core.radius, windowHeight: windowHt, tankRadius: coreCenterToTank, frequency: xlFile.frequency, sections: feSections)
+        }
+        catch {
+            
+            // The caller raises the alert ("Could not create finite element model!"), and does so only when the run has not been
+            // superseded - which is the common way to get here. The specific reason goes to the log rather than to a second alert.
+            DLog("Could not create the FE model: \(error.localizedDescription)")
+            return nil
+        }
     }
     
     // MARK: Testing routines
@@ -4837,21 +4823,20 @@ class AppController: NSObject, NSMenuItemValidation, NSWindowDelegate/*, PchFePh
             return nil
         }
         
-        // get the energy from the last PchFePhase used
+        // get the energy from the last FePhase used
         let leakageEnergy = await fePhase.EnergyFromInductance()
         DLog("Energy: \(leakageEnergy)")
         
         // use DelVecchio eq. 4.22 to solve for M12
-        let section0 = await fePhase.window.sections[0]
         // Current calculations are a pain because this routine assumes all turns are in the circuit. For a coil with off-load taps, this is the low-current tap, which is NOT what is saved as the 'seriesRMSCurremt'. That is actually the nominal current.
-        let I0 = await (section0.seriesRmsCurrent * Complex(sqrt(2))).length
+        // The magnitudes are taken (and coil 1's sign forced) rather than used as stored: the two coils carry their amp-turns in opposite senses, which is what makes the mutual term come out of the energy at all.
+        let I0 = await abs(fePhase.SeriesRmsCurrent(section: 0) * sqrt(2))
         guard let section1Index = try? await model.SegmentRange(coil: 1).lowerBound else {
             
             DLog("Bad section index!")
             return nil
         }
-        let section1 = await fePhase.window.sections[section1Index]
-        let I1 = await -(section1.seriesRmsCurrent * Complex(sqrt(2))).length
+        let I1 = await -abs(fePhase.SeriesRmsCurrent(section: section1Index) * sqrt(2))
         var M12 = 2 * leakageEnergy
         M12 -= await coilIndMatrix[0, 0]! * I0 * I0
         await M12 -= coilIndMatrix[1, 1]! * I1 * I1
