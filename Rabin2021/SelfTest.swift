@@ -173,6 +173,18 @@ enum SelfTest {
         case terminate(Termination)
     }
 
+    /// Where a paralleled tap winding is tied to the HV neutral.
+    ///
+    /// The winding is the same either way and so is the paralleling; only the point that is held at earth moves, and with it
+    /// which part of the tap winding screens the HV and which part is free to ride up with it.
+    enum TapNeutralTie {
+
+        /// The two outer ends, at the top and bottom of the tap winding. Its centre is then the free end.
+        case outerEnds
+        /// The two leads facing each other across the centre gap. The outer ends are then the free end.
+        case centre
+    }
+
     /// A static ring fitted to one end of a coil, AFTER the restructure.
     ///
     /// The order is the point of it. A ring is a Segment like any other, so it has to go on after the interleaving or shielding
@@ -388,8 +400,148 @@ enum SelfTest {
 
         // The same three edits with the first two swapped: ground the bottom of coil 2 while the old jumper is still on it, THEN
         // pull the jumper. Reading the connection scheme off the screen afterwards gives the same answer as the other two runs.
-        "S0738-parallel-edited-2" : S0738ParallelEdited(name: "S0738-parallel-edited-2", groundBeforeRemoving: true)
+        "S0738-parallel-edited-2" : S0738ParallelEdited(name: "S0738-parallel-edited-2", groundBeforeRemoving: true),
+
+        // The T0223 fixture, wired to drive its SHEET winding directly: every lead in the model grounded except coil 1's
+        // outermost, which takes 45 kV. See T0223Sheet.
+        "T0223-sheet" : T0223Sheet(name: "T0223-sheet"),
+
+        // The same fixture wired as the impulse test of its HV instead: 125 kV on coil 2's line end, its neutral grounded and
+        // carrying the tap winding's outer ends, and coil 3's two halves paralleled. See T0223TapParallel.
+        "T0223-tap-parallel" : T0223TapParallel(name: "T0223-tap-parallel", neutralTie: .outerEnds),
+
+        // The same again with the tie to the HV neutral moved from the tap winding's outer ends to its CENTRE. Same winding, same
+        // paralleling, same impulse - the only difference is which part of coil 3 is held at earth and which part is free.
+        "T0223-tap-parallel-centre" : T0223TapParallel(name: "T0223-tap-parallel-centre", neutralTie: .centre)
     ]
+
+    /// The T0223 fixture: four coils, of which coil 1 is a 17-turn SHEET winding with two 0.25" cooling ducts in it and 0.010"
+    /// of insulation in every gap.
+    ///
+    /// It is here to read the radial voltage profile of a REAL ducted sheet winding rather than the SheetAndLayer fixture's
+    /// synthetic one: two ducts over sixteen gaps, a duct 25 times the geometric thickness of the paper beside it, and the
+    /// whole thing driven directly so that the profile is not a transferred shadow of the HV's.
+    ///
+    /// EVERY OTHER LEAD IN THE MODEL IS GROUNDED, which includes coil 3's two centre leads - it is double-stacked with no
+    /// embedded taps, so `AppController`'s segment-building loop cuts a centre gap into it and gives each side its own
+    /// floating centre lead. Grounding both is what "ground all the leads" means on this design; each is terminated in its
+    /// own right rather than being carried there by a jumper, because there is no jumper.
+    private static func T0223Sheet(name:String) -> Scenario {
+
+        return Scenario(name: name,
+                        restructure: .none,
+                        matchedBuild: nil,
+                        fixtureName: "T0223_AndIn.txt",
+                        notes: "Four coils: coil 0 (147 turns, 44 discs), coil 1 a 17-turn SHEET winding with 2 x 0.25\" ducts and 0.010\" between turns, coil 2 (336 turns, 44 discs), coil 3 a double-stacked 71-turn winding (32 discs). Every lead grounded except coil 1's outermost, which carries 45 kV full wave.",
+                        jumpers: [],
+                        terminations: [Termination(point: .coilEnd(coil: 0, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 0, end: .top), type: .ground),
+                                       Termination(point: .coilEnd(coil: 2, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 2, end: .top), type: .ground),
+                                       Termination(point: .coilEnd(coil: 3, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 3, end: .top), type: .ground),
+                                       Termination(point: .gapLead(coil: 3, gap: 0, side: .bottom), type: .ground),
+                                       Termination(point: .gapLead(coil: 3, gap: 0, side: .top), type: .ground),
+                                       // The sheet winding last: its innermost lead to ground, its outermost to the impulse.
+                                       Termination(point: .coilEnd(coil: 1, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 1, end: .top), type: .impulse)],
+                        waveFormType: .FullWave,
+                        peakVoltage: 45.0e3,
+                        displaySpan: 100.0e-6,
+                        bandwidth: 10.0e6,
+                        continuumCoil: 1,
+                        reportNodes: true)
+    }
+
+    /// The T0223 fixture wired as a full-wave impulse test of its HV, with the tap winding's two halves PARALLELED and its
+    /// outer ends carried to the HV neutral.
+    ///
+    /// This is the connection `T0223-sheet` is not. There the sheet winding was driven directly, so that its own radial profile
+    /// could be read rather than a transferred shadow of the HV's, and every other lead in the model went straight to ground.
+    /// Here the model is wired the way the unit is actually tested, so the number that comes out is the HV's disc-to-disc stress
+    /// at the line end - which is the one quantity DelVecchio 13.5.1 gives in closed form (13.65).
+    ///
+    /// COIL 3 IS A TAP WINDING WITH ITS HALVES IN PARALLEL. It is double-stacked with no embedded taps, so `AppController`'s
+    /// segment-building loop cuts a centre gap between discs 16 and 17 and gives each side its own floating centre lead. The
+    /// paralleling ties each point of the lower half to its mirror image in the upper half - the same number of turns from the
+    /// centre - in 2-disc steps, NINE connections from the outside in:
+    ///
+    ///   * the two outer ends (the lead below disc 1 and the lead above disc 32), tied to each other;
+    ///   * the crossovers above the even discs 2, 4, 6, 8, 10, 12 and 14, each tied to its mirror above disc 32-d;
+    ///   * the two leads facing each other across the centre gap, which is the innermost pair.
+    ///
+    /// ONE POINT OF THE PARALLELED WINDING THEN GOES TO COIL 2'S NEUTRAL, and the ground goes on the NEUTRAL. Coil 3 reaches
+    /// earth through a jumper rather than through a termination of its own, which is exactly the case the standing rule about
+    /// terminations is written for: nothing writes a `.ground` onto coil 3's leads, and `PhaseModel.ResolveNodeConnectivity` is
+    /// what decides they are at earth. The TERMINATIONS and NODE TOPOLOGY sections of the report are where that has to show up -
+    /// coil 3's tied leads must come back GROUND without a termination of their own ever having been applied to them.
+    ///
+    /// `neutralTie` says WHICH point that is, and it is the only difference between the two scenarios built from this function.
+    /// The nine connections have already made the two halves one winding, so either the outer ends or the centre will serve as the
+    /// earthed terminal; what changes is which part of coil 3 is pinned at earth, screening coil 2, and which part is free to ride
+    /// up with it. See TapNeutralTie.
+    ///
+    /// Coil 2's far end IS directly at earth, and that is what makes this scenario comparable to 13.5.1 at all. The continuum
+    /// model solves a boundary-value problem whose far boundary is V = 0; `ContinuumComparison` declines the comparison out loud
+    /// when that boundary is not there, as it is not on S0738, where the HV's return runs through both halves of the tap winding
+    /// to a centre ground and the far end floats at 0.65 p.u. instead.
+    private static func T0223TapParallel(name:String, neutralTie:TapNeutralTie) -> Scenario {
+
+        // Coil 3 is 32 discs with its tapping gap between discs 16 and 17. Disc d pairs with disc 32-d, its mirror image about
+        // the gap; `discCrossover` names a crossover by the disc BELOW it, counting from 1 at the bottom of the coil, so the
+        // crossover above disc 2 pairs with the one above disc 30.
+        //
+        // 1 of 9: the outermost pair.
+        var jumpers:[Jumper] = [Jumper(from: .coilEnd(coil: 3, end: .top), to: .coilEnd(coil: 3, end: .bottom))]
+
+        // 2 through 8 of 9: every second crossover, mirrored about the gap.
+        for disc in stride(from: 2, through: 14, by: 2) {
+
+            jumpers.append(Jumper(from: .discCrossover(coil: 3, disc: disc), to: .discCrossover(coil: 3, disc: 32 - disc)))
+        }
+
+        // 9 of 9: the innermost pair - the two centre-most discs, tied across the tapping gap. The gap breaks the node chain
+        // even though it is bridged, so this is a jumper between two nodes and not a series connection.
+        jumpers.append(Jumper(from: .gapLead(coil: 3, gap: 0, side: .bottom), to: .gapLead(coil: 3, gap: 0, side: .top)))
+
+        // The tie to the HV neutral, last, so that it goes onto a coil 3 that is already paralleled. Either end of the paralleled
+        // winding will do as the earthed one - the nine connections have already made the two halves one winding - so this is the
+        // one line that separates the two scenarios.
+        //
+        // Tying at the CENTRE means the two leads facing across the tapping gap are tied to each other AND carried to earth, which
+        // leaves neither of them floating. That is the case that used to erase the only evidence the gap was there: `IsTappingGap`
+        // recognises a gap by the LOCATION of its connectors and never by what they are terminated to, precisely so that this
+        // wiring still reads as a gap. The NODE TOPOLOGY line is the check - 126 nodes, not 125.
+        switch neutralTie {
+
+        case .outerEnds:
+            jumpers.append(Jumper(from: .coilEnd(coil: 3, end: .bottom), to: .coilEnd(coil: 2, end: .bottom)))
+
+        case .centre:
+            jumpers.append(Jumper(from: .gapLead(coil: 3, gap: 0, side: .bottom), to: .coilEnd(coil: 2, end: .bottom)))
+        }
+
+        return Scenario(name: name,
+                        restructure: .none,
+                        matchedBuild: nil,
+                        fixtureName: "T0223_AndIn.txt",
+                        notes: "Four coils: coil 0 (147 turns, 44 discs), coil 1 a 17-turn sheet winding, coil 2 the impulsed HV (336 turns, 44 discs), coil 3 a double-stacked 71-turn tap winding (32 discs) with its two halves paralleled in 2-disc steps and its \(neutralTie == .outerEnds ? "outer ends" : "centre") tied to the HV neutral. Coils 0 and 1 grounded at both ends; 125 kV full wave on coil 2's top, coil 2's bottom grounded.",
+                        jumpers: jumpers,
+                        terminations: [Termination(point: .coilEnd(coil: 0, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 0, end: .top), type: .ground),
+                                       Termination(point: .coilEnd(coil: 1, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 1, end: .top), type: .ground),
+                                       // The HV neutral, which carries coil 3's outer ends to earth with it.
+                                       Termination(point: .coilEnd(coil: 2, end: .bottom), type: .ground),
+                                       Termination(point: .coilEnd(coil: 2, end: .top), type: .impulse)],
+                        waveFormType: .FullWave,
+                        peakVoltage: 125.0e3,
+                        displaySpan: 100.0e-6,
+                        bandwidth: 10.0e6,
+                        continuumCoil: 2,
+                        reportNodes: true)
+    }
+
 
     /// The S0738 tap winding re-wired from series to parallel by EDITING the model, the way it is done at the keyboard.
     ///
