@@ -28,7 +28,7 @@
 //  on the disk is unreadable without the open panel that granted access to it. The app's OWN container is always
 //  readable, so the fixture is looked for in the container's Documents folder:
 //
-//      ~/Library/Containers/com.huberistech.Rabin2021/Data/Documents/
+//      ~/Library/Containers/com.huberistech.ImpulseDistribution/Data/Documents/
 //
 //  Copy the design file there before running. This is deliberately not solved with a temporary-exception entitlement:
 //  that would change what the shipped app is allowed to read in order to run a test.
@@ -36,9 +36,9 @@
 //  WHERE THE RESULTS GO. The full report is written to a text file beside the fixture in that same Documents folder,
 //  and a one-line summary plus the last stage reached go into UserDefaults:
 //
-//      defaults read com.huberistech.Rabin2021 PCH_SelfTestSummary
-//      defaults read com.huberistech.Rabin2021 PCH_SelfTestStage
-//      cat ~/Library/Containers/com.huberistech.Rabin2021/Data/Documents/SelfTestReport-STME0999.txt
+//      defaults read com.huberistech.ImpulseDistribution PCH_SelfTestSummary
+//      defaults read com.huberistech.ImpulseDistribution PCH_SelfTestStage
+//      cat ~/Library/Containers/com.huberistech.ImpulseDistribution/Data/Documents/SelfTestReport-STME0999.txt
 //
 //  The stage breadcrumb is written and flushed before each step. If the run hangs - and it can, because the pipeline
 //  raises NSAlerts on failure and a modal alert will sit there forever with nobody to dismiss it - that key says which

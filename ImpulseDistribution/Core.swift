@@ -1,6 +1,6 @@
 //
 //  Core.swift
-//  Rabin2021
+//  ImpulseDistribution
 //
 //  Created by Peter Huber on 2021-10-07.
 //

@@ -1,15 +1,15 @@
 //
 //  AppController.swift
-//  Rabin2021
+//  ImpulseDistribution
 //
 //  Created by Peter Huber on 2021-10-06.
 //
 
 // Keys into User Defaults
 // Key (String) so that the user doesn't have to go searching for the last folder he opened
-private let LAST_OPENED_INPUT_FILE_KEY = "PCH_RABIN2021_LastInputFile"
+private let LAST_OPENED_INPUT_FILE_KEY = "PCH_IMPULSEDISTRIBUTION_LastInputFile"
 
-let PCH_RABIN2021_IterationCount = 200
+let PCH_IMPULSEDISTRIBUTION_IterationCount = 200
 
 let PCH_CIR_FILETYPE = "cir"
 

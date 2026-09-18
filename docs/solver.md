@@ -78,7 +78,7 @@ derivative quietly emptied V and I and surfaced several steps later as "Could no
 ## The inductance matrix
 
 The active path computes the inductance matrix by finite element, in `PchAxiSymFE`, driven through the app's own `FePhase`
-actor (`Rabin2021/FePhase.swift`) — `FePhase.CalculateInductanceMatrix(progress:)`. Read that file's header before changing the
+actor (`ImpulseDistribution/FePhase.swift`) — `FePhase.CalculateInductanceMatrix(progress:)`. Read that file's header before changing the
 FE model; the two things in it that are not free choices are recorded there:
 
 - **One terminal per Segment.** The package builds its flux-linkage matrix per *terminal* (`Λ_ts = b_tᵀ x_s`, one solve per
@@ -104,7 +104,7 @@ cases. It is kept for reference/comparison only.
 ## `PchMatrix`
 
 The matrix class wrapping Accelerate BLAS/LAPACK for `Double` and `Complex<Double>`, including sparse (coordinate-form) matrices.
-The live version is in **`PchMatrixPackage`**, not the uncompiled `Rabin2021/PchMatrix.swift` copy — change it in the package. Read
+The live version is in **`PchMatrixPackage`**, not the uncompiled `ImpulseDistribution/PchMatrix.swift` copy — change it in the package. Read
 the long header comment before touching it — it documents the `OpaquePointer`/`with...Pointer` idioms forced by Apple's LAPACK
 headers.
 

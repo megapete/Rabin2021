@@ -1536,7 +1536,7 @@ enum DielectricStress {
     ///
     /// then read it back from a terminal with:
     ///
-    ///     defaults read com.huberistech.rabin2021 DielectricStressVerification
+    ///     defaults read com.huberistech.ImpulseDistribution DielectricStressVerification
     ///
     /// It asserts the things a transcription error would break:
     ///

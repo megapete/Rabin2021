@@ -1,6 +1,6 @@
 //
 //  GetWoundInShieldDialog.swift
-//  Rabin2021
+//  ImpulseDistribution
 //
 //  Created by Peter Huber on 2026-08-03.
 //

@@ -1,6 +1,6 @@
 //
 //  PhaseModel.swift
-//  Rabin2021
+//  ImpulseDistribution
 //
 //  Created by Peter Huber on 2021-10-13.
 //
@@ -3201,7 +3201,7 @@ actor PhaseModel /*:Codable */ {
         // var gotFirst = false
         // var lastHarmonic = 0.0
         
-        for n in 1...PCH_RABIN2021_IterationCount {
+        for n in 1...PCH_IMPULSEDISTRIBUTION_IterationCount {
             
             let nn = Double(n)
             let nextHarmonic = coilJ[n] * cos(nn * π * z / L)
@@ -3227,13 +3227,13 @@ actor PhaseModel /*:Codable */ {
     /// Get the Fourier series representation of the current density for the coil (DelVecchio)
     func CoilJ(radialPos:Int) -> [Double]
     {
-        var result:[Double] = Array(repeating: 0.0, count: PCH_RABIN2021_IterationCount + 1)
+        var result:[Double] = Array(repeating: 0.0, count: PCH_IMPULSEDISTRIBUTION_IterationCount + 1)
         
         for nextSegment in self.segments {
             
             if nextSegment.radialPos == radialPos {
                 
-                for i in 0...PCH_RABIN2021_IterationCount {
+                for i in 0...PCH_IMPULSEDISTRIBUTION_IterationCount {
                     
                     result[i] += self.J[nextSegment.serialNumber][i]
                 }

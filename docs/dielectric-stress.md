@@ -345,7 +345,7 @@ correct τ it differs from a series chain by 17% at N = 13. `CapacitanceTurnToTu
 too and means what its name says — one plain gap at the mean radius — but it is no longer the route to Cs, and must not be made one.
 
 **`Segment.VerifySheetCapacitance` pins all three of these** and runs under `-PCH_Verify YES` beside the other two self-checks
-(`defaults read com.huberistech.rabin2021 SheetCapacitanceVerification`). The middle check is the one worth knowing about: Cs and
+(`defaults read com.huberistech.ImpulseDistribution SheetCapacitanceVerification`). The middle check is the one worth knowing about: Cs and
 `TurnLadderModel.SolveSheet` are independent routes over the same gaps, and both are statements about one charge on one chain, so
 `Q = Cs·V` must equal `C_k·ΔV_k` at *every* gap. Putting the disc formula back breaks it immediately.
 

@@ -843,7 +843,7 @@ struct TurnLadderModel:Sendable {
     /// A runnable self-check, in the same style as DielectricStress.VerifySelf and for the same reason - there is no test target.
     ///
     ///     TurnLadderModel.VerifySelf()
-    ///     defaults read com.huberistech.rabin2021 TurnLadderVerification
+    ///     defaults read com.huberistech.ImpulseDistribution TurnLadderVerification
     ///
     /// It checks the two limits that tie this discrete ladder to the closed-form solution Stein's formulas use:
     ///

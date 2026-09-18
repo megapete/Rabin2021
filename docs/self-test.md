@@ -8,9 +8,9 @@ argument. This is the thing to reach for when a change needs exercising rather t
 single formulas, but they do not load a design file, build a model or solve anything.
 
 ```bash
-cp <design file>.txt ~/Library/Containers/com.huberistech.Rabin2021/Data/Documents/
+cp <design file>.txt ~/Library/Containers/com.huberistech.ImpulseDistribution/Data/Documents/
 .../Debug/ImpulseDistribution.app/Contents/MacOS/ImpulseDistribution -PCH_SelfTest STME0999
-cat ~/Library/Containers/com.huberistech.Rabin2021/Data/Documents/SelfTestReport-STME0999.txt
+cat ~/Library/Containers/com.huberistech.ImpulseDistribution/Data/Documents/SelfTestReport-STME0999.txt
 ```
 
 Add `-PCH_SelfTestTransient YES` for the frequency-domain sweep as well, and `-PCH_SelfTestGraphs YES` (which needs the transient)
@@ -51,8 +51,8 @@ The `VerifySelf()` formula checks have their own gate, separate from all of this
 
 ```bash
 open -a ImpulseDistribution --args -PCH_Verify YES
-defaults read com.huberistech.Rabin2021 TurnLadderVerification
-defaults read com.huberistech.Rabin2021 DielectricStressVerification
+defaults read com.huberistech.ImpulseDistribution TurnLadderVerification
+defaults read com.huberistech.ImpulseDistribution DielectricStressVerification
 ```
 
 One name in that argument is not a design: **`STRANDED`** runs `SelfTest.CheckStrandedConnection` instead, which is about the
@@ -68,7 +68,7 @@ Four mechanical points, each forced by something:
   `user-selected.read-write` — a design file anywhere else needs the `NSOpenPanel` that granted access to it. Do *not*
   "fix" this with a `temporary-exception` entitlement: that changes what the shipped app may read in order to run a test.
 - **The report is a file, in that same container folder**; only a one-line summary goes to `UserDefaults`
-  (`defaults read com.huberistech.Rabin2021 PCH_SelfTestSummary`). A page of report through `defaults read` is one
+  (`defaults read com.huberistech.ImpulseDistribution PCH_SelfTestSummary`). A page of report through `defaults read` is one
   enormous escaped line.
 - **`PCH_SelfTestStage` is written and flushed before each step.** The pipeline raises `NSAlert`s on failure and a modal
   alert with nobody watching hangs the run forever, so that key is the only evidence of where a hung run stopped. The one

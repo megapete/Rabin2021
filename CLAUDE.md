@@ -6,7 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A macOS (AppKit/Cocoa) desktop application that simulates the **impulse voltage distribution** through transformer windings — i.e. how a lightning/impulse voltage waveform distributes across the discs of a coil during very fast transients. It builds inductance and capacitance matrices for a winding geometry and solves the resulting network over time.
 
-Note the naming skew: the git repo, source folder, and bundle identifier are all `Rabin2021` (the original working name), but the Xcode project, scheme, and shipped product are named **`ImpulseDistribution`**. They refer to the same app.
+The project was called **`Rabin2021`** until 2026-09-18 — after Rabin's method, which the inductance calculation is founded
+on — and everything now carries the product's own name instead: the git repo, the working directory, the source folder, the
+Xcode project, the scheme, and the bundle identifier `com.huberistech.ImpulseDistribution`. Commits before that date use the
+old name throughout, and GitHub still redirects the old repo URL. Note that `Rabin` on its own is NOT the old project name
+where it survives in the docs and in `FePhase.swift` — it is the physicist, and those references are deliberate.
 
 ## Detailed references — read the relevant one before working
 
@@ -42,7 +46,7 @@ xcodebuild -project ImpulseDistribution.xcodeproj -scheme ImpulseDistribution -c
 - **Swift 6 language mode** with `SWIFT_STRICT_CONCURRENCY = complete`, macOS deployment target 26.0, **Apple Silicon only** (`arm64`; see commit "Set project to build for Apple Silicon only"). Note that these two settings are on the **app target only** — the project level is still `SWIFT_STRICT_CONCURRENCY = targeted`, which is what the SPM packages inherit. Do not move them up to the project, and do not enable `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`; both break `PchMatrixPackage`.
 - The preprocessor macros `ACCELERATE_NEW_LAPACK=1` and `ACCELERATE_LAPACK_ILP64=1` are set **project-wide** (`GCC_PREPROCESSOR_DEFINITIONS`, in the Apple Clang – Preprocessing build settings). The LAPACK-using matrix code needs them because of Apple's 2023 LAPACK/BLAS changes. Leave them in place.
 
-### Not everything in `Rabin2021/` is compiled
+### Not everything in `ImpulseDistribution/` is compiled
 
 Eight `.swift` files sit in the source folder but are **not in the target's Compile Sources phase**, so editing them has no effect on the built app. Check target membership before touching a file:
 
@@ -63,7 +67,7 @@ The compiled target is exactly these 35: `AppController`, `AppDelegate`, `AxialS
 Resolved packages live in `ImpulseDistribution.xcodeproj/.../swiftpm/Package.resolved`. Several are private/GitHub packages by the same author (megapete):
 
 - `PchBasePackage` — core utilities (logging via `ALog`, etc.). **Keep the Release `-disable-cmo` flag** on this package; it fixes a CGFloat/Double CMO swiftmodule deserialization crash when archiving.
-- `PchAxiSymFE` (from `PchAxiSymFePackage`) — the 2D axisymmetric finite-element library. **This is the path actually used to compute the inductance matrix and the eddy losses.** It is referenced as a **local package** at `../PchAxiSymFePackage`, not from GitHub, so it is edited in place and every build takes the working copy. The app talks to it through exactly one file, `Rabin2021/FePhase.swift` — read that file's header before changing anything about the FE model. It replaced `PchFiniteElementPackage` (`PchFePhase`), which the project no longer references at all.
+- `PchAxiSymFE` (from `PchAxiSymFePackage`) — the 2D axisymmetric finite-element library. **This is the path actually used to compute the inductance matrix and the eddy losses.** It is referenced as a **local package** at `../PchAxiSymFePackage`, not from GitHub, so it is edited in place and every build takes the working copy. The app talks to it through exactly one file, `ImpulseDistribution/FePhase.swift` — read that file's header before changing anything about the FE model. It replaced `PchFiniteElementPackage` (`PchFePhase`), which the project no longer references at all.
 - `PchMatrixPackage`, `PchExcelDesignFilePackage`, `PchDialogBoxPackage`, `PchProgressIndicatorPackage` — matrix ops, Excel design-file import, dialogs, progress UI.
 - `swift-numerics` (`ComplexModule`, `RealModule`) — complex/real math used by the matrix and inductance code.
 

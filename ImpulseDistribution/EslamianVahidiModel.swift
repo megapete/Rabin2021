@@ -1,13 +1,13 @@
 //
 //  EslamianVahidiModel.swift
-//  Rabin2021
+//  ImpulseDistribution
 //
 //  Created by Peter Huber on 2021-10-22.
 //
 
 // This is an attempt to encapsulate the methods and formulas presented in the technical paper "New Methods for Computation of the Inductance Matrix of Transformer Windings for Very Fast Transients Studies" by M. Eslamian and B. Vahidi. To begin, only the Double-Fourier Series method Inside the Core Window is implemented. The Outside the Core Window method is also implemented. Both methods have been compared to the results in the paper. The Outside the Core Window calculations match exactly, while the Inside the Core Window reesults are very close (I think they probably used the Single-Fourier Series method).
 
-// Use of this class requires that the "Segment" class from Rabin2021 also be included in the project.
+// Use of this class requires that the "Segment" class from ImpulseDistribution also be included in the project.
 
 import Foundation
 import Accelerate

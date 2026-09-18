@@ -1,6 +1,6 @@
 //
 //  Segment.swift
-//  Rabin2021
+//  ImpulseDistribution
 //
 //  Created by Peter Huber on 2021-10-07.
 //
@@ -2305,7 +2305,7 @@ actor Segment: Equatable /*, Hashable */ {
     /// stated winding-looseness correction.
     ///
     /// To run it, add this to AppDelegate.applicationDidFinishLaunching, build, launch the app and read the result back with
-    /// `defaults read com.huberistech.Rabin2021 PCH_WIS_SELFCHECK`. The app is sandboxed, so it cannot write a report to /tmp and
+    /// `defaults read com.huberistech.ImpulseDistribution PCH_WIS_SELFCHECK`. The app is sandboxed, so it cannot write a report to /tmp and
     /// print() does not reach a shell that launched it with `open` - UserDefaults is the path of least resistance.
     ///
     ///     Task {
@@ -2625,7 +2625,7 @@ actor Segment: Equatable /*, Hashable */ {
     {
         var result:[Double] = []
         
-        for i in 0...PCH_RABIN2021_IterationCount {
+        for i in 0...PCH_IMPULSEDISTRIBUTION_IterationCount {
             
             result.append(self.J(n: i))
         }

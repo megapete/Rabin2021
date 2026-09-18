@@ -31,10 +31,10 @@ import Foundation
 enum Preference:String, CaseIterable, Sendable {
 
     /// The fraction of DelVecchio's 50%-probability breakdown levels that the dielectric stress screen treats as allowable.
-    case dielectricDesignMargin = "PCH_RABIN2021_DielectricDesignMargin"
+    case dielectricDesignMargin = "PCH_IMPULSEDISTRIBUTION_DielectricDesignMargin"
 
     /// Whether the dielectric stress report shows its two corner-field columns.
-    case showCornerStresses = "PCH_RABIN2021_ShowCornerStresses"
+    case showCornerStresses = "PCH_IMPULSEDISTRIBUTION_ShowCornerStresses"
 }
 
 extension Preference {
@@ -207,8 +207,8 @@ enum Preferences {
     /// Register the factory defaults with User Defaults. Called once, at launch, from `AppDelegate`.
     ///
     /// `ValueOf(_:)` falls back to the factory default on its own, so nothing here depends on this having been called - it is
-    /// done anyway so that the values show up in `defaults read com.huberistech.rabin2021` and can be overridden for one run
-    /// from the command line (`-PCH_RABIN2021_DielectricDesignMargin 0.8`), which is how the self-test harness reaches them.
+    /// done anyway so that the values show up in `defaults read com.huberistech.ImpulseDistribution` and can be overridden for one run
+    /// from the command line (`-PCH_IMPULSEDISTRIBUTION_DielectricDesignMargin 0.8`), which is how the self-test harness reaches them.
     static func RegisterFactoryDefaults() {
 
         var factoryDefaults:[String:Any] = [:]
@@ -230,7 +230,7 @@ enum Preferences {
     ///
     /// and read it back with
     ///
-    ///     defaults read com.huberistech.rabin2021 PreferencesVerification
+    ///     defaults read com.huberistech.ImpulseDistribution PreferencesVerification
     ///
     /// It asserts the things that adding a preference could break, and it asserts them for EVERY case in `Preference`, so a new
     /// preference is covered the moment it is added:

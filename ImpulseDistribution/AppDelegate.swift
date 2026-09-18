@@ -1,6 +1,6 @@
 //
 //  AppDelegate.swift
-//  Rabin2021
+//  ImpulseDistribution
 //
 //  Created by Peter Huber on 2021-10-06.
 //
@@ -26,9 +26,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // editing this file and rebuilding every time. Nothing happens on a normal launch.
         //
         //     open -a ImpulseDistribution --args -PCH_Verify YES
-        //     defaults read com.huberistech.rabin2021 TurnLadderVerification
-        //     defaults read com.huberistech.rabin2021 DielectricStressVerification
-        //     defaults read com.huberistech.rabin2021 SheetCapacitanceVerification
+        //     defaults read com.huberistech.ImpulseDistribution TurnLadderVerification
+        //     defaults read com.huberistech.ImpulseDistribution DielectricStressVerification
+        //     defaults read com.huberistech.ImpulseDistribution SheetCapacitanceVerification
         if UserDefaults.standard.bool(forKey: "PCH_Verify") {
 
             TurnLadderModel.VerifySelf()

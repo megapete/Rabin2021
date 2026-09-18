@@ -11,7 +11,7 @@ Standard NSApplication delegate (entry point).
 
 The main controller: menu/IBActions, User Defaults, and file loading. Input comes from Excel transformer **design files**
 (`PchExcelDesignFilePackage`); `.cir` is **export only** (see `docs/solver.md`). Iteration constants like
-`PCH_RABIN2021_IterationCount = 200` live here. It also owns the two long-running calculations' UI:
+`PCH_IMPULSEDISTRIBUTION_IterationCount = 200` live here. It also owns the two long-running calculations' UI:
 
 - **`recalculateModel(reinitialize:includeInductance:)` is the recalculation pipeline**, split out of `updateModel`'s tail: radial build-up → FE phase → eddy losses → inductance → capacitance → `updateViews()`. Anything that changes the model *without* swapping Segments calls it directly, because `updateModel` cannot be reached with empty segment arrays (`PhaseModel.UpdateConnectors` throws on those). It always calls `ApplyRadialBuildUp()` first — cheap, idempotent, and it means no caller has to reason about when geometry went stale. `includeInductance: false` recomputes only the capacitance, which is what a geometry search wants: the inductance dominates the cost and barely moves when a coil widens by millimetres.
 - The main window's two progress bars (`indCalcProgInd`, `simCalcProgInd`) are **determinate** and driven by the progress streams described in `docs/concurrency.md`. Set up at launch, reset in `didFinishInductanceCalculation()` / `didFinishSimulationRun()`. The bar's `toolTip` carries the detail text (which pass, which section) because `workingLabel` is *shared* by both calculations — don't write per-calculation text into it.
@@ -172,7 +172,7 @@ Three things in there are deliberate:
 
 `Preferences.VerifySelf()` checks the store the same way the other `VerifySelf()`s check their formulas — and it walks
 `Preference.allCases`, so a new preference is covered the moment it is added. Run it by calling it from
-`AppDelegate.applicationDidFinishLaunching` and reading `defaults read com.huberistech.rabin2021 PreferencesVerification`.
+`AppDelegate.applicationDidFinishLaunching` and reading `defaults read com.huberistech.ImpulseDistribution PreferencesVerification`.
 
 The progress-indicator window (`rb2021_progressIndicatorWindow` in `AppController`) is `PchProgressIndicatorPackage`'s class;
 `PCH_GraphingView/Window` and the `old...`-prefixed files are dead — see the target-membership table in `CLAUDE.md`.

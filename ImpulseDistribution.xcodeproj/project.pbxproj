@@ -67,7 +67,7 @@
 		D30D3AD7270E2F2C00A39051 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		D30D3AD9270E2F2D00A39051 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D30D3ADC270E2F2D00A39051 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
-		D30D3ADE270E2F2D00A39051 /* Rabin2021.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Rabin2021.entitlements; sourceTree = "<group>"; };
+		D30D3ADE270E2F2D00A39051 /* ImpulseDistribution.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ImpulseDistribution.entitlements; sourceTree = "<group>"; };
 		D323F2CE27E14F3900D94DA1 /* Node.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Node.swift; sourceTree = "<group>"; };
 		D3573253270E5DAE000CCCF9 /* AppController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppController.swift; sourceTree = "<group>"; };
 		D3926C07270F3D3C00D2D17C /* Core.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core.swift; sourceTree = "<group>"; };
@@ -135,7 +135,7 @@
 		D30D3ACB270E2F2C00A39051 = {
 			isa = PBXGroup;
 			children = (
-				D30D3AD6270E2F2C00A39051 /* Rabin2021 */,
+				D30D3AD6270E2F2C00A39051 /* ImpulseDistribution */,
 				D30D3AD5270E2F2C00A39051 /* Products */,
 				D3BE81FF27330E9600EF964D /* Frameworks */,
 			);
@@ -149,7 +149,7 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		D30D3AD6270E2F2C00A39051 /* Rabin2021 */ = {
+		D30D3AD6270E2F2C00A39051 /* ImpulseDistribution */ = {
 			isa = PBXGroup;
 			children = (
 				D30D3AD7270E2F2C00A39051 /* AppDelegate.swift */,
@@ -195,9 +195,9 @@
 				D39311BB2710C44200A29D65 /* TransformerView.swift */,
 				D30D3AD9270E2F2D00A39051 /* Assets.xcassets */,
 				D30D3ADB270E2F2D00A39051 /* MainMenu.xib */,
-				D30D3ADE270E2F2D00A39051 /* Rabin2021.entitlements */,
+				D30D3ADE270E2F2D00A39051 /* ImpulseDistribution.entitlements */,
 			);
-			path = Rabin2021;
+			path = ImpulseDistribution;
 			sourceTree = "<group>";
 		};
 		D3BE81FF27330E9600EF964D /* Frameworks */ = {
@@ -235,7 +235,7 @@
 				F561C3CF2B4838AF00C9CEDE /* PchProgressIndicatorPackage */,
 				F561C3D22B4B528800C9CEDE /* PchAxiSymFE */,
 			);
-			productName = Rabin2021;
+			productName = ImpulseDistribution;
 			productReference = D30D3AD4270E2F2C00A39051 /* ImpulseDistribution.app */;
 			productType = "com.apple.product-type.application";
 		};
@@ -494,11 +494,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
-				CODE_SIGN_ENTITLEMENTS = Rabin2021/Rabin2021.entitlements;
+				CODE_SIGN_ENTITLEMENTS = ImpulseDistribution/ImpulseDistribution.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 305DC462;
+				CURRENT_PROJECT_VERSION = 305DC6B3;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -512,7 +512,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.2;
-				PRODUCT_BUNDLE_IDENTIFIER = com.huberistech.Rabin2021;
+				PRODUCT_BUNDLE_IDENTIFIER = com.huberistech.ImpulseDistribution;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -527,11 +527,11 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
-				CODE_SIGN_ENTITLEMENTS = Rabin2021/Rabin2021.entitlements;
+				CODE_SIGN_ENTITLEMENTS = ImpulseDistribution/ImpulseDistribution.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 305DC462;
+				CURRENT_PROJECT_VERSION = 305DC6B3;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -546,7 +546,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.2;
 				ONLY_ACTIVE_ARCH = YES;
-				PRODUCT_BUNDLE_IDENTIFIER = com.huberistech.Rabin2021;
+				PRODUCT_BUNDLE_IDENTIFIER = com.huberistech.ImpulseDistribution;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;

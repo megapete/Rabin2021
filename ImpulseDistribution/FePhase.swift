@@ -1,6 +1,6 @@
 //
 //  FePhase.swift
-//  Rabin2021
+//  ImpulseDistribution
 //
 //  The bridge between the phase model and PchAxiSymFE.
 //

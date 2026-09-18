@@ -162,7 +162,7 @@ no oblique-spill estimate is attempted — both were considered and declined.
 
 The inductance matrix and the eddy losses now come from `PchAxiSymFePackage`, taken as a **local** package at
 `../PchAxiSymFePackage`. Nothing in the project references `PchFiniteElementPackage` any more. The app talks to the new library
-through one file, `Rabin2021/FePhase.swift`; `AppController` does not import it, because the package publishes a `Core` of its own
+through one file, `ImpulseDistribution/FePhase.swift`; `AppController` does not import it, because the package publishes a `Core` of its own
 and the program has a `currentCore:Core?`.
 
 Three things had to be decided rather than translated.
